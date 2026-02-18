@@ -1,7 +1,10 @@
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ===============================
+   🎨 UTILITIES
+==================================*/
 
 @layer utilities {
   .glass {
@@ -37,70 +40,41 @@
   }
 }
 
-/* 3D Tilt Effect Utilities */
+/* ===============================
+   🧭 3D TILT EFFECT
+==================================*/
+
 .tilt-card {
   transition: transform 0.3s ease, box-shadow 0.3s ease;
 }
 
 .tilt-card:hover {
   transform: translateY(-5px) scale(1.01);
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1),
+              0 10px 10px -5px rgba(0, 0, 0, 0.04);
 }
 
 .dark .tilt-card:hover {
   box-shadow: 0 20px 40px -10px rgba(0, 243, 255, 0.15);
 }
 
-/* --- LIGHTNING / ENERGY EFFECT BEHIND LOGO --- */
-@keyframes lightning-flash {
-  0%, 100% { opacity: 0; transform: scale(0.8); }
-  5% { opacity: 0.8; transform: scale(1.1); filter: brightness(2); }
-  10% { opacity: 0; }
-  15% { opacity: 0.4; transform: scale(1.05); }
-  20% { opacity: 0; }
-  50% { opacity: 0; }
-  55% { opacity: 0.6; transform: scale(1.2) rotate(5deg); }
-  60% { opacity: 0; }
-}
+/* ===============================
+   ⚡ SPLIT OPEN ANIMATION
+==================================*/
 
-.lightning-container {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 150%;
-  height: 150%;
-  pointer-events: none;
-  z-index: -1;
-  background: radial-gradient(circle, rgba(59, 130, 246, 0.2) 0%, transparent 70%);
-}
-
-.lightning-bolt {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.4'/%3E%3C/svg%3E");
-  opacity: 0;
-  mix-blend-mode: overlay;
-  animation: lightning-flash 4s infinite;
-}
-
-/* --- SPLIT OPEN ANIMATION --- */
 @keyframes split-left {
-  0% { transform: translateX(0); opacity: 1; }
-  100% { transform: translateX(-100vw); opacity: 0; }
+  from { transform: translateX(0); opacity: 1; }
+  to   { transform: translateX(-100vw); opacity: 0; }
 }
 
 @keyframes split-right {
-  0% { transform: translateX(0); opacity: 1; }
-  100% { transform: translateX(100vw); opacity: 0; }
+  from { transform: translateX(0); opacity: 1; }
+  to   { transform: translateX(100vw); opacity: 0; }
 }
 
 @keyframes fade-out-bg {
-  0% { opacity: 1; }
-  100% { opacity: 0; visibility: hidden; }
+  from { opacity: 1; }
+  to   { opacity: 0; visibility: hidden; }
 }
 
 .split-overlay {
@@ -117,11 +91,11 @@
 .split-part {
   width: 50%;
   height: 100%;
+  position: absolute;
+  top: 0;
   display: flex;
   align-items: center;
   background: #0B0C15;
-  position: absolute;
-  top: 0;
   overflow: hidden;
 }
 
@@ -140,12 +114,12 @@
 }
 
 .split-img {
-  max-width: unset;
-  height: 120px; /* Adjust based on logo size */
+  height: 120px;
   object-fit: contain;
 }
+
 /* ===============================
-   ⚡ ELECTRIC NEON ENERGY
+   ⚡ ELECTRIC ENERGY CORE
 ==================================*/
 
 @keyframes energy-pulse {
@@ -154,25 +128,15 @@
     opacity: 0.6;
   }
   50% {
-    transform: scale(1.2);
+    transform: scale(1.15);
     opacity: 1;
   }
 }
 
-@keyframes lightning-flicker {
-  0%,100% { opacity: 0; }
-  15% { opacity: 1; }
-  20% { opacity: 0; }
-  60% { opacity: 0; }
-  65% { opacity: 1; }
-  70% { opacity: 0; }
-}
-
-.logo-energy {
+.energy-wrapper {
   position: absolute;
-  inset: -60%;
+  inset: 0;
   pointer-events: none;
-  z-index: 0;
 }
 
 .energy-core {
@@ -197,85 +161,14 @@
   animation: energy-pulse 4s infinite ease-in-out;
 }
 
-.energy-lightning {
-  position: absolute;
-  inset: 0;
-  background: conic-gradient(
-    from 0deg,
-    transparent 0deg,
-    rgba(0,243,255,1) 8deg,
-    transparent 15deg,
-    transparent 120deg,
-    rgba(0,243,255,0.9) 130deg,
-    transparent 140deg
-  );
-  mix-blend-mode: screen;
-  filter: blur(40px);
-  animation: lightning-flicker 2.5s infinite;
-}
 /* ===============================
-   ⚡ FULL SCREEN LIGHTNING STORM
+   ⚡ CLEAN LIGHTNING SYSTEM
 ==================================*/
 
-@keyframes lightning-strike {
-  0%, 100% { opacity: 0; }
-  5% { opacity: 1; }
-  8% { opacity: 0; }
-  12% { opacity: 0.8; }
-  15% { opacity: 0; }
-}
-
-@keyframes lightning-flash-bg {
-  0%, 100% { background-color: #0B0C15; }
-  6% { background-color: #0f1a2f; }
-  10% { background-color: #0B0C15; }
-}
-
-.lightning-storm {
-  position: fixed;
+.lightning-bg {
+  position: absolute;
   inset: 0;
   pointer-events: none;
-  z-index: 0;
-  overflow: hidden;
-}
-
-.lightning-storm::before,
-.lightning-storm::after {
-  content: "";
-  position: absolute;
-  top: -20%;
-  width: 4px;
-  height: 140%;
-  background: linear-gradient(
-    to bottom,
-    rgba(0,243,255,0),
-    rgba(0,243,255,1),
-    rgba(0,140,255,1),
-    rgba(0,243,255,0)
-  );
-  filter: blur(2px);
-  opacity: 0;
-  animation: lightning-strike 6s infinite;
-}
-
-.lightning-storm::before {
-  left: 25%;
-  animation-delay: 2s;
-}
-
-.lightning-storm::after {
-  left: 70%;
-  animation-delay: 4s;
-}
-
-/* Flash geral na tela */
-body.lightning-active {
-  animation: lightning-flash-bg 6s infinite;
-}
-/* ===== LIGHTNING BACKGROUND ===== */
-
-.lightning-bg {
-  background: radial-gradient(circle at 50% 30%, rgba(0, 140, 255, 0.25), transparent 60%);
   overflow: hidden;
 }
 
@@ -283,47 +176,47 @@ body.lightning-active {
 .lightning-bg::after {
   content: "";
   position: absolute;
-  width: 2px;
-  height: 120%;
-  top: -10%;
+  top: -20%;
+  width: 3px;
+  height: 150%;
   background: linear-gradient(
     to bottom,
-    transparent 0%,
-    #00bfff 20%,
+    transparent,
+    #00bfff 30%,
     #ffffff 50%,
-    #00bfff 80%,
-    transparent 100%
+    #00bfff 70%,
+    transparent
   );
-  opacity: 0;
   filter: drop-shadow(0 0 12px #00bfff)
-          drop-shadow(0 0 24px #008cff);
-  animation: lightning-strike 4s infinite;
+          drop-shadow(0 0 25px #008cff);
+  opacity: 0;
+  transform-origin: top;
+  will-change: opacity, transform;
+  animation: lightningClean 6s infinite;
 }
 
 .lightning-bg::before {
-  left: 25%;
-  animation-delay: 1s;
+  left: 30%;
+  animation-delay: 2s;
 }
 
 .lightning-bg::after {
-  left: 70%;
-  animation-delay: 2.5s;
+  left: 65%;
+  animation-delay: 4s;
 }
 
-@keyframes lightning-strike {
-  0% {
+@keyframes lightningClean {
+  0%, 94%, 100% {
     opacity: 0;
-    transform: scaleY(0.5) skewX(-10deg);
+    transform: scaleY(0.4) skewX(-8deg);
   }
-  5% {
+
+  95% {
     opacity: 1;
     transform: scaleY(1.2) skewX(5deg);
   }
-  10% {
-    opacity: 0;
-    transform: scaleY(0.8) skewX(-5deg);
-  }
-  100% {
-    opacity: 0;
-  }
+
+  96% { opacity: 0.4; }
+  97% { opacity: 0.9; }
+  98% { opacity: 0; }
 }

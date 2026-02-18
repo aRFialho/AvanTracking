@@ -7,6 +7,8 @@ export const LogoLightning = () => {
     const canvas = canvasRef.current!;
     const ctx = canvas.getContext("2d")!;
     let animationFrame: number;
+    let lightningTimer = 0;
+    let lightningOpacity = 0;
 
     const resize = () => {
       const parent = canvas.parentElement!;
@@ -17,12 +19,10 @@ export const LogoLightning = () => {
     resize();
     window.addEventListener("resize", resize);
 
-    const drawLightning = () => {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
+    const drawLightning = (opacity: number) => {
       const startX = canvas.width / 2;
       const startY = 0;
-      const segments = 15;
+      const segments = 18;
       const segmentLength = canvas.height / segments;
 
       ctx.beginPath();
@@ -38,24 +38,37 @@ export const LogoLightning = () => {
 
         ctx.lineTo(currentX, currentY);
 
-        // pequenas ramificações
-        if (Math.random() > 0.75) {
+        if (Math.random() > 0.8) {
           ctx.moveTo(currentX, currentY);
-          ctx.lineTo(currentX + offset * 0.5, currentY + segmentLength * 0.5);
+          ctx.lineTo(
+            currentX + offset * 0.5,
+            currentY + segmentLength * 0.5
+          );
         }
       }
 
-      ctx.strokeStyle = "rgba(0,243,255,1)";
+      ctx.strokeStyle = `rgba(0,243,255,${opacity})`;
       ctx.lineWidth = 2;
-      ctx.shadowBlur = 25;
-      ctx.shadowColor = "rgba(0,243,255,1)";
+      ctx.shadowBlur = 30;
+      ctx.shadowColor = `rgba(0,243,255,${opacity})`;
       ctx.stroke();
     };
 
     const loop = () => {
-      if (Math.random() > 0.96) {
-        drawLightning();
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // dispara relâmpago raramente
+      if (lightningTimer <= 0 && Math.random() > 0.985) {
+        lightningTimer = 8; // duração em frames
+        lightningOpacity = 1;
       }
+
+      if (lightningTimer > 0) {
+        drawLightning(lightningOpacity);
+        lightningOpacity *= 0.7; // fade exponencial natural
+        lightningTimer--;
+      }
+
       animationFrame = requestAnimationFrame(loop);
     };
 
