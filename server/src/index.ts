@@ -1,19 +1,25 @@
+import path from "path";
 import express from "express";
-import cors from "cors";
-import dotenv from "dotenv";
-
-dotenv.config();
 
 const app = express();
-app.use(cors());
+const port = process.env.PORT || 3000;
+
 app.use(express.json());
 
-app.get("/", (req, res) => {
-  res.json({ status: "API rodando" });
+// API routes primeiro
+app.get("/api/health", (req, res) => {
+  res.json({ ok: true });
 });
 
-const PORT = process.env.PORT || 3001;
+// 👇 servir frontend
+const frontendPath = path.join(__dirname, "../public");
 
-app.listen(PORT, () => {
-  console.log(`Servidor rodando na porta ${PORT}`);
+app.use(express.static(frontendPath));
+
+app.get("*", (req, res) => {
+  res.sendFile(path.join(frontendPath, "index.html"));
+});
+
+app.listen(port, () => {
+  console.log(`Server running on port ${port}`);
 });
