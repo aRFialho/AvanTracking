@@ -1,0 +1,135 @@
+generator client {
+    provider = "prisma-client-js"
+}
+
+datasource db {
+    provider = "postgresql"
+}
+
+enum Role {
+    ADMIN
+    USER
+}
+
+enum OrderStatus {
+    PENDING
+    CREATED
+    SHIPPED
+    DELIVERY_ATTEMPT
+    DELIVERED
+    FAILURE
+    RETURNED
+    CANCELED
+    CHANNEL_LOGISTICS
+}
+
+model User {
+    id       String @id @default(uuid())
+    email    String @unique
+    name     String
+    password String // bcrypt hash
+    role     Role   @default(USER)
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    orders Order[] @relation("UserOrders")
+}
+
+model Carrier {
+    id      String  @id @default(uuid())
+    name    String  @unique
+    apiType String // SSW, Correios, MelhorEnvio etc
+    active  Boolean @default(true)
+
+    createdAt DateTime @default(now())
+
+    orders Order[]
+}
+
+model Order {
+    id String @id @default(uuid())
+
+    // Identificação
+    orderNumber   String
+    invoiceNumber String? // NF
+    trackingCode  String? // Código de rastreio
+
+    // Cliente
+    customerName  String
+    corporateName String?
+    cpf           String?
+    cnpj          String?
+    phone         String?
+    mobile        String?
+
+    // Canal / Logística
+    salesChannel String
+    freightType  String?
+    freightValue Float
+    shippingDate DateTime?
+
+    carrierId String?
+    carrier   Carrier? @relation(fields: [carrierId], references: [id])
+
+    // Endereço
+    address      String
+    number       String
+    complement   String?
+    neighborhood String
+    city         String
+    state        String
+    zipCode      String
+
+    // Financeiro
+    totalValue Float
+
+    // Prazos
+    recipient             String?
+    maxShippingDeadline   DateTime?
+    estimatedDeliveryDate DateTime?
+
+    // Estado Atual
+    status    OrderStatus @default(PENDING)
+    isDelayed Boolean     @default(false)
+
+    lastApiSync DateTime?
+    lastUpdate  DateTime  @updatedAt
+
+    // Controle de erro de rastreio
+    lastApiError  String?
+    apiRawPayload Json?
+
+    // Auditoria
+    createdAt DateTime @default(now())
+
+    // Relações
+    trackingEvents TrackingEvent[]
+    createdById    String?
+    createdBy      User?           @relation("UserOrders", fields: [createdById], references: [id])
+
+    @@index([status])
+    @@index([orderNumber])
+    @@index([invoiceNumber])
+    @@index([trackingCode])
+    @@index([isDelayed])
+    @@index([lastApiSync])
+}
+
+model TrackingEvent {
+    id String @id @default(uuid())
+
+    orderId String
+    order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+    status      String
+    description String
+    city        String?
+    state       String?
+
+    eventDate DateTime
+    createdAt DateTime @default(now())
+
+    @@index([orderId])
+    @@index([eventDate])
+}
