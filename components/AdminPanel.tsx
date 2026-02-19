@@ -18,8 +18,8 @@ export const AdminPanel: React.FC = () => {
   
   // Local State for functionality
   const [users, setUsers] = useState<UserData[]>([
-    { id: 1, name: 'Admin', email: 'admin@autrack.com.br', role: 'ADMIN', status: 'Active' },
-    { id: 2, name: 'Operador Logístico', email: 'operador@autrack.com.br', role: 'USER', status: 'Active' },
+    { id: 1, name: 'Admin', email: 'admin@avantracking.com.br', role: 'ADMIN', status: 'Active' },
+    { id: 2, name: 'Operador Logístico', email: 'operador@avantracking.com.br', role: 'USER', status: 'Active' },
     { id: 3, name: 'Visualizador Externo', email: 'guest@parceiro.com', role: 'USER', status: 'Inactive' },
   ]);
 

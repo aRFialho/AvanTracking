@@ -22,7 +22,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 // MOCK DB - Updated Credentials
 const MOCK_DB_USERS = [
-  { id: '1', email: 'admin@autrack.com.br', pass: 'Alfenas@172839', name: 'Admin', role: 'ADMIN' as Role },
+  { id: '1', email: 'admin@avantracking.com.br', pass: 'Alfenas@172839', name: 'Admin', role: 'ADMIN' as Role },
 ];
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {

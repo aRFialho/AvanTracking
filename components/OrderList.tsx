@@ -1,10 +1,9 @@
-
 import React, { useState, useMemo } from 'react';
 import { Order, OrderStatus } from '../types';
 import { OrderDetail } from './OrderDetail';
 import { 
     Download, Search, Filter, Globe, ChevronDown, ChevronUp, X, 
-    Calendar, Truck, ShoppingBag, Eye, Loader2 
+    Calendar, Truck, ShoppingBag, Eye, Loader2, RefreshCw
 } from 'lucide-react';
 import { clsx } from 'clsx';
 
@@ -17,6 +16,7 @@ export const OrderList: React.FC<OrderListProps> = ({ orders, onFetchSingle }) =
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [isFetchingSingle, setIsFetchingSingle] = useState(false);
   const [showFilters, setShowFilters] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false); // ✅ Novo state
   
   // Search Modal State
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
@@ -91,6 +91,36 @@ export const OrderList: React.FC<OrderListProps> = ({ orders, onFetchSingle }) =
       setMarketplaceFilter('ALL');
       setDateRangeStart('');
       setDateRangeEnd('');
+  };
+
+  // ✅ Função de sincronização
+  const handleSyncAll = async () => {
+    if (!confirm('Sincronizar todos os pedidos ativos? Isso pode demorar alguns minutos.')) {
+      return;
+    }
+
+    setIsSyncing(true);
+    try {
+      const response = await fetch('/api/orders/sync-all', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        alert(`✅ ${result.message}`);
+        // Recarregar pedidos
+        window.location.reload();
+      } else {
+        alert('❌ Erro ao sincronizar');
+      }
+    } catch (error) {
+      console.error('Erro ao sincronizar:', error);
+      alert('❌ Erro ao sincronizar pedidos');
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   // Modern Status Badge
@@ -236,6 +266,27 @@ export const OrderList: React.FC<OrderListProps> = ({ orders, onFetchSingle }) =
                 </div>
             </div>
           )}
+      </div>
+
+      {/* ✅ Botão Sincronizar Todos */}
+      <div className="flex justify-end">
+        <button 
+          onClick={handleSyncAll}
+          disabled={isSyncing}
+          className="flex items-center gap-2 px-4 py-2 bg-accent dark:bg-neon-blue text-white dark:text-black rounded-lg hover:bg-blue-600 dark:hover:bg-cyan-400 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+        >
+          {isSyncing ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Sincronizando...
+            </>
+          ) : (
+            <>
+              <RefreshCw className="w-4 h-4" />
+              Sincronizar Todos
+            </>
+          )}
+        </button>
       </div>
 
       {/* 2. Detailed Data Table */}

@@ -31,9 +31,17 @@ export const LightningStorm: React.FC = () => {
     let flashOpacity = 0;
 
     const resize = () => {
-      width = canvas.width = window.innerWidth;
-      height = canvas.height = window.innerHeight;
+      // Use parent element size if available, fallback to window
+      const parent = canvas.parentElement;
+      if (parent) {
+          width = canvas.width = parent.clientWidth;
+          height = canvas.height = parent.clientHeight;
+      } else {
+          width = canvas.width = window.innerWidth;
+          height = canvas.height = window.innerHeight;
+      }
     };
+    
     resize();
     window.addEventListener('resize', resize);
 

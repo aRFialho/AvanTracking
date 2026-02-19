@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+
+import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { LOGO_URL } from '../constants';
 import { Lock, Mail, ChevronRight, Loader2, ShieldCheck, Check } from 'lucide-react';
@@ -28,9 +29,8 @@ export const Login: React.FC = () => {
   return (
     <div className="min-h-screen bg-[#0B0C15] flex items-center justify-center p-4 relative overflow-hidden">
       
+      {/* Background Visual Effect */}
       <LightningStorm />
-
-      <div className="lightning-storm"></div>
 
       {/* Background Atmosphere */}
       <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
@@ -50,7 +50,6 @@ export const Login: React.FC = () => {
               <div className="logo-energy">
                 <div className="energy-core"></div>
                 <div className="energy-ring"></div>
-                <div className="energy-lightning"></div>
               </div>
 
               <img
@@ -65,7 +64,7 @@ export const Login: React.FC = () => {
               SYSTEM ACCESS
             </h2>
             <p className="text-slate-400 text-sm">
-              Autrack Intelligence
+              Avantracking Intelligence
             </p>
 
           </div>
@@ -83,7 +82,7 @@ export const Login: React.FC = () => {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full bg-[#1A1D2D] border border-slate-700 text-white pl-10 pr-4 py-3 rounded-lg focus:outline-none focus:border-neon-blue focus:shadow-[0_0_15px_rgba(0,243,255,0.2)] transition-all placeholder:text-slate-600"
-                  placeholder="admin@autrack.com.br"
+                  placeholder="admin@avantracking.com.br"
                 />
               </div>
             </div>

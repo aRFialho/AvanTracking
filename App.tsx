@@ -7,6 +7,7 @@ import { UploadModal } from './components/UploadModal';
 import { AlertsView } from './components/AlertsView';
 import { AdminPanel } from './components/AdminPanel'; // New
 import { Login } from './components/Login'; // New
+import { Chatbot } from './components/Chatbot'; // New
 import { Order, PageView, OrderStatus } from './types';
 import { syncOrdersWithIntelipost, fetchSingleOrder } from './services/trackingApi';
 import { Loader2 } from 'lucide-react';
@@ -174,7 +175,7 @@ const MainApp: React.FC = () => {
   const renderContent = () => {
     switch (currentView) {
       case 'dashboard':
-        return <Dashboard orders={orders} />;
+        return <Dashboard orders={orders} onChangeView={setCurrentView} />;
       case 'orders':
         return <OrderList orders={orders} onFetchSingle={handleFetchSingleOrder} />;
       case 'upload':
@@ -184,7 +185,7 @@ const MainApp: React.FC = () => {
       case 'admin':
         return <AdminPanel />;
       default:
-        return <Dashboard orders={orders} />;
+        return <Dashboard orders={orders} onChangeView={setCurrentView} />;
     }
   };
 
@@ -245,6 +246,9 @@ const MainApp: React.FC = () => {
         <div className="flex-1 overflow-auto p-6 bg-slate-50 dark:bg-[#0B0C15]">
           {renderContent()}
         </div>
+
+        {/* AI Chatbot Overlay */}
+        <Chatbot />
       </main>
     </div>
   );

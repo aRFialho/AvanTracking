@@ -1,3 +1,4 @@
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -38,6 +39,50 @@
   .rotate-y-12 {
     transform: rotateY(12deg);
   }
+}
+
+/* ===============================
+   🛹 SKATEBOARD ROBOT ANIMATIONS
+==================================*/
+
+@keyframes skate-glide {
+  0% { left: 5%; transform: scaleX(1); }
+  45% { left: 75%; transform: scaleX(1); }
+  50% { left: 75%; transform: scaleX(-1); } /* Flip turn */
+  95% { left: 5%; transform: scaleX(-1); }
+  100% { left: 5%; transform: scaleX(1); } /* Flip back */
+}
+
+@keyframes skate-trick {
+  0%, 40%, 60%, 100% { transform: translateY(0) rotate(0deg); }
+  45% { transform: translateY(-15px) rotate(-15deg); } /* Ollie up */
+  50% { transform: translateY(-20px) rotate(360deg); } /* Kickflip rotation */
+  55% { transform: translateY(-10px) rotate(10deg); } /* Landing prep */
+}
+
+@keyframes wheel-spin-fast {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(720deg); }
+}
+
+.skate-container {
+  position: absolute;
+  bottom: 8px; /* Slightly above bottom for shadow */
+  width: 50px;
+  height: 60px;
+  animation: skate-glide 8s linear infinite;
+  z-index: 20;
+}
+
+/* The inner group that does the flip/jump */
+.skate-body-group {
+  animation: skate-trick 4s ease-in-out infinite;
+  transform-origin: center bottom;
+}
+
+.skate-wheel {
+  transform-origin: center;
+  animation: wheel-spin-fast 1s linear infinite;
 }
 
 /* ===============================
