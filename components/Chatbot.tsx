@@ -1,7 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { MessageCircle, X, Send, Loader2, Bot, User, Sparkles } from 'lucide-react';
-import { GoogleGenAI } from "@google/genai";
 import { clsx } from 'clsx';
 
 interface Message {
@@ -10,15 +9,63 @@ interface Message {
   text: string;
 }
 
+interface KnowledgeItem {
+  keywords: string[];
+  response: string;
+}
+
+// --- KNOWLEDGE BASE ---
+const KNOWLEDGE_BASE: KnowledgeItem[] = [
+  {
+    keywords: ['dashboard', 'grafico', 'kpi', 'ranking', 'resumo', 'tela inicial', 'metricas', 'indicadores'],
+    response: "## 📊 Dashboard Executivo\n\nO Dashboard é sua central de controle. Aqui você encontra:\n\n* **KPIs em Tempo Real:** Cards com total de NFs, entregues, em trânsito e atrasadas.\n* **Gráfico de Status:** Uma visão visual da distribuição dos seus pedidos.\n* **Ranking de Transportadoras:** Uma lista detalhada classificando parceiros por volume e pontualidade.\n* **Resumo Mensal:** Comparativo de crescimento vs mês anterior."
+  },
+  {
+    keywords: ['importar', 'csv', 'excel', 'planilha', 'upload', 'carregar', 'layout', 'dados'],
+    response: "## 📤 Importação de Dados\n\nPara carregar seus pedidos:\n\n1. Acesse o menu **Importar CSV**.\n2. Arraste seu arquivo **.csv** ou **.xlsx**.\n3. O sistema valida e processa os dados automaticamente.\n\n**Importante:**\n- O sistema ignora pedidos com status 'CANCELADO' automaticamente.\n- O layout deve conter colunas como: *Pedido, Nome do Cliente, Data, Status, Frete tipo, etc*."
+  },
+  {
+    keywords: ['api', 'busca', 'consultar', 'único', 'rastrear', 'intelipost', 'externa'],
+    response: "## 🌐 Consulta via API\n\nVocê pode consultar dados em tempo real direto da Intelipost:\n\n1. Vá no menu **Pedidos**.\n2. Clique no botão **'Buscar API'** (canto superior direito).\n3. Digite o número do pedido.\n\nIsso buscará a última atualização oficial e adicionará/atualizará o pedido na sua lista."
+  },
+  {
+    keywords: ['alerta', 'risco', 'atraso', 'problema', 'monitoramento', 'critico'],
+    response: "## ⚠️ Monitoramento de Riscos\n\nO módulo de Alertas foca apenas no que precisa de atenção:\n\n* **Detecção Automática:** Identifica pedidos onde *Data Atual > Previsão de Entrega*.\n* **Filtros de Gravidade:** Use a régua para filtrar atrasos críticos (ex: +5 dias, +10 dias).\n* **Ação:** Clique em 'Detalhes' para ver onde o pedido parou."
+  },
+  {
+    keywords: ['sync', 'sincronizar', 'atualizar', 'tempo', 'automático'],
+    response: "## 🔄 Sincronização\n\nO sistema mantém os dados atualizados de duas formas:\n\n1. **Automática:** Ocorre a cada **1 hora** em segundo plano.\n2. **Manual:** Clique no botão **'Sincronizar'** no rodapé da barra lateral para forçar uma atualização imediata de todos os pedidos ativos."
+  },
+  {
+    keywords: ['pedido', 'lista', 'filtro', 'detalhe', 'histórico', 'rastreamento'],
+    response: "## 📦 Gerenciamento de Pedidos\n\nNa tela de Pedidos, você tem controle total:\n\n* **Filtros Avançados:** Por Status, Transportadora, Marketplace e Data de Previsão.\n* **Detalhes Completos:** Clique no ícone de 'olho' 👁️ para ver endereço, valores e o histórico completo de eventos de rastreamento.\n* **Busca:** Pesquise por Nome, CPF ou Número do Pedido."
+  },
+  {
+    keywords: ['admin', 'usuario', 'senha', 'acesso', 'permissão', 'criar'],
+    response: "## 🛡️ Painel Administrativo\n\nExclusivo para usuários com perfil **ADMIN**:\n\n* **Gerenciar Usuários:** Crie novos acessos ou remova usuários antigos.\n* **Controle de Acesso:** Defina quem é 'ADMIN' (acesso total) ou 'USER' (apenas visualização).\n* **Status:** Ative ou inative contas instantaneamente."
+  },
+  {
+    keywords: ['logistica do canal', 'canal', 'shopee', 'mercado livre', 'coletas', 'me2', 'priority'],
+    response: "## 🚚 Logística do Canal\n\nStatus como **'Logística do Canal'** aparecem quando o frete é gerenciado pelo marketplace (ex: Shopee Xpress, Mercado Envios/Coletas).\n\nNesses casos, a transportadora é definida pelo canal de venda e o rastreamento externo pode ser limitado, pois a responsabilidade é do marketplace."
+  },
+  {
+    keywords: ['ola', 'oi', 'ajuda', 'bom dia', 'boa tarde', 'boa noite', 'começar', 'iniciar', 'help'],
+    response: "👋 **Olá! Sou a IA da Avantracking.**\n\nEstou aqui para tirar suas dúvidas sobre o sistema. Você pode me perguntar sobre:\n\n* 📊 **Dashboard** e KPIs\n* 📤 **Importação** de planilhas\n* ⚠️ **Alertas** de risco\n* 📦 **Pedidos** e Rastreamento\n* 🔄 **Sincronização**\n\nComo posso ajudar hoje?"
+  }
+];
+
 export const Chatbot: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
-    { id: '0', role: 'model', text: 'Olá! Sou a IA da Avantracking. Posso te ajudar com dúvidas sobre exportação, importação, ou como analisar seus pedidos?' }
+    { 
+      id: '0', 
+      role: 'model', 
+      text: "👋 Olá! Sou a IA da Avantracking. Posso te ajudar com dúvidas sobre o Dashboard, Importação, Alertas ou Rastreamento. O que você precisa?" 
+    }
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const chatSessionRef = useRef<any>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -30,53 +77,19 @@ export const Chatbot: React.FC = () => {
     }
   }, [messages, isOpen]);
 
-  const getChatSession = () => {
-    if (!chatSessionRef.current) {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
-      chatSessionRef.current = ai.chats.create({
-        model: 'gemini-3-pro-preview',
-        config: {
-          systemInstruction: `Você é o assistente virtual inteligente da plataforma AVANTRACKING.
-          
-          **Sobre a Plataforma:**
-          A AVANTRACKING é um Dashboard Logístico (SPA) para rastreamento em tempo real, análise de riscos e métricas de performance de transportadoras.
-          
-          **Funcionalidades Principais que você deve explicar:**
-          1. **Dashboard Executivo:**
-             - Exibe KPIs como: Total de NFs, Entregues, Em Trânsito, Atrasadas.
-             - Gráficos de distribuição de status.
-             - Ranking de desempenho de transportadoras (Volume vs Pontualidade).
-          
-          2. **Gerenciamento de Pedidos (Menu "Pedidos"):**
-             - Listagem completa com filtros por Status, Transportadora, Marketplace e Data.
-             - Busca individual por API (Botão "Buscar API"): Conecta na Intelipost para consultar/atualizar um pedido único específico.
-             - Detalhes: Clique no ícone de "olho" na tabela para ver histórico de rastreamento completo e endereço.
-          
-          3. **Importação de Dados (Menu "Importar CSV"):**
-             - Permite upload de arquivos .csv ou .xlsx.
-             - O sistema processa automaticamente e exibe no dashboard.
-             - Importante: Pedidos com status "CANCELADO" são ignorados na importação por padrão.
-          
-          4. **Monitoramento de Riscos (Menu "Alertas"):**
-             - Foca exclusivamente em pedidos com problemas.
-             - Filtra pedidos onde a Data Atual > Data Estimada de Entrega.
-             - Classifica por dias de atraso.
-          
-          5. **Sincronização:**
-             - O sistema tenta sincronizar automaticamente a cada hora.
-             - Botão manual "Sincronizar" na barra lateral atualiza os status dos pedidos ativos.
-          
-          **Como responder:**
-          - Seja direto, profissional e útil.
-          - Se o usuário perguntar "Como importar?", explique o processo do menu Importar CSV.
-          - Se perguntar sobre "consultar pedido único", mencione a busca por API na tela de Pedidos.
-          - Use formatação Markdown (negrito, listas) para clareza.
-          - Fale sempre em Português do Brasil.
-          `,
+  // --- LOCAL INTELLIGENCE ENGINE ---
+  const findResponse = (text: string): string => {
+    const normalizedText = text.toLowerCase().trim();
+    
+    // 1. Exact/Keyword Match
+    for (const item of KNOWLEDGE_BASE) {
+        if (item.keywords.some(keyword => normalizedText.includes(keyword))) {
+            return item.response;
         }
-      });
     }
-    return chatSessionRef.current;
+
+    // 2. Default Fallback
+    return "Desculpe, não entendi exatamente. 😕\n\nTente usar palavras-chave como:\n\n* **'Dashboard'** (para dúvidas sobre gráficos)\n* **'Importar'** (para dúvidas sobre CSV/Excel)\n* **'Alertas'** (para riscos de atraso)\n* **'API'** (para consulta de pedido único)\n* **'Sync'** (para sincronização)";
   };
 
   const handleSend = async (e?: React.FormEvent) => {
@@ -90,22 +103,12 @@ export const Chatbot: React.FC = () => {
     setMessages(prev => [...prev, { id: Date.now().toString(), role: 'user', text: userText }]);
     setIsLoading(true);
 
-    try {
-      const session = getChatSession();
-      const result = await session.sendMessage({ message: userText });
-      const responseText = result.text;
-      
+    // Simulate "Typing" Delay for natural feel
+    setTimeout(() => {
+      const responseText = findResponse(userText);
       setMessages(prev => [...prev, { id: Date.now().toString(), role: 'model', text: responseText }]);
-    } catch (error) {
-      console.error("Gemini Error:", error);
-      setMessages(prev => [...prev, { 
-        id: Date.now().toString(), 
-        role: 'model', 
-        text: 'Desculpe, tive um problema ao conectar com a IA. Verifique sua conexão ou tente novamente em instantes.' 
-      }]);
-    } finally {
       setIsLoading(false);
-    }
+    }, 600);
   };
 
   return (
@@ -122,7 +125,7 @@ export const Chatbot: React.FC = () => {
                 <Sparkles className="w-4 h-4" />
               </div>
               <div>
-                <h3 className="font-bold text-sm">Assistente IA</h3>
+                <h3 className="font-bold text-sm">Avantracking IA</h3>
                 <p className="text-[10px] opacity-80 flex items-center gap-1">
                   <span className="w-1.5 h-1.5 bg-green-400 rounded-full"></span> Online
                 </p>
@@ -178,7 +181,7 @@ export const Chatbot: React.FC = () => {
                  </div>
                  <div className="bg-white dark:bg-[#1A1D2D] p-3 rounded-2xl rounded-tl-none border border-slate-200 dark:border-white/5 flex items-center gap-2">
                     <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
-                    <span className="text-xs text-slate-400">Digitando...</span>
+                    <span className="text-xs text-slate-400">Consultando base de conhecimento...</span>
                  </div>
               </div>
             )}
@@ -192,7 +195,7 @@ export const Chatbot: React.FC = () => {
                 type="text" 
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="Digite sua dúvida..."
+                placeholder="Ex: Como importar csv?"
                 className="w-full bg-slate-100 dark:bg-black/20 border border-slate-200 dark:border-white/10 rounded-xl pl-4 pr-12 py-3 text-sm focus:outline-none focus:border-blue-500 dark:text-white transition-colors"
               />
               <button 

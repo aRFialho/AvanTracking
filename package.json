@@ -4,10 +4,10 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "ts-node src/index.ts",
     "build": "npx vite build",
     "preview": "vite preview",
-    "start": "node dist/server.js",
+    "start": "node server/dist/index.js",
     "prisma:migrate": "prisma migrate deploy"
   },
   "dependencies": {

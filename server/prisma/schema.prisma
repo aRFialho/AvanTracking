@@ -134,3 +134,18 @@ model TrackingEvent {
     @@index([orderId])
     @@index([eventDate])
 }
+
+model TrayAuth {
+    id           String   @id @default(uuid())
+    storeId      String   @unique
+    storeName    String?
+    apiAddress   String
+    accessToken  String   @db.Text
+    refreshToken String?  @db.Text
+    code         String?  @db.Text
+    expiresAt    DateTime
+    createdAt    DateTime @default(now())
+    updatedAt    DateTime @updatedAt
+
+    @@index([storeId])
+}
