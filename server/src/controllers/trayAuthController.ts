@@ -98,18 +98,21 @@ export const handleAuthCallback = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Parâmetros faltando' });
     }
 
-    // 1. Gerar access_token
+        // 1. Gerar access_token
     const authData = await trayAuthService.generateAccessToken(
       String(code),
       String(api_address)
     );
+
+    // Pegamos o nome correto do campo que a Tray envia (usando 'as any' para o TypeScript não reclamar)
+    const expirationDate = (authData as any).date_expiration_access_token || (authData as any).date_expiration_refresh_token;
 
     // 2. Salvar no banco
     await trayAuthService.saveAuth(String(store), {
       apiAddress: String(api_address),
       accessToken: authData.access_token,
       refreshToken: authData.refresh_token,
-      expiresAt: trayAuthService.parseExpirationDate(authData.date_expiration),
+      expiresAt: trayAuthService.parseExpirationDate(expirationDate), // <-- CORRIGIDO AQUI
       code: String(code),
       storeName: String(store_host)
     });
