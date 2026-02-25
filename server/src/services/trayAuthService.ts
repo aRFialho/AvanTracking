@@ -34,12 +34,11 @@ export class TrayAuthService {
     try {
       console.log('🔑 Gerando access_token...');
 
-      const response = await axios.get(`${apiAddress}/auth`, {
-        params: {
-          consumer_key: this.consumerKey,
-          consumer_secret: this.consumerSecret,
-          code: code
-        }
+      // CORREÇÃO: Mudado de GET para POST e dados movidos para o Body
+      const response = await axios.post(`${apiAddress}/auth`, {
+        consumer_key: this.consumerKey,
+        consumer_secret: this.consumerSecret,
+        code: code
       });
 
       console.log('✅ Access token gerado com sucesso');
@@ -58,12 +57,11 @@ export class TrayAuthService {
     try {
       console.log('🔄 Renovando access_token...');
 
-      const response = await axios.get(`${apiAddress}/auth`, {
-        params: {
-          consumer_key: this.consumerKey,
-          consumer_secret: this.consumerSecret,
-          refresh_token: refreshToken
-        }
+      // CORREÇÃO: Mudado de GET para POST e dados movidos para o Body
+      const response = await axios.post(`${apiAddress}/auth`, {
+        consumer_key: this.consumerKey,
+        consumer_secret: this.consumerSecret,
+        refresh_token: refreshToken
       });
 
       console.log('✅ Access token renovado com sucesso');
@@ -144,14 +142,16 @@ export class TrayAuthService {
 
     return auth.accessToken;
   }
-/**
- * Buscar dados de autenticação completos
- */
-async getAuthData(storeId: string) {
-  return await prisma.trayAuth.findUnique({
-    where: { storeId }
-  });
-}
+
+  /**
+   * Buscar dados de autenticação completos
+   */
+  async getAuthData(storeId: string) {
+    return await prisma.trayAuth.findUnique({
+      where: { storeId }
+    });
+  }
+
   /**
    * Converter data de expiração da Tray para Date
    */

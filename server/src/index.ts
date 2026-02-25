@@ -4,6 +4,7 @@ import orderRoutes from "./routes/orders";
 import { showInstallPage, handleAuthCallback, checkAuthStatus } from './controllers/trayAuthController';
 import { syncTrayOrders } from './controllers/traySyncController';
 import { trayRateLimiter } from './services/rateLimiter';
+import { quoteOrderFreight, quoteBatchFreight } from './controllers/freightController';
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -26,22 +27,11 @@ app.get('/api/tray/callback/auth', handleAuthCallback);
 app.get('/api/tray/status', checkAuthStatus);
 app.post('/api/tray/sync', syncTrayOrders);
 
-// ==================== FRONTEND ====================
+// ✅ ROTAS DE COTAÇÃO DE FRETE (MOVIDO PARA ANTES DO FALLBACK)
+app.post('/api/freight/quote/:orderId', quoteOrderFreight);
+app.post('/api/freight/quote-batch', quoteBatchFreight);
 
-// Servir frontend
-const frontendPath = path.join(__dirname, "../public");
-app.use(express.static(frontendPath));
-
-// Fallback para SPA (Single Page Application)
-app.get(/.*/, (req, res) => {
-  // Verificar se é uma rota API que não existe
-  if (req.path.startsWith('/api/')) {
-    return res.status(404).json({ error: 'API route not found' });
-  }
-  // Servir frontend para todas as outras rotas
-  res.sendFile(path.join(frontendPath, "index.html"));
-});
-// ✅ ENDPOINT PARA MONITORAR RATE LIMIT
+// ✅ ENDPOINT PARA MONITORAR RATE LIMIT (MOVIDO PARA ANTES DO FALLBACK)
 app.get('/api/tray/rate-limit-stats', (req, res) => {
   const stats = trayRateLimiter.getStats();
   
@@ -54,6 +44,23 @@ app.get('/api/tray/rate-limit-stats', (req, res) => {
     }
   });
 });
+
+// ==================== FRONTEND ====================
+
+// Servir frontend
+const frontendPath = path.join(__dirname, "../public");
+app.use(express.static(frontendPath));
+
+// ⚠️ FALLBACK DEVE SER SEMPRE A ÚLTIMA ROTA!
+app.get(/.*/, (req, res) => {
+  // Verificar se é uma rota API que não existe
+  if (req.path.startsWith('/api/')) {
+    return res.status(404).json({ error: 'API route not found' });
+  }
+  // Servir frontend para todas as outras rotas
+  res.sendFile(path.join(frontendPath, "index.html"));
+});
+
 // ==================== START SERVER ====================
 
 app.listen(port, () => {

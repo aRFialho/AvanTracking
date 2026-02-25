@@ -65,9 +65,13 @@ model Order {
     mobile        String?
 
     // Canal / Logística
-    salesChannel String
-    freightType  String?
-    freightValue Float
+    salesChannel         String
+    freightType          String?
+    freightValue         Float? // Frete pago original
+    quotedFreightValue   Float? // Frete cotado pela API
+    quotedFreightDate    DateTime? // Data da última cotação
+    quotedFreightDetails Json? // Detalhes da cotação (JSON com todas as opções)
+
     shippingDate DateTime?
 
     carrierId String?
