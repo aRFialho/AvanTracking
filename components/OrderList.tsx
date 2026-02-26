@@ -21,11 +21,13 @@ import { normalizeCarrierName } from "../utils";
 
 interface OrderListProps {
   orders: Order[];
+  initialFilters?: any;
   onFetchSingle?: (orderId: string) => Promise<void>;
 }
 
 export const OrderList: React.FC<OrderListProps> = ({
   orders,
+  initialFilters,
   onFetchSingle,
 }) => {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -39,11 +41,43 @@ export const OrderList: React.FC<OrderListProps> = ({
 
   // Filters State
   const [searchText, setSearchText] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("ALL");
+  const [statusFilter, setStatusFilter] = useState<string>(
+    initialFilters?.status || "ALL",
+  );
   const [carrierFilter, setCarrierFilter] = useState<string>("ALL");
   const [marketplaceFilter, setMarketplaceFilter] = useState<string>("ALL");
   const [dateRangeStart, setDateRangeStart] = useState("");
   const [dateRangeEnd, setDateRangeEnd] = useState("");
+
+  // Custom Filter Logic from Dashboard
+  const [customStatusFilter, setCustomStatusFilter] = useState<string[] | null>(
+    initialFilters?.customStatus || null,
+  );
+  const [onlyDelayed, setOnlyDelayed] = useState<boolean>(
+    initialFilters?.onlyDelayed || false,
+  );
+  const [dueToday, setDueToday] = useState<boolean>(
+    initialFilters?.dueToday || false,
+  );
+  const [noSync, setNoSync] = useState<boolean>(
+    initialFilters?.noSync || false,
+  );
+  const [noForecast, setNoForecast] = useState<boolean>(
+    initialFilters?.noForecast || false,
+  );
+
+  // Update filters if props change (re-navigation)
+  React.useEffect(() => {
+    if (initialFilters) {
+      if (initialFilters.status) setStatusFilter(initialFilters.status);
+      if (initialFilters.customStatus)
+        setCustomStatusFilter(initialFilters.customStatus);
+      setOnlyDelayed(!!initialFilters.onlyDelayed);
+      setDueToday(!!initialFilters.dueToday);
+      setNoSync(!!initialFilters.noSync);
+      setNoForecast(!!initialFilters.noForecast);
+    }
+  }, [initialFilters]);
 
   // Extract Lists (excluding Canceled)
   const validOrders = useMemo(
@@ -72,14 +106,36 @@ export const OrderList: React.FC<OrderListProps> = ({
         (o.cpf && o.cpf.includes(searchText));
 
       // 2. Dropdowns
-      const matchStatus = statusFilter === "ALL" || o.status === statusFilter;
+      const matchStatus =
+        (statusFilter === "ALL" || o.status === statusFilter) &&
+        (!customStatusFilter || customStatusFilter.includes(o.status));
+
       const matchCarrier =
         carrierFilter === "ALL" ||
         normalizeCarrierName(o.freightType) === carrierFilter;
       const matchMkt =
         marketplaceFilter === "ALL" || o.salesChannel === marketplaceFilter;
 
-      // 3. Date Range (Estimated Delivery)
+      // 3. Special Filters
+      if (onlyDelayed && (!o.isDelayed || o.status === OrderStatus.DELIVERED))
+        return false;
+
+      if (dueToday) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const d = new Date(o.estimatedDeliveryDate);
+        d.setHours(0, 0, 0, 0);
+        if (
+          d.getTime() !== today.getTime() ||
+          o.status === OrderStatus.DELIVERED
+        )
+          return false;
+      }
+
+      if (noSync && o.lastApiSync) return false;
+      if (noForecast && o.estimatedDeliveryDate) return false;
+
+      // 4. Date Range (Estimated Delivery)
       let matchDate = true;
       if (dateRangeStart) {
         matchDate =
@@ -133,6 +189,11 @@ export const OrderList: React.FC<OrderListProps> = ({
     setMarketplaceFilter("ALL");
     setDateRangeStart("");
     setDateRangeEnd("");
+    setCustomStatusFilter(null);
+    setOnlyDelayed(false);
+    setDueToday(false);
+    setNoSync(false);
+    setNoForecast(false);
   };
 
   // ✅ Função de sincronização

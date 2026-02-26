@@ -47,9 +47,19 @@ const MainApp: React.FC = () => {
   const { isAuthenticated, isLoading } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
   const [currentView, setCurrentView] = useState<PageView>("dashboard");
+  const [activeFilters, setActiveFilters] = useState<any>(null); // ✅ Filters state
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
   const [showIntro, setShowIntro] = useState(true);
+
+  // ✅ View Change Handler
+  const handleChangeView = (view: PageView) => {
+    setCurrentView(view);
+    // Reset filters when switching to dashboard or other non-order views manually
+    if (view !== "orders") {
+      setActiveFilters(null);
+    }
+  };
 
   // ✅ FUNÇÃO PARA CARREGAR DO BANCO
   const loadOrdersFromDatabase = useCallback(async () => {
@@ -256,10 +266,23 @@ const MainApp: React.FC = () => {
   const renderContent = () => {
     switch (currentView) {
       case "dashboard":
-        return <Dashboard orders={orders} onChangeView={setCurrentView} />;
+        return (
+          <Dashboard
+            orders={orders}
+            onChangeView={handleChangeView}
+            onFilterRequest={(filters) => {
+              setActiveFilters(filters);
+              setCurrentView("orders");
+            }}
+          />
+        );
       case "orders":
         return (
-          <OrderList orders={orders} onFetchSingle={handleFetchSingleOrder} />
+          <OrderList
+            orders={orders}
+            initialFilters={activeFilters}
+            onFetchSingle={handleFetchSingleOrder}
+          />
         );
       case "upload":
         return <UploadModal onUpload={handleOrdersUploaded} />;
@@ -270,7 +293,7 @@ const MainApp: React.FC = () => {
       case "admin":
         return <AdminPanel />;
       default:
-        return <Dashboard orders={orders} onChangeView={setCurrentView} />;
+        return <Dashboard orders={orders} onChangeView={handleChangeView} />;
     }
   };
 
@@ -297,7 +320,7 @@ const MainApp: React.FC = () => {
 
       <Sidebar
         currentView={currentView}
-        onChangeView={setCurrentView}
+        onChangeView={handleChangeView}
         onSync={handleSync}
         isSyncing={isSyncing}
         lastSync={lastSyncTime}

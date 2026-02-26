@@ -37,6 +37,7 @@ import { normalizeCarrierName } from "../utils";
 interface DashboardProps {
   orders: Order[];
   onChangeView: (view: PageView) => void;
+  onFilterRequest?: (filters: any) => void;
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -65,6 +66,7 @@ const CHART_COLORS = [
 export const Dashboard: React.FC<DashboardProps> = ({
   orders,
   onChangeView,
+  onFilterRequest,
 }) => {
   // --- Local Filter State ---
   const [showFilters, setShowFilters] = useState(true);
@@ -166,7 +168,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       (o) => o.isDelayed && o.status !== OrderStatus.DELIVERED,
     ).length;
 
-    // No Sync / No Tracking History
+    // No Sync: Count orders that have never been synced
     const noSync = filteredOrders.filter((o) => !o.lastApiSync).length;
 
     // Time Logic
@@ -210,6 +212,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
         o.trackingHistory &&
         o.trackingHistory.some((e) => e.status === "CLARIFY_DELIVERY_FAIL"),
     ).length;
+
+    // Alertas (Sum of risky situations)
+    const alerts = activeDelayed + deliveryFailures + dueToday + riskOfDelay;
 
     // Average Time (First Tracking Update -> Delivered/LastUpdate)
     let totalDays = 0;
@@ -257,8 +262,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
       totalMeasurable > 0
         ? ((deliveredOnTime / totalMeasurable) * 100).toFixed(1)
         : "0.0";
-
-    const alerts = filteredOrders.filter((o) => o.isDelayed).length;
 
     return {
       total,
@@ -445,6 +448,65 @@ export const Dashboard: React.FC<DashboardProps> = ({
     </div>
   );
 
+  // --- Navigation Handler ---
+  const handleCardClick = (filterType: string, value?: string) => {
+    if (filterType === "alerts") {
+      onChangeView("alerts");
+      return;
+    }
+
+    if (filterType === "delivery-failures") {
+      onChangeView("delivery-failures");
+      return;
+    }
+
+    if (onFilterRequest) {
+      // Map card types to filter criteria
+      const filters: any = {};
+
+      switch (filterType) {
+        case "delivered":
+          filters.status = OrderStatus.DELIVERED;
+          break;
+        case "in_progress":
+          filters.customStatus = [
+            "PENDING",
+            "CREATED",
+            "SHIPPED",
+            "DELIVERY_ATTEMPT",
+            "CHANNEL_LOGISTICS",
+          ];
+          break;
+        case "waiting":
+          filters.customStatus = ["PENDING", "CREATED"];
+          break;
+        case "in_transit":
+          filters.status = OrderStatus.SHIPPED;
+          break;
+        case "on_route":
+          filters.status = OrderStatus.DELIVERY_ATTEMPT;
+          break;
+        case "delayed":
+          filters.onlyDelayed = true;
+          break;
+        case "due_today":
+          filters.dueToday = true;
+          break;
+        case "no_sync":
+          filters.noSync = true;
+          break;
+        case "no_forecast":
+          filters.noForecast = true;
+          break;
+        default:
+          break;
+      }
+
+      onFilterRequest(filters);
+      onChangeView("orders");
+    }
+  };
+
   const displayedRanking = isRankingExpanded
     ? carrierRanking
     : carrierRanking.slice(0, 5);
@@ -458,36 +520,42 @@ export const Dashboard: React.FC<DashboardProps> = ({
           value={stats.total}
           icon={FileText}
           color="bg-blue-500"
+          onClick={() => handleCardClick("all")}
         />
         <KpiCard
           title="Entregues"
           value={stats.delivered}
           icon={CheckCircle}
           color="bg-emerald-500"
+          onClick={() => handleCardClick("delivered")}
         />
         <KpiCard
           title="Em Andamento"
           value={stats.inProgress}
           icon={Clock}
           color="bg-amber-500"
+          onClick={() => handleCardClick("in_progress")}
         />
         <KpiCard
           title="Aguardando Envio"
           value={stats.waiting}
           icon={Package}
           color="bg-slate-500"
+          onClick={() => handleCardClick("waiting")}
         />
         <KpiCard
           title="Em Trânsito"
           value={stats.inTransit}
           icon={Truck}
           color="bg-indigo-500"
+          onClick={() => handleCardClick("in_transit")}
         />
         <KpiCard
           title="Em Rota"
           value={stats.onRoute}
           icon={MapPin}
           color="bg-cyan-500"
+          onClick={() => handleCardClick("on_route")}
         />
 
         <KpiCard
@@ -495,6 +563,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           value={stats.delayed}
           icon={AlertTriangle}
           color="bg-red-500"
+          onClick={() => handleCardClick("delayed")}
         />
         <KpiCard
           title="Risco de Atraso"
@@ -502,12 +571,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
           icon={AlertTriangle}
           color="bg-orange-600"
           subtext="1-3 dias"
+          onClick={() => handleCardClick("alerts")}
         />
         <KpiCard
           title="Vence Hoje"
           value={stats.dueToday}
           icon={Calendar}
           color="bg-pink-500"
+          onClick={() => handleCardClick("due_today")}
         />
         <KpiCard
           title="Sem Sync"
@@ -515,6 +586,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           icon={WifiOff}
           color="bg-gray-700"
           subtext="Sem rastreio"
+          onClick={() => handleCardClick("no_sync")}
         />
         <KpiCard
           title="Falhas na Entrega"
@@ -522,7 +594,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           icon={AlertTriangle}
           color="bg-red-700"
           subtext="Ação Necessária"
-          onClick={() => onChangeView("delivery-failures")}
+          onClick={() => handleCardClick("delivery-failures")}
         />
         <KpiCard
           title="Média Dias"
@@ -542,6 +614,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           value={stats.alerts}
           icon={Bell}
           color="bg-orange-500"
+          onClick={() => handleCardClick("alerts")}
         />
       </div>
 

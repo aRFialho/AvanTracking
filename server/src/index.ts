@@ -1,6 +1,7 @@
 import path from "path";
 import express from "express";
 import orderRoutes from "./routes/orders";
+import userRoutes from "./routes/users";
 import { showInstallPage, handleAuthCallback, checkAuthStatus } from './controllers/trayAuthController';
 import { syncTrayOrders } from './controllers/traySyncController';
 import { trayRateLimiter } from './services/rateLimiter';
@@ -20,6 +21,8 @@ app.get("/api/health", (req, res) => {
 
 // Rotas de pedidos
 app.use("/api/orders", orderRoutes);
+// Rotas de usuários
+app.use("/api/users", userRoutes);
 
 // ✅ ROTAS OAUTH TRAY
 app.get('/api/tray/callback', showInstallPage);
