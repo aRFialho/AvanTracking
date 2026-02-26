@@ -1,5 +1,5 @@
 
-export type PageView = 'dashboard' | 'orders' | 'upload' | 'alerts' | 'admin';
+export type PageView = 'dashboard' | 'orders' | 'upload' | 'alerts' | 'delivery-failures' | 'admin';
 
 export enum OrderStatus {
   PENDING = 'PENDING', // Importado, aguardando info
@@ -61,5 +61,6 @@ export interface Order {
   status: OrderStatus;
   isDelayed: boolean; // Flag 'risco_atraso'
   trackingHistory: TrackingEvent[];
+  lastApiSync: Date | null;
   lastUpdate: Date;
 }

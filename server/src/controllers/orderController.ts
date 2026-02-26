@@ -277,6 +277,7 @@ export const getOrders = async (req: Request, res: Response) => {
       estimatedDeliveryDate: order.estimatedDeliveryDate,
       status: order.status,
       isDelayed: order.isDelayed,
+      lastApiSync: order.lastApiSync,
       lastUpdate: order.lastUpdate,
       trackingHistory: order.trackingEvents.map(event => ({
         status: event.status,
