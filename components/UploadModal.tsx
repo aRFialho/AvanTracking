@@ -129,8 +129,9 @@ export const UploadModal: React.FC<UploadModalProps> = ({ onUpload }) => {
         (now > estimatedDate) || 
         (now > maxDeadline); 
       
-      const rawFreight = getValue('Frete tipo');
-      const normalizedFreight = normalizeFreightType(rawFreight);
+      // Removed duplicate declarations
+      // const rawFreight = getValue('Frete tipo');
+      // const normalizedFreight = normalizeFreightType(rawFreight);
 
       const orderNumber = getValue('Pedido');
       if (!orderNumber) return null;
