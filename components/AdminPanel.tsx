@@ -358,7 +358,7 @@ export const AdminPanel: React.FC = () => {
                             companies.map((c) => (
                                 <tr key={c.id} className="border-b border-slate-100 dark:border-white/5 hover:bg-slate-50 dark:hover:bg-white/5 transition-colors">
                                     <td className="px-6 py-4 font-medium text-slate-900 dark:text-white">{c.name}</td>
-                                    <td className="px-6 py-4 text-slate-500 dark:text-slate-400">{c.cnpj || '-'}
+                                    <td className="px-6 py-4 text-slate-500 dark:text-slate-400">{c.cnpj || '-'}</td>
                                     <td className="px-6 py-4 text-right">
                                         <button 
                                             onClick={() => handleDeleteCompany(c.id)}
