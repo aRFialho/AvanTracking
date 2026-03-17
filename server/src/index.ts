@@ -2,6 +2,7 @@ import path from "path";
 import express from "express";
 import orderRoutes from "./routes/orders";
 import userRoutes from "./routes/users";
+import companyRoutes from "./routes/companies";
 import { showInstallPage, handleAuthCallback, checkAuthStatus } from './controllers/trayAuthController';
 import { syncTrayOrders } from './controllers/traySyncController';
 import { trayRateLimiter } from './services/rateLimiter';
@@ -117,6 +118,9 @@ app.get("/api/health", (req, res) => {
 
 // Users API
 app.use("/api/users", userRoutes);
+
+// Companies API
+app.use("/api/companies", companyRoutes);
 
 // Orders API
 app.use("/api/orders", orderRoutes);

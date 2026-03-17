@@ -52,12 +52,20 @@ export const importOrders = async (req: Request, res: Response) => {
   
   try {
     const { orders } = req.body;
+    // @ts-ignore - Auth middleware adiciona user
+    const user = req.user;
+
+    if (!user || !user.companyId) {
+      return res.status(403).json({ error: 'Usuário não vinculado a uma empresa. Contate o administrador.' });
+    }
+
+    const companyId = user.companyId;
 
     if (!Array.isArray(orders) || orders.length === 0) {
       return res.status(400).json({ error: 'Nenhum pedido válido para importar' });
     }
 
-    console.log(`📊 Recebidos ${orders.length} pedidos`);
+    console.log(`📊 Recebidos ${orders.length} pedidos para a empresa ${companyId}`);
 
     // Debug: verificar se vem trackingHistory
     const firstWithHistory = orders.find(o => o.trackingHistory && o.trackingHistory.length > 0);
@@ -67,16 +75,17 @@ export const importOrders = async (req: Request, res: Response) => {
       console.log(`⚠️  Nenhum pedido com trackingHistory. Criando eventos automáticos.`);
     }
 
-    // 1️⃣ Buscar TODOS os pedidos existentes de uma vez
+    // 1️⃣ Buscar TODOS os pedidos existentes DESTA EMPRESA de uma vez
     const orderNumbers = orders.map(o => String(o.orderNumber));
     const existingOrders = await prisma.order.findMany({
       where: {
+        companyId: companyId,
         orderNumber: { in: orderNumbers }
       },
       select: { orderNumber: true, status: true, id: true }
     });
 
-    console.log(`🔍 Encontrados ${existingOrders.length} pedidos existentes`);
+    console.log(`🔍 Encontrados ${existingOrders.length} pedidos existentes na empresa`);
 
     const existingMap = new Map(existingOrders.map(o => [o.orderNumber, o]));
 
@@ -94,11 +103,13 @@ export const importOrders = async (req: Request, res: Response) => {
       if (existing) {
         // Atualizar apenas se status mudou
         if (existing.status !== newStatus) {
-          toUpdate.push({
-            id: existing.id,
-            status: newStatus,
-            lastUpdate: new Date()
+          await prisma.order.update({
+             where: { id: existing.id },
+             data: { status: newStatus, lastUpdate: new Date() }
           });
+          // Nota: Para otimização real, deveríamos fazer updateMany ou transaction, 
+          // mas o prisma não suporta updateMany com valores diferentes facilmente.
+          // Mantendo loop simples por enquanto para MVP.
         } else {
           skipped++;
         }
@@ -148,6 +159,8 @@ export const importOrders = async (req: Request, res: Response) => {
         // Criar pedido com eventos
         await prisma.order.create({
           data: {
+            companyId: companyId, // VINCULAR À EMPRESA
+            orderNumber: orderNumber,
             orderNumber,
             invoiceNumber: safeString(orderData.invoiceNumber),
             trackingCode: safeString(orderData.trackingCode),
@@ -235,63 +248,33 @@ export const importOrders = async (req: Request, res: Response) => {
 // GET /api/orders
 export const getOrders = async (req: Request, res: Response) => {
   try {
+    // @ts-ignore
+    const user = req.user;
+    if (!user || !user.companyId) {
+       return res.status(403).json({ error: 'Acesso negado. Usuário sem empresa.' });
+    }
+
     const orders = await prisma.order.findMany({
-      where: {
-        status: { not: OrderStatus.CANCELED }
-      },
+      where: { companyId: user.companyId },
       include: {
-        carrier: true,
         trackingEvents: {
-          orderBy: { eventDate: 'desc' },
-          take: 5
+          orderBy: { eventDate: 'desc' }
         }
       },
-      orderBy: { createdAt: 'desc' }
+      orderBy: { lastUpdate: 'desc' }
     });
-
-    const formattedOrders = orders.map(order => ({
-      id: order.id,
-      orderNumber: order.orderNumber,
-      invoiceNumber: order.invoiceNumber,
-      trackingCode: order.trackingCode,
-      customerName: order.customerName,
-      corporateName: order.corporateName,
-      cpf: order.cpf,
-      cnpj: order.cnpj,
-      phone: order.phone,
-      mobile: order.mobile,
-      salesChannel: order.salesChannel,
-      freightType: order.freightType || 'Aguardando',
-      freightValue: order.freightValue,
-      shippingDate: order.shippingDate,
-      address: order.address,
-      number: order.number,
-      complement: order.complement,
-      neighborhood: order.neighborhood,
-      city: order.city,
-      state: order.state,
-      zipCode: order.zipCode,
-      totalValue: order.totalValue,
-      recipient: order.recipient,
-      maxShippingDeadline: order.maxShippingDeadline,
-      estimatedDeliveryDate: order.estimatedDeliveryDate,
-      status: order.status,
-      isDelayed: order.isDelayed,
-      lastApiSync: order.lastApiSync,
-      lastUpdate: order.lastUpdate,
-      trackingHistory: order.trackingEvents.map(event => ({
-        status: event.status,
-        description: event.description,
-        date: event.eventDate,
-        city: event.city,
-        state: event.state
-      }))
+    
+    // Transformar para o formato do frontend
+    const formattedOrders = orders.map(o => ({
+      ...o,
+      orderNumber: Number(o.orderNumber), // Converter de volta para number se frontend espera number
+      status: o.status as OrderStatus
     }));
 
-    return res.json(formattedOrders);
+    res.json(formattedOrders);
   } catch (error) {
     console.error('Erro ao buscar pedidos:', error);
-    return res.status(500).json({ error: 'Erro ao buscar pedidos' });
+    res.status(500).json({ error: 'Erro ao buscar pedidos' });
   }
 };
 

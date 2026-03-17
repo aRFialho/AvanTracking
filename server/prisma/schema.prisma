@@ -34,7 +34,19 @@ model User {
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
 
+    companyId String?
+    company   Company? @relation(fields: [companyId], references: [id])
+
     orders Order[] @relation("UserOrders")
+}
+
+model Company {
+    id        String   @id @default(uuid())
+    name      String
+    cnpj      String?
+    createdAt DateTime @default(now())
+    users     User[]
+    orders    Order[]
 }
 
 model Carrier {
@@ -112,6 +124,9 @@ model Order {
     trackingEvents TrackingEvent[]
     createdById    String?
     createdBy      User?           @relation("UserOrders", fields: [createdById], references: [id])
+
+    companyId String?
+    company   Company? @relation(fields: [companyId], references: [id])
 
     @@index([status])
     @@index([orderNumber])

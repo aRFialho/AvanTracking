@@ -14,6 +14,8 @@ export const getUsers = async (req: Request, res: Response) => {
         name: true,
         email: true,
         role: true,
+        companyId: true, // Incluir companyId
+        company: { select: { name: true } }, // Incluir nome da empresa
         createdAt: true,
         updatedAt: true,
         // Não retornar senha
@@ -29,7 +31,7 @@ export const getUsers = async (req: Request, res: Response) => {
 
 // Criar usuário
 export const createUser = async (req: Request, res: Response) => {
-  const { name, email, password, role } = req.body;
+  const { name, email, password, role, companyId } = req.body;
 
   if (!name || !email || !password) {
     return res.status(400).json({ error: 'Missing required fields' });
@@ -51,12 +53,14 @@ export const createUser = async (req: Request, res: Response) => {
         email: String(email),
         password: hashedPassword,
         role: role ? String(role) as any : 'USER',
+        companyId: companyId || null, // Opcional
       },
       select: {
         id: true,
         name: true,
         email: true,
         role: true,
+        companyId: true,
         createdAt: true
       }
     });
