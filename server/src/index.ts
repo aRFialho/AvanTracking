@@ -115,10 +115,11 @@ app.get("/api/health", (req, res) => {
   res.json({ ok: true });
 });
 
-// Rotas de pedidos
-app.use("/api/orders", orderRoutes);
-// Rotas de usuários
+// Users API
 app.use("/api/users", userRoutes);
+
+// Orders API
+app.use("/api/orders", orderRoutes);
 
 // ✅ ROTAS OAUTH TRAY
 app.get('/api/tray/callback', showInstallPage);

@@ -247,31 +247,25 @@ const MainApp: React.FC = () => {
   const handleOrdersUploaded = async (newOrders: Order[]) => {
     console.log("📤 Enviando", newOrders.length, "pedidos para API...");
 
-    // Processar pedidos (lógica de channel logistics)
-    const processedOrders = newOrders
-      .filter((o) => o.status !== OrderStatus.CANCELED)
-      .map((o) => {
-        const isChannelManaged =
-          ["ColetasME2", "Shopee Xpress"].includes(o.freightType) ||
-          o.freightType.toLowerCase().includes("priorit");
+    // Os pedidos já vêm filtrados do UploadModal (sem cancelados e sem logística do canal),
+    // mas garantimos mais uma vez aqui.
+    const processedOrders = newOrders.filter((o) => {
+      if (o.status === OrderStatus.CANCELED) return false;
+      if (o.status === OrderStatus.CHANNEL_LOGISTICS) return false;
+      
+      const isChannelManaged =
+        ["ColetasME2", "Shopee Xpress"].includes(o.freightType) ||
+        o.freightType.toLowerCase().includes("priorit");
+        
+      if (isChannelManaged) return false;
 
-        if (isChannelManaged) {
-          return {
-            ...o,
-            status: OrderStatus.CHANNEL_LOGISTICS,
-            trackingHistory: [
-              {
-                status: "CHANNEL_LOGISTICS",
-                description: "Logística gerenciada pelo canal de venda",
-                date: o.shippingDate,
-                city: o.city,
-                state: o.state,
-              },
-            ],
-          };
-        }
-        return o;
-      });
+      return true;
+    });
+
+    if (processedOrders.length === 0) {
+      alert("Nenhum pedido válido para importar após os filtros (Cancelados e Logística do Canal ignorados).");
+      return;
+    }
 
     // Enviar para API
     try {
