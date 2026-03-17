@@ -25,6 +25,7 @@ export interface Order {
   // Identification
   id: string; // Internal ID or mapped from 'Pedido'
   orderNumber: string; // 'Pedido'
+  trackingCode?: string; // 'Código de rastreio'
   
   // Customer
   customerName: string; // 'Nome do Cliente'

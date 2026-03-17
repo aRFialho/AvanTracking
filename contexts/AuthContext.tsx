@@ -8,6 +8,7 @@ interface User {
   email: string;
   name: string;
   role: Role;
+  companyId?: string | null;
 }
 
 interface AuthContextType {
@@ -20,12 +21,7 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// MOCK DB - Updated Credentials
-const MOCK_DB_USERS = [
-  { id: '1', email: 'admin@avantracking.com.br', pass: 'Alfenas@172839', name: 'Admin', role: 'ADMIN' as Role },
-  { id: '2', email: 'dmovambientes@gmail.com', pass: 'Dmov@123', name: 'Josy Rossi', role: 'USER' as Role },
-  { id: '3', email: 'coordenacao@drossiinteriores.com.br', pass: 'Alfenas@123', name: 'Nath Zanin', role: 'USER' as Role },
-];
+// Removed MOCK DB as we are now using real backend API
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -41,29 +37,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const login = async (email: string, pass: string, remember: boolean): Promise<boolean> => {
-    // Simulate API delay
-    await new Promise(r => setTimeout(r, 1000));
+    try {
+      const response = await fetch('/api/users/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password: pass }),
+      });
 
-    const foundUser = MOCK_DB_USERS.find(u => u.email === email && u.pass === pass);
-    
-    if (foundUser) {
-      const sessionUser = {
-        id: foundUser.id,
-        email: foundUser.email,
-        name: foundUser.name,
-        role: foundUser.role
-      };
-      
-      setUser(sessionUser);
-      
-      if (remember) {
-        localStorage.setItem('session_user', JSON.stringify(sessionUser));
-      } else {
-        sessionStorage.setItem('session_user', JSON.stringify(sessionUser));
+      if (response.ok) {
+        const foundUser = await response.json();
+        
+        const sessionUser = {
+          id: foundUser.id,
+          email: foundUser.email,
+          name: foundUser.name,
+          role: foundUser.role,
+          companyId: foundUser.companyId, // Include companyId if present
+        };
+        
+        setUser(sessionUser);
+        
+        if (remember) {
+          localStorage.setItem('session_user', JSON.stringify(sessionUser));
+        } else {
+          sessionStorage.setItem('session_user', JSON.stringify(sessionUser));
+        }
+        return true;
       }
-      return true;
+      return false;
+    } catch (error) {
+      console.error('Login error:', error);
+      return false;
     }
-    return false;
   };
 
   const logout = () => {

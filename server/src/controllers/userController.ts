@@ -5,6 +5,63 @@ import bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
 
+// Login
+export const login = async (req: Request, res: Response) => {
+  const { email, password } = req.body;
+
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Missing email or password' });
+  }
+
+  try {
+    // Optional: Auto-create default admin if it doesn't exist (for safety so user isn't locked out)
+    if (email === 'admin@avantracking.com.br') {
+      const adminExists = await prisma.user.findUnique({ where: { email: 'admin@avantracking.com.br' } });
+      if (!adminExists) {
+        const hashedAdminPassword = await bcrypt.hash('Alfenas@172839', 10);
+        await prisma.user.create({
+          data: {
+            name: 'Admin',
+            email: 'admin@avantracking.com.br',
+            password: hashedAdminPassword,
+            role: 'ADMIN',
+          }
+        });
+      }
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { email: String(email) },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        companyId: true,
+        password: true, // We need to fetch the password for comparison
+      }
+    });
+
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    const isPasswordValid = await bcrypt.compare(String(password), user.password);
+
+    if (!isPasswordValid) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    // Don't send the password back
+    const { password: _, ...userWithoutPassword } = user;
+
+    res.json(userWithoutPassword);
+  } catch (error) {
+    console.error('Error logging in:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
 // Listar usuários
 export const getUsers = async (req: Request, res: Response) => {
   try {

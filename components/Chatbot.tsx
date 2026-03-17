@@ -38,7 +38,7 @@ const KNOWLEDGE_BASE: KnowledgeItem[] = [
       "indicadores",
     ],
     response:
-      "## 📊 Dashboard Executivo\n\nO Dashboard é sua central de controle. Aqui você encontra:\n\n* **KPIs em Tempo Real:** Cards com total de NFs, entregues, em trânsito e atrasadas.\n* **Gráfico de Status:** Uma visão visual da distribuição dos seus pedidos.\n* **Ranking de Transportadoras:** Uma lista detalhada classificando parceiros por volume e pontualidade.\n* **Resumo Mensal:** Comparativo de crescimento vs mês anterior.",
+      "## 📊 Dashboard Executivo\n\nO Dashboard é sua central de controle. Aqui você encontra:\n\n* KPIs em Tempo Real: Cards com total de NFs, entregues, em trânsito e atrasadas.\n* Gráfico de Status: Uma visão visual da distribuição dos seus pedidos.\n* Ranking de Transportadoras: Uma lista detalhada classificando parceiros por volume e pontualidade.\n* Resumo Mensal: Comparativo de crescimento vs mês anterior.",
   },
   {
     keywords: [
@@ -52,7 +52,7 @@ const KNOWLEDGE_BASE: KnowledgeItem[] = [
       "dados",
     ],
     response:
-      "## 📤 Importação de Dados\n\nPara carregar seus pedidos:\n\n1. Acesse o menu **Importar CSV**.\n2. Arraste seu arquivo **.csv** ou **.xlsx**.\n3. O sistema valida e processa os dados automaticamente.\n\n**Importante:**\n- O sistema ignora pedidos com status 'CANCELADO' automaticamente.\n- O layout deve conter colunas como: *Pedido, Nome do Cliente, Data, Status, Frete tipo, etc*.",
+      "## 📤 Importação de Dados\n\nPara carregar seus pedidos:\n\n1. Acesse o menu Importar CSV.\n2. Arraste seu arquivo .csv ou .xlsx.\n3. O sistema valida e processa os dados automaticamente.\n\nImportante:\n- O sistema ignora pedidos com status 'CANCELADO' automaticamente.\n- O layout deve conter colunas como: *Pedido, Nome do Cliente, Data, Status, Frete tipo, etc*.",
   },
   {
     keywords: [
@@ -65,7 +65,7 @@ const KNOWLEDGE_BASE: KnowledgeItem[] = [
       "externa",
     ],
     response:
-      "## 🌐 Consulta via API\n\nVocê pode consultar dados em tempo real direto da Intelipost:\n\n1. Vá no menu **Pedidos**.\n2. Clique no botão **'Buscar API'** (canto superior direito).\n3. Digite o número do pedido.\n\nIsso buscará a última atualização oficial e adicionará/atualizará o pedido na sua lista.",
+      "## 🌐 Consulta via API\n\nVocê pode consultar dados em tempo real direto da Intelipost:\n\n1. Vá no menu Pedidos.\n2. Clique no botão 'Buscar API' (canto superior direito).\n3. Digite o número do pedido.\n\nIsso buscará a última atualização oficial e adicionará/atualizará o pedido na sua lista.",
   },
   {
     keywords: [
@@ -77,12 +77,12 @@ const KNOWLEDGE_BASE: KnowledgeItem[] = [
       "critico",
     ],
     response:
-      "## ⚠️ Monitoramento de Riscos\n\nO módulo de Alertas foca apenas no que precisa de atenção:\n\n* **Detecção Automática:** Identifica pedidos onde *Data Atual > Previsão de Entrega*.\n* **Filtros de Gravidade:** Use a régua para filtrar atrasos críticos (ex: +5 dias, +10 dias).\n* **Ação:** Clique em 'Detalhes' para ver onde o pedido parou.",
+      "## ⚠️ Monitoramento de Riscos\n\nO módulo de Alertas foca apenas no que precisa de atenção:\n\n* Detecção Automática: Identifica pedidos onde *Data Atual > Previsão de Entrega*.\n* Filtros de Gravidade: Use a régua para filtrar atrasos críticos (ex: +5 dias, +10 dias).\n* Ação: Clique em 'Detalhes' para ver onde o pedido parou.",
   },
   {
     keywords: ["sync", "sincronizar", "atualizar", "tempo", "automático"],
     response:
-      "## 🔄 Sincronização\n\nO sistema mantém os dados atualizados de duas formas:\n\n1. **Automática:** Ocorre a cada **1 hora** em segundo plano.\n2. **Manual:** Clique no botão **'Sincronizar'** no rodapé da barra lateral para forçar uma atualização imediata de todos os pedidos ativos.",
+      "## 🔄 Sincronização\n\nO sistema mantém os dados atualizados de duas formas:\n\n1. Automática: Ocorre a cada 1 hora em segundo plano.\n2. Manual: Clique no botão 'Sincronizar' no rodapé da barra lateral para forçar uma atualização imediata de todos os pedidos ativos.",
   },
   {
     keywords: [
@@ -94,12 +94,12 @@ const KNOWLEDGE_BASE: KnowledgeItem[] = [
       "rastreamento",
     ],
     response:
-      "## 📦 Gerenciamento de Pedidos\n\nNa tela de Pedidos, você tem controle total:\n\n* **Filtros Avançados:** Por Status, Transportadora, Marketplace e Data de Previsão.\n* **Detalhes Completos:** Clique no ícone de 'olho' 👁️ para ver endereço, valores e o histórico completo de eventos de rastreamento.\n* **Busca:** Pesquise por Nome, CPF ou Número do Pedido.",
+      "## 📦 Gerenciamento de Pedidos\n\nNa tela de Pedidos, você tem controle total:\n\n* Filtros Avançados: Por Status, Transportadora, Marketplace e Data de Previsão.\n* Detalhes Completos: Clique no ícone de 'olho' 👁️ para ver endereço, valores e o histórico completo de eventos de rastreamento.\n* Busca: Pesquise por Nome, CPF ou Número do Pedido.",
   },
   {
     keywords: ["admin", "usuario", "senha", "acesso", "permissão", "criar"],
     response:
-      "## 🛡️ Painel Administrativo\n\nExclusivo para usuários com perfil **ADMIN**:\n\n* **Gerenciar Usuários:** Crie novos acessos ou remova usuários antigos.\n* **Controle de Acesso:** Defina quem é 'ADMIN' (acesso total) ou 'USER' (apenas visualização).\n* **Status:** Ative ou inative contas instantaneamente.",
+      "## 🛡️ Painel Administrativo\n\nExclusivo para usuários com perfil ADMIN:\n\n* Gerenciar Usuários: Crie novos acessos ou remova usuários antigos.\n* Controle de Acesso: Defina quem é 'ADMIN' (acesso total) ou 'USER' (apenas visualização).\n* Status: Ative ou inative contas instantaneamente.",
   },
   {
     keywords: [
@@ -112,7 +112,7 @@ const KNOWLEDGE_BASE: KnowledgeItem[] = [
       "priority",
     ],
     response:
-      "## 🚚 Logística do Canal\n\nStatus como **'Logística do Canal'** aparecem quando o frete é gerenciado pelo marketplace (ex: Shopee Xpress, Mercado Envios/Coletas).\n\nNesses casos, a transportadora é definida pelo canal de venda e o rastreamento externo pode ser limitado, pois a responsabilidade é do marketplace.",
+      "## 🚚 Logística do Canal\n\nStatus como 'Logística do Canal' aparecem quando o frete é gerenciado pelo marketplace (ex: Shopee Xpress, Mercado Envios/Coletas).\n\nNesses casos, a transportadora é definida pelo canal de venda e o rastreamento externo pode ser limitado, pois a responsabilidade é do marketplace.",
   },
   {
     keywords: [
@@ -127,7 +127,7 @@ const KNOWLEDGE_BASE: KnowledgeItem[] = [
       "help",
     ],
     response:
-      "👋 **Olá! Eu sou a Muriçoca.**\n\nEstou aqui para tirar suas dúvidas sobre o Avantracking. Você pode me perguntar sobre:\n\n* 📊 **Dashboard** e KPIs\n* 📤 **Importação** de planilhas\n* ⚠️ **Alertas** de risco\n* 📦 **Pedidos** e Rastreamento\n* 🔄 **Sincronização**\n\nComo posso ajudar hoje?",
+      "👋 Olá! Eu sou a Muriçoca.\n\nEstou aqui para tirar suas dúvidas sobre o Avantracking. Você pode me perguntar sobre:\n\n* 📊 Dashboard e KPIs\n* 📤 Importação de planilhas\n* ⚠️ Alertas de risco\n* 📦 Pedidos e Rastreamento\n* 🔄 Sincronização\n\nComo posso ajudar hoje?",
   },
 ];
 
@@ -137,7 +137,7 @@ export const Chatbot: React.FC = () => {
     {
       id: "0",
       role: "model",
-      text: `👋 Oi! Eu sou a **${BOT_NAME}**.\n\nPosso te ajudar a usar o Avantracking de ponta a ponta (Dashboard, Pedidos, Importação, Alertas, Sync, Admin e integrações). O que você precisa?`,
+      text: `👋 Oi! Eu sou a ${BOT_NAME}.\n\nPosso te ajudar a usar o Avantracking de ponta a ponta (Dashboard, Pedidos, Importação, Alertas, Sync, Admin e integrações). O que você precisa?`,
     },
   ]);
   const [input, setInput] = useState("");
@@ -167,7 +167,7 @@ export const Chatbot: React.FC = () => {
     }
 
     // 2. Default Fallback
-    return "Desculpe, não entendi exatamente. 😕\n\nTente usar palavras-chave como:\n\n* **'Dashboard'** (para dúvidas sobre gráficos)\n* **'Importar'** (para dúvidas sobre CSV/Excel)\n* **'Alertas'** (para riscos de atraso)\n* **'API'** (para consulta de pedido único)\n* **'Sync'** (para sincronização)";
+    return "Desculpe, não entendi exatamente. 😕\n\nTente usar palavras-chave como:\n\n* 'Dashboard' (para dúvidas sobre gráficos)\n* 'Importar' (para dúvidas sobre CSV/Excel)\n* 'Alertas' (para riscos de atraso)\n* 'API' (para consulta de pedido único)\n* 'Sync' (para sincronização)";
   };
 
   const askAI = async (

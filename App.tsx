@@ -18,6 +18,7 @@ import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { LOGO_URL } from "./constants";
 import { getEffectiveOrderStatus } from "./utils";
+import { TruckCursor } from "./components/TruckCursor";
 
 const SplitIntro: React.FC = () => {
   return (
@@ -432,6 +433,7 @@ const App: React.FC = () => {
   return (
     <ThemeProvider>
       <AuthProvider>
+        <TruckCursor />
         <MainApp />
       </AuthProvider>
     </ThemeProvider>

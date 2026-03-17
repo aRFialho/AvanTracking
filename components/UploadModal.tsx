@@ -139,6 +139,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({ onUpload }) => {
       return {
         id: orderNumber || `GEN-${Math.random().toString(36).substr(2, 9)}`,
         orderNumber: String(orderNumber),
+        trackingCode: getValue('Código de rastreio') || '',
         customerName: getValue('Nome do Cliente') || 'Desconhecido',
         corporateName: getValue('Razão Social'),
         cpf: getValue('CPF'),
@@ -163,6 +164,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({ onUpload }) => {
         status: initialStatus,
         isDelayed: isDelayed,
         trackingHistory: [],
+        lastApiSync: null,
         lastUpdate: new Date()
       };
   };
