@@ -236,11 +236,11 @@ const MainApp: React.FC = () => {
     [orders],
   );
 
-  // Automated Sync Timer
+  // Automated Sync Timer (every 4 hours)
   useEffect(() => {
     const timer = setInterval(() => {
       handleSync();
-    }, 3600000);
+    }, 4 * 60 * 60 * 1000); // 4 hours in milliseconds
     return () => clearInterval(timer);
   }, [handleSync]);
 
@@ -275,27 +275,40 @@ const MainApp: React.FC = () => {
 
     // Enviar para API
     try {
-      const response = await fetch("/api/orders/import", {
+      // Atualizar o estado local IMEDIATAMENTE para feedback instantâneo (optimistic update)
+      setOrders(prev => {
+        // Mesclar pedidos novos/atualizados com os existentes
+        const existingMap = new Map(prev.map(o => [o.orderNumber, o]));
+        
+        processedOrders.forEach(o => {
+          existingMap.set(o.orderNumber, {
+            ...o,
+            // Garantir que status e delay são calculados corretamente pro frontend
+            status: getEffectiveOrderStatus(o),
+            isDelayed: getEffectiveOrderStatus(o) !== OrderStatus.DELIVERED && new Date() > new Date(o.estimatedDeliveryDate)
+          });
+        });
+        
+        return Array.from(existingMap.values());
+      });
+
+      setCurrentView("dashboard");
+
+      // Enviar para API em background (não bloqueia a UI)
+      fetch("/api/orders/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orders: processedOrders }),
-      });
+      }).then(async response => {
+        if (!response.ok) {
+          console.error("Erro na importação em background");
+        } else {
+          console.log("✅ Importação no backend concluída.");
+          // Opcional: Recarregar do banco apenas para garantir sincronia fina
+          // await loadOrdersFromDatabase();
+        }
+      }).catch(err => console.error("Erro fatal no fetch de importação", err));
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(
-          `HTTP ${response.status}: ${JSON.stringify(errorData)}`,
-        );
-      }
-
-      const result = await response.json();
-      console.log("✅ Resultado da API:", result);
-
-      // Recarregar do banco
-      console.log("📤 Upload concluído, recarregando do banco...");
-      await loadOrdersFromDatabase();
-
-      setCurrentView("dashboard");
     } catch (error) {
       console.error("❌ Erro ao enviar para API:", error);
       alert(

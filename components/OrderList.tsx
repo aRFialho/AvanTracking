@@ -334,7 +334,7 @@ export const OrderList: React.FC<OrderListProps> = ({
               "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-900/30",
             )}
           >
-            Rota
+            Saiu para Entrega
           </span>
         );
       case OrderStatus.FAILURE:

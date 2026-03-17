@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { Shield, Users, Database, Key, CheckCircle, XCircle, Plus, Trash2, Power, X, Edit, Lock } from 'lucide-react';
+import { Shield, Users, Database, Key, CheckCircle, XCircle, Plus, Trash2, Power, X, Edit, Lock, AlertTriangle } from 'lucide-react';
 import { clsx } from 'clsx';
 
 // Types for local state
@@ -23,6 +23,12 @@ export const AdminPanel: React.FC = () => {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<UserData | null>(null);
+  
+  // Limpeza de DB States
+  const [isClearModalOpen, setIsClearModalOpen] = useState(false);
+  const [clearType, setClearType] = useState<'ALL' | 'DELIVERED_7_DAYS'>('ALL');
+  const [clearPassword, setClearPassword] = useState('');
+  const [isClearing, setIsClearing] = useState(false);
   
   // Form State
   const [formData, setFormData] = useState({
@@ -116,6 +122,37 @@ export const AdminPanel: React.FC = () => {
       }
   };
 
+  const handleClearDatabase = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (clearPassword !== '172839') {
+        alert('Senha incorreta.');
+        return;
+    }
+
+    setIsClearing(true);
+    try {
+        const response = await fetch('/api/orders/clear', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type: clearType, password: clearPassword })
+        });
+
+        if (!response.ok) {
+            const data = await response.json();
+            throw new Error(data.error || 'Erro ao limpar banco de dados');
+        }
+
+        const result = await response.json();
+        alert(result.message || 'Operação realizada com sucesso!');
+        setIsClearModalOpen(false);
+        setClearPassword('');
+    } catch (error: any) {
+        alert(error.message);
+    } finally {
+        setIsClearing(false);
+    }
+  };
+
   // Access Control: Only specific admin email
   if (user?.email !== 'admin@avantracking.com.br') {
     return (
@@ -172,7 +209,7 @@ export const AdminPanel: React.FC = () => {
 
       {/* User Table */}
       <div className="glass-card rounded-xl overflow-hidden border border-slate-200 dark:border-white/10">
-        <div className="p-4 border-b border-slate-200 dark:border-white/10 bg-slate-50/50 dark:bg-white/5">
+        <div className="p-4 border-b border-slate-200 dark:border-white/10 bg-slate-50/50 dark:bg-white/5 flex justify-between items-center">
           <h3 className="font-semibold text-slate-800 dark:text-white">Controle de Usuários</h3>
         </div>
         
@@ -230,6 +267,39 @@ export const AdminPanel: React.FC = () => {
                 </table>
             </div>
         )}
+      </div>
+
+      {/* DB Management */}
+      <div className="glass-card rounded-xl overflow-hidden border border-slate-200 dark:border-white/10 mt-6">
+        <div className="p-4 border-b border-slate-200 dark:border-white/10 bg-slate-50/50 dark:bg-white/5">
+          <h3 className="font-semibold text-slate-800 dark:text-white flex items-center gap-2">
+            <Database className="w-5 h-5 text-red-500" />
+            Manutenção de Banco de Dados
+          </h3>
+        </div>
+        <div className="p-6 flex flex-col md:flex-row gap-4">
+          <button
+            onClick={() => {
+              setClearType('DELIVERED_7_DAYS');
+              setIsClearModalOpen(true);
+            }}
+            className="flex-1 bg-yellow-500/10 text-yellow-600 border border-yellow-500/20 px-4 py-3 rounded-lg text-sm font-medium hover:bg-yellow-500/20 transition-colors flex items-center justify-center gap-2"
+          >
+            <AlertTriangle className="w-4 h-4" />
+            Limpar pedidos com status Entregue há mais de 7 dias
+          </button>
+
+          <button
+            onClick={() => {
+              setClearType('ALL');
+              setIsClearModalOpen(true);
+            }}
+            className="flex-1 bg-red-500/10 text-red-600 border border-red-500/20 px-4 py-3 rounded-lg text-sm font-medium hover:bg-red-500/20 transition-colors flex items-center justify-center gap-2"
+          >
+            <Trash2 className="w-4 h-4" />
+            Limpar banco de dados de pedidos (TUDO)
+          </button>
+        </div>
       </div>
 
       {/* Add/Edit User Modal */}
@@ -312,6 +382,62 @@ export const AdminPanel: React.FC = () => {
               </div>
           </div>
       )}
+      {/* DB Clear Confirmation Modal */}
+      {isClearModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+              <div className="glass-card bg-white dark:bg-dark-card w-full max-w-md rounded-xl p-6 shadow-2xl animate-in zoom-in-95 border border-red-500/20">
+                  <div className="flex justify-between items-center mb-6">
+                      <h3 className="text-lg font-bold text-red-600 flex items-center gap-2">
+                          <AlertTriangle className="w-5 h-5" />
+                          Atenção: Ação Destrutiva
+                      </h3>
+                      <button onClick={() => { setIsClearModalOpen(false); setClearPassword(''); }} className="text-slate-500 hover:text-white"><X className="w-5 h-5"/></button>
+                  </div>
+                  
+                  <div className="mb-4 text-sm text-slate-600 dark:text-slate-300">
+                      Você está prestes a <strong>{clearType === 'ALL' ? 'APAGAR TODOS OS PEDIDOS' : 'APAGAR PEDIDOS ENTREGUES HÁ MAIS DE 7 DIAS'}</strong> do banco de dados. 
+                      Esta ação não pode ser desfeita.
+                  </div>
+
+                  <form onSubmit={handleClearDatabase} className="space-y-4">
+                      <div>
+                          <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                              Digite a senha de segurança para confirmar:
+                          </label>
+                          <div className="relative">
+                              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                              <input 
+                                  type="password" 
+                                  required
+                                  value={clearPassword}
+                                  onChange={e => setClearPassword(e.target.value)}
+                                  placeholder="Senha de segurança"
+                                  className="w-full bg-slate-50 dark:bg-white/5 border border-red-200 dark:border-red-900/30 rounded-lg pl-9 pr-3 py-2.5 text-sm text-slate-900 dark:text-white focus:border-red-500 outline-none"
+                              />
+                          </div>
+                      </div>
+
+                      <div className="pt-4 flex gap-3">
+                          <button 
+                              type="button" 
+                              onClick={() => { setIsClearModalOpen(false); setClearPassword(''); }}
+                              className="flex-1 px-4 py-2 rounded-lg font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 dark:text-slate-300 dark:bg-white/5 dark:hover:bg-white/10 transition-colors"
+                          >
+                              Cancelar
+                          </button>
+                          <button 
+                              type="submit" 
+                              disabled={isClearing || !clearPassword}
+                              className="flex-1 px-4 py-2 rounded-lg font-medium text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+                          >
+                              {isClearing ? 'Apagando...' : 'Confirmar Exclusão'}
+                          </button>
+                      </div>
+                  </form>
+              </div>
+          </div>
+      )}
+
     </div>
   );
 };

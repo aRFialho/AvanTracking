@@ -18,8 +18,8 @@ export const DeliveryFailures: React.FC<DeliveryFailuresProps> = ({
   const failureOrders = useMemo(() => {
     return orders
       .filter((o) => {
-        // Check if canceled
-        if (o.status === OrderStatus.CANCELED) return false;
+        // Check if canceled or already delivered
+        if (o.status === OrderStatus.CANCELED || o.status === OrderStatus.DELIVERED) return false;
 
         // Check for CLARIFY_DELIVERY_FAIL in tracking history
         const hasFailure =

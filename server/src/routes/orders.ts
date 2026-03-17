@@ -1,7 +1,10 @@
 import { Router } from 'express';
-import { importOrders, getOrders, getOrderById, syncSingleOrder, syncAllOrders } from '../controllers/orderController';
+import { importOrders, getOrders, getOrderById, syncSingleOrder, syncAllOrders, clearOrdersDatabase } from '../controllers/orderController';
 
 const router = Router();
+
+// POST /api/orders/clear - Limpar banco de dados
+router.post('/clear', clearOrdersDatabase);
 
 // POST /api/orders/import - Importar planilha
 router.post('/import', importOrders);

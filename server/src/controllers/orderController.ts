@@ -383,3 +383,40 @@ export const syncAllOrders = async (req: Request, res: Response) => {
     return res.status(500).json({ error: 'Erro ao sincronizar pedidos' });
   }
 };
+
+// POST /api/orders/clear
+export const clearOrdersDatabase = async (req: Request, res: Response) => {
+  try {
+    const { type, password } = req.body;
+
+    if (password !== '172839') {
+      return res.status(403).json({ error: 'Senha incorreta' });
+    }
+
+    if (type === 'ALL') {
+      // Deletar todos (Tracking events são deletados em cascata por onDelete: Cascade no schema)
+      const result = await prisma.order.deleteMany({});
+      return res.json({ message: `Todos os ${result.count} pedidos e seus rastreios foram apagados.` });
+    } 
+    
+    if (type === 'DELIVERED_7_DAYS') {
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+      const result = await prisma.order.deleteMany({
+        where: {
+          status: OrderStatus.DELIVERED,
+          lastUpdate: {
+            lt: sevenDaysAgo
+          }
+        }
+      });
+      return res.json({ message: `${result.count} pedidos entregues há mais de 7 dias foram apagados.` });
+    }
+
+    return res.status(400).json({ error: 'Tipo de limpeza inválido' });
+  } catch (error) {
+    console.error('Erro ao limpar banco de dados:', error);
+    return res.status(500).json({ error: 'Erro ao limpar banco de dados' });
+  }
+};

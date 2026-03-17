@@ -17,7 +17,7 @@ app.use(express.json({ limit: '50mb' }));
 app.post("/api/chat", async (req, res) => {
   try {
     const ollamaUrl = (process.env.OLLAMA_URL || "http://localhost:11434").replace(/\/+$/, "");
-    const ollamaModel = process.env.OLLAMA_MODEL || "mistral:7b";
+    const ollamaModel = process.env.OLLAMA_MODEL || "qwen3:0.6b";
 
     const input = typeof req.body?.input === "string" ? req.body.input : "";
     const messages = Array.isArray(req.body?.messages) ? req.body.messages : [];

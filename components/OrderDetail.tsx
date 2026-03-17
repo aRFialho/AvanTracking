@@ -5,12 +5,12 @@ import { clsx } from "clsx";
 import { normalizeCarrierName } from "../utils";
 
 const STATUS_TRANSLATIONS: Record<string, string> = {
-  PENDING: "Pendente",
-  CREATED: "Criado",
+  PENDING: "Aguardando Envio",
+  CREATED: "Pedido Criado",
   SHIPPED: "Em Trânsito",
   DELIVERY_ATTEMPT: "Saiu para Entrega",
   DELIVERED: "Entregue",
-  FAILURE: "Falha",
+  FAILURE: "Falha na Entrega",
   RETURNED: "Devolvido",
   CANCELED: "Cancelado",
   CHANNEL_LOGISTICS: "Logística do Canal",

@@ -4,8 +4,9 @@ import { Order, OrderStatus } from "./types";
 export const mapIntelipostStatusToEnum = (status: string): OrderStatus => {
   const s = status ? status.toUpperCase() : '';
   if (s.includes('ENTREGUE') || s.includes('DELIVERED')) return OrderStatus.DELIVERED;
+  // Colocando SAIU PARA ENTREGA ANTES de EM TRÂNSITO para evitar sobrescrever
+  if (s.includes('SAIU PARA ENTREGA') || s.includes('DELIVERY_ATTEMPT') || s.includes('TO_BE_DELIVERED') || s.includes('SAIU PARA')) return OrderStatus.DELIVERY_ATTEMPT;
   if (s.includes('EM TRÂNSITO') || s.includes('SHIPPED') || s.includes('TRANSIT') || s.includes('IN_TRANSIT')) return OrderStatus.SHIPPED;
-  if (s.includes('SAIU PARA ENTREGA') || s.includes('DELIVERY_ATTEMPT') || s.includes('TO_BE_DELIVERED')) return OrderStatus.DELIVERY_ATTEMPT;
   if (s.includes('CRIADO') || s.includes('CREATED') || s.includes('NEW')) return OrderStatus.CREATED;
   if (s.includes('FALHA') || s.includes('FAILURE') || s.includes('ROUBO') || s.includes('AVARIA') || s.includes('CLARIFY_DELIVERY_FAIL')) return OrderStatus.FAILURE;
   if (s.includes('DEVOL') || s.includes('RETURN')) return OrderStatus.RETURNED;
