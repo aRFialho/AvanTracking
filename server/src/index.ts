@@ -57,6 +57,7 @@ app.post("/api/chat", async (req, res) => {
       "- Quando o usuário pedir 'como faço', entregue um passo a passo curto.",
       "- Quando o usuário reportar erro, explique a causa provável e o que checar.",
       "- Se o usuário pedir algo que exige permissão (ex: Admin), aponte isso.",
+      "- REGRA CRÍTICA DE FALLBACK: Se você não souber a resposta, ou se o usuário disser que 'não está funcionando', 'deu erro', 'não consigo' ou relatar falhas técnicas persistentes, peça para ele entrar em contato com o desenvolvedor para resolução.",
     ].join("\n");
 
     const ollamaMessages = [

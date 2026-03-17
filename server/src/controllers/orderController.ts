@@ -161,7 +161,6 @@ export const importOrders = async (req: Request, res: Response) => {
           data: {
             companyId: companyId, // VINCULAR À EMPRESA
             orderNumber: orderNumber,
-            orderNumber,
             invoiceNumber: safeString(orderData.invoiceNumber),
             trackingCode: safeString(orderData.trackingCode),
             customerName: safeString(orderData.customerName) || 'Desconhecido',

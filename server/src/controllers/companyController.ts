@@ -43,6 +43,10 @@ export const createCompany = async (req: Request, res: Response) => {
 export const deleteCompany = async (req: Request, res: Response) => {
   const { id } = req.params;
 
+  if (typeof id !== 'string') {
+    return res.status(400).json({ error: 'Invalid ID' });
+  }
+
   try {
     await prisma.company.delete({
       where: { id }
