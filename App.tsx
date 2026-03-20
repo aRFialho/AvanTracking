@@ -8,6 +8,7 @@ import { DeliveryFailures } from "./components/DeliveryFailures";
 import { AdminPanel } from "./components/AdminPanel";
 import { Login } from "./components/Login";
 import { Chatbot } from "./components/Chatbot";
+import { CompanySwitcher } from "./components/CompanySwitcher";
 import { Order, PageView, OrderStatus } from "./types";
 import {
   syncOrdersWithIntelipost,
@@ -47,7 +48,7 @@ const SplitIntro: React.FC = () => {
 };
 
 const MainApp: React.FC = () => {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
   const [currentView, setCurrentView] = useState<PageView>("dashboard");
   const [activeFilters, setActiveFilters] = useState<any>(null); // ✅ Filters state
@@ -238,16 +239,9 @@ const MainApp: React.FC = () => {
     [orders],
   );
 
-  // Automated Sync Timer (every 4 hours)
-  useEffect(() => {
-    const timer = setInterval(
-      () => {
-        handleSync();
-      },
-      4 * 60 * 60 * 1000,
-    ); // 4 hours in milliseconds
-    return () => clearInterval(timer);
-  }, [handleSync]);
+  // Automated Sync Timer (REMOVIDO - Sync apenas manual via botão Sincronizar)
+  // Antes havia: setInterval(..., 4 * 60 * 60 * 1000)
+  // Agora: Sync APENAS quando usuário clicar em "Sincronizar"
 
   const handleOrdersUploaded = async (newOrders: Order[]) => {
     console.log("📤 Enviando", newOrders.length, "pedidos para API...");
@@ -412,6 +406,11 @@ const MainApp: React.FC = () => {
           </h1>
 
           <div className="flex items-center gap-4 text-sm text-slate-500 dark:text-slate-400">
+            {user?.role === "ADMIN" && (
+              <div className="border-r border-slate-200 dark:border-slate-700 pr-4">
+                <CompanySwitcher />
+              </div>
+            )}
             {isSyncing && (
               <span className="flex items-center gap-2 text-blue-600 dark:text-neon-blue animate-pulse">
                 <Loader2 className="w-4 h-4 animate-spin" />
