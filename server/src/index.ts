@@ -1,5 +1,6 @@
 import path from "path";
 import express from "express";
+import { PrismaClient } from '@prisma/client';
 import orderRoutes from "./routes/orders";
 import userRoutes from "./routes/users";
 import companyRoutes from "./routes/companies";
@@ -9,6 +10,7 @@ import { trayRateLimiter } from './services/rateLimiter';
 import { quoteOrderFreight, quoteBatchFreight } from './controllers/freightController';
 import { authenticateToken } from './middleware/auth';
 
+const prisma = new PrismaClient();
 const app = express();
 const port = process.env.PORT || 3000;
 
@@ -117,6 +119,35 @@ app.post("/api/chat", authenticateToken, async (req, res) => {
 // Health check
 app.get("/api/health", (req, res) => {
   res.json({ ok: true });
+});
+
+// DEBUG: Test database connection
+app.get("/api/debug/users-count", authenticateToken, async (req, res) => {
+  try {
+    const count = await prisma.user.count();
+    const users = await prisma.user.findMany({
+      take: 5,
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        companyId: true
+      }
+    });
+    res.json({ 
+      success: true,
+      totalUsers: count,
+      sample: users,
+      message: `Total de ${count} usuários no banco de dados`
+    });
+  } catch (error) {
+    console.error('Erro ao contar usuários:', error);
+    res.status(500).json({ 
+      success: false,
+      error: error instanceof Error ? error.message : 'Erro ao consultar banco de dados'
+    });
+  }
 });
 
 // Users API (algumas rotas protegidas, algumas não - ver routes/users.ts)

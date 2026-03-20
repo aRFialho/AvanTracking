@@ -81,10 +81,29 @@ export const AdminPanel: React.FC = () => {
         fetchWithAuth("/api/companies"),
       ]);
 
-      if (usersRes.ok) setUsers(await usersRes.json());
-      if (companiesRes.ok) setCompanies(await companiesRes.json());
+      console.log("Users response:", usersRes.status, usersRes.ok);
+      console.log("Companies response:", companiesRes.status, companiesRes.ok);
+
+      if (usersRes.ok) {
+        const usersData = await usersRes.json();
+        console.log("Usuários carregados:", usersData.length);
+        setUsers(usersData);
+      } else {
+        const errorData = await usersRes.json().catch(() => ({}));
+        console.error("Erro ao carregar usuários:", usersRes.status, errorData);
+        setError(`Erro ao carregar usuários: ${errorData.error || usersRes.status}`);
+      }
+
+      if (companiesRes.ok) {
+        const companiesData = await companiesRes.json();
+        console.log("Empresas carregadas:", companiesData.length);
+        setCompanies(companiesData);
+      } else {
+        const errorData = await companiesRes.json().catch(() => ({}));
+        console.error("Erro ao carregar empresas:", companiesRes.status, errorData);
+      }
     } catch (err) {
-      console.error(err);
+      console.error("Erro geral:", err);
       setError("Erro ao carregar dados");
     } finally {
       setLoading(false);
@@ -304,60 +323,75 @@ export const AdminPanel: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {users.map((u) => (
-                  <tr
-                    key={u.id}
-                    className="border-b border-slate-100 dark:border-white/5 hover:bg-slate-50 dark:hover:bg-white/5 transition-colors"
-                  >
-                    <td className="px-6 py-4 font-medium text-slate-900 dark:text-white">
-                      {u.name}
-                    </td>
-                    <td className="px-6 py-4 text-slate-500 dark:text-slate-400">
-                      {u.email}
-                    </td>
-                    <td className="px-6 py-4">
-                      <span
-                        className={clsx(
-                          "px-2 py-1 rounded-full text-xs font-semibold border",
-                          u.role === "ADMIN"
-                            ? "bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-800"
-                            : "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800",
-                        )}
-                      >
-                        {u.role}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-slate-500 dark:text-slate-400">
-                      {u.company?.name || (
-                        <span className="text-slate-300 italic">
-                          Sem empresa
-                        </span>
+                {users.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-8 text-center text-slate-500 dark:text-slate-400">
+                      {error ? (
+                        <div>
+                          <p className="text-red-500 font-medium">{error}</p>
+                          <p className="text-xs mt-2">Verifique o console para mais detalhes</p>
+                        </div>
+                      ) : (
+                        "Nenhum usuário encontrado"
                       )}
                     </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 text-xs font-medium">
-                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
-                        Ativo
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => handleOpenModal(u)}
-                          className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteUser(u.id)}
-                          className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
                   </tr>
-                ))}
+                ) : (
+                  users.map((u) => (
+                    <tr
+                      key={u.id}
+                      className="border-b border-slate-100 dark:border-white/5 hover:bg-slate-50 dark:hover:bg-white/5 transition-colors"
+                    >
+                      <td className="px-6 py-4 font-medium text-slate-900 dark:text-white">
+                        {u.name}
+                      </td>
+                      <td className="px-6 py-4 text-slate-500 dark:text-slate-400">
+                        {u.email}
+                      </td>
+                      <td className="px-6 py-4">
+                        <span
+                          className={clsx(
+                            "px-2 py-1 rounded-full text-xs font-semibold border",
+                            u.role === "ADMIN"
+                              ? "bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-800"
+                              : "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800",
+                          )}
+                        >
+                          {u.role}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-slate-500 dark:text-slate-400">
+                        {u.company?.name || (
+                          <span className="text-slate-300 italic">
+                            Sem empresa
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 text-xs font-medium">
+                          <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
+                          Ativo
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => handleOpenModal(u)}
+                            className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteUser(u.id)}
+                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
