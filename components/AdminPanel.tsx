@@ -91,7 +91,9 @@ export const AdminPanel: React.FC = () => {
       } else {
         const errorData = await usersRes.json().catch(() => ({}));
         console.error("Erro ao carregar usuários:", usersRes.status, errorData);
-        setError(`Erro ao carregar usuários: ${errorData.error || usersRes.status}`);
+        setError(
+          `Erro ao carregar usuários: ${errorData.error || usersRes.status}`,
+        );
       }
 
       if (companiesRes.ok) {
@@ -100,7 +102,11 @@ export const AdminPanel: React.FC = () => {
         setCompanies(companiesData);
       } else {
         const errorData = await companiesRes.json().catch(() => ({}));
-        console.error("Erro ao carregar empresas:", companiesRes.status, errorData);
+        console.error(
+          "Erro ao carregar empresas:",
+          companiesRes.status,
+          errorData,
+        );
       }
     } catch (err) {
       console.error("Erro geral:", err);
@@ -325,11 +331,16 @@ export const AdminPanel: React.FC = () => {
               <tbody>
                 {users.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-6 py-8 text-center text-slate-500 dark:text-slate-400">
+                    <td
+                      colSpan={6}
+                      className="px-6 py-8 text-center text-slate-500 dark:text-slate-400"
+                    >
                       {error ? (
                         <div>
                           <p className="text-red-500 font-medium">{error}</p>
-                          <p className="text-xs mt-2">Verifique o console para mais detalhes</p>
+                          <p className="text-xs mt-2">
+                            Verifique o console para mais detalhes
+                          </p>
                         </div>
                       ) : (
                         "Nenhum usuário encontrado"
