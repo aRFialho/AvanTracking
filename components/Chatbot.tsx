@@ -9,6 +9,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { clsx } from "clsx";
+import { fetchWithAuth } from "../utils/authFetch";
 
 const BOT_NAME = "Muriçoca";
 const BOT_AVATAR_SRC = "/muricoca.png";
@@ -174,7 +175,7 @@ export const Chatbot: React.FC = () => {
     history: Message[],
     userText: string,
   ): Promise<string> => {
-    const response = await fetch("/api/chat", {
+    const response = await fetchWithAuth("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

@@ -16,7 +16,8 @@ app.use(express.json({ limit: '50mb' }));
 
 // ==================== API ROUTES ====================
 
-app.post("/api/chat", async (req, res) => {
+// ✅ ROTA DE CHAT (protegida com autenticação)
+app.post("/api/chat", authenticateToken, async (req, res) => {
   try {
     const ollamaUrl = (process.env.OLLAMA_URL || "http://localhost:11434").replace(/\/+$/, "");
     const ollamaModel = process.env.OLLAMA_MODEL || "qwen3:0.6b";
@@ -118,26 +119,23 @@ app.get("/api/health", (req, res) => {
   res.json({ ok: true });
 });
 
-// Users API (sem autenticação para login/registro)
+// Users API (algumas rotas protegidas, algumas não - ver routes/users.ts)
 app.use("/api/users", userRoutes);
 
-// ✅ APLICAR MIDDLEWARE DE AUTENTICAÇÃO NAS ROTAS PROTEGIDAS
-app.use(authenticateToken);
-
 // Companies API (protegida)
-app.use("/api/companies", companyRoutes);
+app.use("/api/companies", authenticateToken, companyRoutes);
 
 // Orders API (protegida)
-app.use("/api/orders", orderRoutes);
+app.use("/api/orders", authenticateToken, orderRoutes);
 
-// ✅ ROTAS OAUTH TRAY
+// ✅ ROTAS OAUTH TRAY (sem autenticação obrigatória)
 app.get('/api/tray/callback', showInstallPage);
 app.get('/api/tray/callback/auth', handleAuthCallback);
 app.get('/api/tray/status', checkAuthStatus);
 app.post('/api/tray/sync', syncTrayOrders);
 
-// ✅ ROTAS DE COTAÇÃO DE FRETE (MOVIDO PARA ANTES DO FALLBACK)
-app.post('/api/freight/quote/:orderId', quoteOrderFreight);
+// ✅ ROTAS DE COTAÇÃO DE FRETE (protegidas)
+app.post('/api/freight/quote/:orderId', authenticateToken, quoteOrderFreight);
 app.post('/api/freight/quote-batch', quoteBatchFreight);
 
 // ✅ ENDPOINT PARA MONITORAR RATE LIMIT (MOVIDO PARA ANTES DO FALLBACK)
