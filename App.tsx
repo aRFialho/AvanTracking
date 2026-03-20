@@ -19,6 +19,7 @@ import { ThemeProvider } from "./contexts/ThemeContext";
 import { LOGO_URL } from "./constants";
 import { getEffectiveOrderStatus } from "./utils";
 import { TruckCursor } from "./components/TruckCursor";
+import { fetchWithAuth } from "./utils/authFetch";
 
 const SplitIntro: React.FC = () => {
   return (
@@ -68,7 +69,7 @@ const MainApp: React.FC = () => {
     console.log("📥 Carregando pedidos do banco de dados...");
 
     try {
-      const response = await fetch("/api/orders");
+      const response = await fetchWithAuth("/api/orders");
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
@@ -239,9 +240,12 @@ const MainApp: React.FC = () => {
 
   // Automated Sync Timer (every 4 hours)
   useEffect(() => {
-    const timer = setInterval(() => {
-      handleSync();
-    }, 4 * 60 * 60 * 1000); // 4 hours in milliseconds
+    const timer = setInterval(
+      () => {
+        handleSync();
+      },
+      4 * 60 * 60 * 1000,
+    ); // 4 hours in milliseconds
     return () => clearInterval(timer);
   }, [handleSync]);
 
@@ -253,57 +257,64 @@ const MainApp: React.FC = () => {
     const processedOrders = newOrders.filter((o) => {
       if (o.status === OrderStatus.CANCELED) return false;
       if (o.status === OrderStatus.CHANNEL_LOGISTICS) return false;
-      
+
       const isChannelManaged =
         ["ColetasME2", "Shopee Xpress"].includes(o.freightType) ||
         o.freightType.toLowerCase().includes("priorit");
-        
+
       if (isChannelManaged) return false;
 
       return true;
     });
 
     if (processedOrders.length === 0) {
-      alert("Nenhum pedido válido para importar após os filtros (Cancelados e Logística do Canal ignorados).");
+      alert(
+        "Nenhum pedido válido para importar após os filtros (Cancelados e Logística do Canal ignorados).",
+      );
       return;
     }
 
     // Enviar para API
     try {
       // Atualizar o estado local IMEDIATAMENTE para feedback instantâneo (optimistic update)
-      setOrders(prev => {
+      setOrders((prev) => {
         // Mesclar pedidos novos/atualizados com os existentes
-        const existingMap = new Map(prev.map(o => [o.orderNumber, o]));
-        
-        processedOrders.forEach(o => {
+        const existingMap = new Map(prev.map((o) => [o.orderNumber, o]));
+
+        processedOrders.forEach((o) => {
           existingMap.set(o.orderNumber, {
             ...o,
             // Garantir que status e delay são calculados corretamente pro frontend
             status: getEffectiveOrderStatus(o),
-            isDelayed: getEffectiveOrderStatus(o) !== OrderStatus.DELIVERED && new Date() > new Date(o.estimatedDeliveryDate)
+            isDelayed:
+              getEffectiveOrderStatus(o) !== OrderStatus.DELIVERED &&
+              new Date() > new Date(o.estimatedDeliveryDate),
           });
         });
-        
+
         return Array.from(existingMap.values());
       });
 
       setCurrentView("dashboard");
 
       // Enviar para API em background (não bloqueia a UI)
-      fetch("/api/orders/import", {
+      fetchWithAuth("/api/orders/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orders: processedOrders }),
-      }).then(async response => {
-        if (!response.ok) {
-          console.error("Erro na importação em background");
-        } else {
-          console.log("✅ Importação no backend concluída.");
-          // Opcional: Recarregar do banco apenas para garantir sincronia fina
-          // await loadOrdersFromDatabase();
-        }
-      }).catch(err => console.error("Erro fatal no fetch de importação", err));
-
+      })
+        .then(async (response) => {
+          if (!response.ok) {
+            console.error("Erro na importação em background");
+          } else {
+            console.log("✅ Importação no backend concluída.");
+            // Opcional: Recarregar do banco apenas para garantir sincronia fina
+            // await loadOrdersFromDatabase();
+          }
+        })
+        .catch((err) =>
+          console.error("Erro fatal no fetch de importação", err),
+        );
     } catch (error) {
       console.error("❌ Erro ao enviar para API:", error);
       alert(

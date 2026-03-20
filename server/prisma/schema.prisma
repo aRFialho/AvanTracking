@@ -41,12 +41,13 @@ model User {
 }
 
 model Company {
-    id        String   @id @default(uuid())
-    name      String
-    cnpj      String?
-    createdAt DateTime @default(now())
-    users     User[]
-    orders    Order[]
+    id          String   @id @default(uuid())
+    name        String
+    cnpj        String?
+    databaseUrl String? // URL do banco de dados específico da empresa
+    createdAt   DateTime @default(now())
+    users       User[]
+    orders      Order[]
 }
 
 model Carrier {

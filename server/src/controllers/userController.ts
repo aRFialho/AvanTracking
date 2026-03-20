@@ -2,6 +2,7 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcrypt';
+import { generateToken } from '../middleware/auth';
 
 const prisma = new PrismaClient();
 
@@ -55,7 +56,18 @@ export const login = async (req: Request, res: Response) => {
     // Don't send the password back
     const { password: _, ...userWithoutPassword } = user;
 
-    res.json(userWithoutPassword);
+    // Gerar JWT token
+    const token = generateToken({
+      id: user.id,
+      email: user.email,
+      companyId: user.companyId,
+      role: user.role
+    });
+
+    res.json({
+      ...userWithoutPassword,
+      token // Enviar token junto com dados do usuário
+    });
   } catch (error) {
     console.error('Error logging in:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -173,3 +185,54 @@ export const deleteUser = async (req: Request, res: Response) => {
     res.status(500).json({ error: 'Failed to delete user' });
   }
 };
+
+// ✅ Trocar empresa do usuário
+export const switchUserCompany = async (req: Request, res: Response) => {
+  const { userId, companyId } = req.body;
+
+  if (!userId || !companyId) {
+    return res.status(400).json({ error: 'userId e companyId são obrigatórios' });
+  }
+
+  try {
+    // Verificar se a empresa existe
+    const company = await prisma.company.findUnique({
+      where: { id: String(companyId) }
+    });
+
+    if (!company) {
+      return res.status(404).json({ error: 'Empresa não encontrada' });
+    }
+
+    // Atualizar o usuário com a nova empresa
+    const user = await prisma.user.update({
+      where: { id: String(userId) },
+      data: { companyId: String(companyId) },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        companyId: true
+      }
+    });
+
+    // Gerar novo token com a empresa atualizada
+    const token = generateToken({
+      id: user.id,
+      email: user.email,
+      companyId: user.companyId,
+      role: user.role
+    });
+
+    res.json({
+      message: 'Empresa alterada com sucesso',
+      user,
+      token
+    });
+  } catch (error) {
+    console.error('Error switching user company:', error);
+    res.status(500).json({ error: 'Erro ao trocar empresa' });
+  }
+};
+

@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { clsx } from "clsx";
 import { normalizeCarrierName, isOrderOnRoute } from "../utils";
+import { fetchWithAuth } from "../utils/authFetch";
 
 const STATUS_LABELS: Record<string, string> = {
   [OrderStatus.PENDING]: "Pendente",
@@ -253,7 +254,7 @@ export const OrderList: React.FC<OrderListProps> = ({
 
     setIsSyncing(true);
     try {
-      const response = await fetch("/api/orders/sync-all", {
+      const response = await fetchWithAuth("/api/orders/sync-all", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       });

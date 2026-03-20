@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { clsx } from "clsx";
 import { LightningStorm } from "./LightningStorm";
+import { CompanySwitcher } from "./CompanySwitcher";
 
 interface SidebarProps {
   currentView: PageView;
@@ -392,6 +393,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
           />
           {isSyncing ? "Sync..." : "Sincronizar"}
         </button>
+
+        {/* ✅ Company Switcher */}
+        <div className="mb-2">
+          <CompanySwitcher />
+        </div>
 
         <button
           onClick={logout}

@@ -1,7 +1,6 @@
+import React, { createContext, useContext, useState, useEffect } from "react";
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
-
-export type Role = 'ADMIN' | 'USER';
+export type Role = "ADMIN" | "USER";
 
 interface User {
   id: string;
@@ -17,76 +16,118 @@ interface AuthContextType {
   login: (email: string, pass: string, remember: boolean) => Promise<boolean>;
   logout: () => void;
   isLoading: boolean;
+  token: string | null;
+  setUser: (user: User | null, token?: string) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 // Removed MOCK DB as we are now using real backend API
 
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
   const [user, setUser] = useState<User | null>(null);
+  const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     // Check both storages
-    const storedUser = localStorage.getItem('session_user') || sessionStorage.getItem('session_user');
+    const storedUser =
+      localStorage.getItem("session_user") ||
+      sessionStorage.getItem("session_user");
+    const storedToken =
+      localStorage.getItem("session_token") ||
+      sessionStorage.getItem("session_token");
     if (storedUser) {
       setUser(JSON.parse(storedUser));
+    }
+    if (storedToken) {
+      setToken(storedToken);
     }
     setIsLoading(false);
   }, []);
 
-  const login = async (email: string, pass: string, remember: boolean): Promise<boolean> => {
+  const login = async (
+    email: string,
+    pass: string,
+    remember: boolean,
+  ): Promise<boolean> => {
     try {
-      const response = await fetch('/api/users/login', {
-        method: 'POST',
+      const response = await fetch("/api/users/login", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({ email, password: pass }),
       });
 
       if (response.ok) {
-        const foundUser = await response.json();
-        
+        const data = await response.json();
+
         const sessionUser = {
-          id: foundUser.id,
-          email: foundUser.email,
-          name: foundUser.name,
-          role: foundUser.role,
-          companyId: foundUser.companyId, // Include companyId if present
+          id: data.id,
+          email: data.email,
+          name: data.name,
+          role: data.role,
+          companyId: data.companyId,
         };
-        
+
         setUser(sessionUser);
-        
+        setToken(data.token); // Guardar o token
+
         if (remember) {
-          localStorage.setItem('session_user', JSON.stringify(sessionUser));
+          localStorage.setItem("session_user", JSON.stringify(sessionUser));
+          localStorage.setItem("session_token", data.token);
         } else {
-          sessionStorage.setItem('session_user', JSON.stringify(sessionUser));
+          sessionStorage.setItem("session_user", JSON.stringify(sessionUser));
+          sessionStorage.setItem("session_token", data.token);
         }
         return true;
       }
       return false;
     } catch (error) {
-      console.error('Login error:', error);
+      console.error("Login error:", error);
       return false;
     }
   };
 
   const logout = () => {
     setUser(null);
-    localStorage.removeItem('session_user');
-    sessionStorage.removeItem('session_user');
+    setToken(null);
+    localStorage.removeItem("session_user");
+    localStorage.removeItem("session_token");
+    sessionStorage.removeItem("session_user");
+    sessionStorage.removeItem("session_token");
+  };
+
+  const handleSetUser = (newUser: User | null, newToken?: string) => {
+    setUser(newUser);
+    if (newToken) {
+      setToken(newToken);
+      // Guardar no storage
+      const storage = localStorage.getItem("session_user")
+        ? localStorage
+        : sessionStorage;
+      storage.setItem("session_token", newToken);
+      if (newUser) {
+        storage.setItem("session_user", JSON.stringify(newUser));
+      }
+    }
   };
 
   return (
-    <AuthContext.Provider value={{ 
-      user, 
-      isAuthenticated: !!user, 
-      login, 
-      logout,
-      isLoading 
-    }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        isAuthenticated: !!user,
+        login,
+        logout,
+        isLoading,
+        token,
+        setUser: handleSetUser,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
@@ -95,7 +136,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    throw new Error("useAuth must be used within an AuthProvider");
   }
   return context;
 };

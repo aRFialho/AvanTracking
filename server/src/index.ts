@@ -7,6 +7,7 @@ import { showInstallPage, handleAuthCallback, checkAuthStatus } from './controll
 import { syncTrayOrders } from './controllers/traySyncController';
 import { trayRateLimiter } from './services/rateLimiter';
 import { quoteOrderFreight, quoteBatchFreight } from './controllers/freightController';
+import { authenticateToken } from './middleware/auth';
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -117,13 +118,16 @@ app.get("/api/health", (req, res) => {
   res.json({ ok: true });
 });
 
-// Users API
+// Users API (sem autenticação para login/registro)
 app.use("/api/users", userRoutes);
 
-// Companies API
+// ✅ APLICAR MIDDLEWARE DE AUTENTICAÇÃO NAS ROTAS PROTEGIDAS
+app.use(authenticateToken);
+
+// Companies API (protegida)
 app.use("/api/companies", companyRoutes);
 
-// Orders API
+// Orders API (protegida)
 app.use("/api/orders", orderRoutes);
 
 // ✅ ROTAS OAUTH TRAY
