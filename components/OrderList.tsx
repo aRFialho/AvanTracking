@@ -18,7 +18,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { clsx } from "clsx";
-import { normalizeCarrierName, isOrderOnRoute } from "../utils";
+import { normalizeCarrierName, isOrderOnRoute, toText } from "../utils";
 import { fetchWithAuth } from "../utils/authFetch";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -120,9 +120,9 @@ export const OrderList: React.FC<OrderListProps> = ({
     return validOrders.filter((o) => {
       // 1. Text
       const matchText =
-        o.orderNumber.toLowerCase().includes(searchText.toLowerCase()) ||
-        o.customerName.toLowerCase().includes(searchText.toLowerCase()) ||
-        (o.cpf && o.cpf.includes(searchText));
+        toText(o.orderNumber).toLowerCase().includes(searchText.toLowerCase()) ||
+        toText(o.customerName).toLowerCase().includes(searchText.toLowerCase()) ||
+        toText(o.cpf).includes(searchText);
 
       // 2. Dropdowns
       const matchStatus =

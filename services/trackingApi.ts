@@ -52,11 +52,20 @@ const mapIntelipostStatusToEnum = (status: string): OrderStatus => {
   return OrderStatus.PENDING;
 };
 
+const toCleanString = (value: unknown): string => {
+  if (value === null || value === undefined) return '';
+  return String(value).trim();
+};
+
 /**
  * Fetches a single order directly from Intelipost using the GraphQL Query.
  */
 export const fetchSingleOrder = async (orderNumber: string): Promise<Partial<Order> | null> => {
-  const cleanOrderNumber = orderNumber.trim();
+  const cleanOrderNumber = toCleanString(orderNumber);
+
+  if (!cleanOrderNumber) {
+    return null;
+  }
 
   try {
     const payload = {
@@ -141,9 +150,10 @@ export const syncOrdersWithIntelipost = async (orders: Order[]): Promise<Order[]
 
     // 2. Handle Marketplace Logistics / Priority (No Intelipost Call)
     // Checks for specific strings or if it already is channel logistics
+    const freightType = toCleanString(order.freightType);
     const isChannelManaged = 
-        ['ColetasME2', 'Shopee Xpress'].includes(order.freightType) || 
-        order.freightType.toLowerCase().includes('priorit') ||
+        ['ColetasME2', 'Shopee Xpress'].includes(freightType) || 
+        freightType.toLowerCase().includes('priorit') ||
         order.status === OrderStatus.CHANNEL_LOGISTICS;
 
     if (isChannelManaged) {
@@ -171,7 +181,7 @@ export const syncOrdersWithIntelipost = async (orders: Order[]): Promise<Order[]
 
     // 3. Actionable Order: Fetch Real Data from Intelipost
     try {
-        const fetchedData = await fetchSingleOrder(order.orderNumber);
+        const fetchedData = await fetchSingleOrder(toCleanString(order.orderNumber));
         
         if (fetchedData) {
             const newStatus = fetchedData.status || order.status;

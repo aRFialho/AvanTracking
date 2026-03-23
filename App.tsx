@@ -18,7 +18,7 @@ import { Loader2 } from "lucide-react";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { LOGO_URL } from "./constants";
-import { getEffectiveOrderStatus } from "./utils";
+import { getEffectiveOrderStatus, toText } from "./utils";
 import { TruckCursor } from "./components/TruckCursor";
 import { fetchWithAuth } from "./utils/authFetch";
 
@@ -253,8 +253,8 @@ const MainApp: React.FC = () => {
       if (o.status === OrderStatus.CHANNEL_LOGISTICS) return false;
 
       const isChannelManaged =
-        ["ColetasME2", "Shopee Xpress"].includes(o.freightType) ||
-        o.freightType.toLowerCase().includes("priorit");
+        ["ColetasME2", "Shopee Xpress"].includes(toText(o.freightType)) ||
+        toText(o.freightType).toLowerCase().includes("priorit");
 
       if (isChannelManaged) return false;
 

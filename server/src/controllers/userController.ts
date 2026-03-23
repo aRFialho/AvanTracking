@@ -1,4 +1,3 @@
-
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcrypt';
@@ -39,7 +38,7 @@ export const login = async (req: Request, res: Response) => {
         name: true,
         role: true,
         companyId: true,
-        password: true, // We need to fetch the password for comparison
+        password: true,
       }
     });
 
@@ -53,10 +52,8 @@ export const login = async (req: Request, res: Response) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    // Don't send the password back
     const { password: _, ...userWithoutPassword } = user;
 
-    // Gerar JWT token
     const token = generateToken({
       id: user.id,
       email: user.email,
@@ -66,7 +63,7 @@ export const login = async (req: Request, res: Response) => {
 
     res.json({
       ...userWithoutPassword,
-      token // Enviar token junto com dados do usuário
+      token
     });
   } catch (error) {
     console.error('Error logging in:', error);
@@ -83,11 +80,10 @@ export const getUsers = async (req: Request, res: Response) => {
         name: true,
         email: true,
         role: true,
-        companyId: true, // Incluir companyId
-        company: { select: { name: true } }, // Incluir nome da empresa
+        companyId: true,
+        company: { select: { name: true } },
         createdAt: true,
         updatedAt: true,
-        // Não retornar senha
       },
       orderBy: { createdAt: 'desc' }
     });
@@ -122,7 +118,7 @@ export const createUser = async (req: Request, res: Response) => {
         email: String(email),
         password: hashedPassword,
         role: role ? String(role) as any : 'USER',
-        companyId: companyId || null, // Opcional
+        companyId: companyId || null,
       },
       select: {
         id: true,
@@ -186,16 +182,28 @@ export const deleteUser = async (req: Request, res: Response) => {
   }
 };
 
-// ✅ Trocar empresa do usuário
+// Trocar empresa do usuário logado
 export const switchUserCompany = async (req: Request, res: Response) => {
   const { userId, companyId } = req.body;
+  const requester = req.user;
 
   if (!userId || !companyId) {
     return res.status(400).json({ error: 'userId e companyId são obrigatórios' });
   }
 
+  if (!requester) {
+    return res.status(401).json({ error: 'Usuário não autenticado' });
+  }
+
+  if (requester.role !== 'ADMIN') {
+    return res.status(403).json({ error: 'Apenas administradores podem trocar de empresa' });
+  }
+
+  if (String(requester.id) !== String(userId)) {
+    return res.status(403).json({ error: 'Troca de empresa permitida apenas para a própria sessão' });
+  }
+
   try {
-    // Verificar se a empresa existe
     const company = await prisma.company.findUnique({
       where: { id: String(companyId) }
     });
@@ -204,7 +212,6 @@ export const switchUserCompany = async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Empresa não encontrada' });
     }
 
-    // Atualizar o usuário com a nova empresa
     const user = await prisma.user.update({
       where: { id: String(userId) },
       data: { companyId: String(companyId) },
@@ -217,7 +224,6 @@ export const switchUserCompany = async (req: Request, res: Response) => {
       }
     });
 
-    // Gerar novo token com a empresa atualizada
     const token = generateToken({
       id: user.id,
       email: user.email,
@@ -235,4 +241,3 @@ export const switchUserCompany = async (req: Request, res: Response) => {
     res.status(500).json({ error: 'Erro ao trocar empresa' });
   }
 };
-

@@ -10,7 +10,7 @@ import {
   CheckCircle,
 } from "lucide-react";
 import { clsx } from "clsx";
-import { normalizeCarrierName } from "../utils";
+import { normalizeCarrierName, toText } from "../utils";
 
 interface AlertsViewProps {
   orders: Order[];
@@ -40,8 +40,8 @@ export const AlertsView: React.FC<AlertsViewProps> = ({ orders }) => {
         // Check Status or FreightType string to be sure
         const isChannelLogistics =
           o.status === OrderStatus.CHANNEL_LOGISTICS ||
-          o.freightType.toLowerCase().includes("priorit") ||
-          ["ColetasME2", "Shopee Xpress"].includes(o.freightType);
+          toText(o.freightType).toLowerCase().includes("priorit") ||
+          ["ColetasME2", "Shopee Xpress"].includes(toText(o.freightType));
 
         if (isChannelLogistics) return false;
 

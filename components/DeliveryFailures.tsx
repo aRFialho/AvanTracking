@@ -2,7 +2,7 @@ import React, { useState, useMemo } from "react";
 import { Order, OrderStatus } from "../types";
 import { OrderDetail } from "./OrderDetail";
 import { AlertTriangle, AlertOctagon, CheckCircle, Search } from "lucide-react";
-import { normalizeCarrierName } from "../utils";
+import { normalizeCarrierName, toText } from "../utils";
 
 interface DeliveryFailuresProps {
   orders: Order[];
@@ -32,9 +32,9 @@ export const DeliveryFailures: React.FC<DeliveryFailuresProps> = ({
         if (searchText) {
           const lower = searchText.toLowerCase();
           return (
-            o.orderNumber.toLowerCase().includes(lower) ||
-            o.customerName.toLowerCase().includes(lower) ||
-            (o.trackingCode || "").toLowerCase().includes(lower)
+            toText(o.orderNumber).toLowerCase().includes(lower) ||
+            toText(o.customerName).toLowerCase().includes(lower) ||
+            toText(o.trackingCode).toLowerCase().includes(lower)
           );
         }
 

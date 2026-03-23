@@ -266,7 +266,7 @@ export const getOrders = async (req: Request, res: Response) => {
     // Transformar para o formato do frontend
     const formattedOrders = orders.map(o => ({
       ...o,
-      orderNumber: Number(o.orderNumber), // Converter de volta para number se frontend espera number
+      orderNumber: String(o.orderNumber),
       status: o.status as OrderStatus
     }));
 

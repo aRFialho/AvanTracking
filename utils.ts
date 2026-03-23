@@ -1,6 +1,11 @@
 
 import { Order, OrderStatus } from "./types";
 
+export const toText = (value: unknown): string => {
+  if (value === null || value === undefined) return "";
+  return String(value);
+};
+
 export const mapIntelipostStatusToEnum = (status: string): OrderStatus => {
   const s = status ? status.toUpperCase() : '';
   if (s.includes('ENTREGUE') || s.includes('DELIVERED')) return OrderStatus.DELIVERED;
@@ -57,7 +62,7 @@ export const getEffectiveOrderStatus = (order: Order): OrderStatus => {
 export const normalizeCarrierName = (name: string | null | undefined): string => {
   if (!name) return 'Desconhecida';
 
-  let normalized = name.toLowerCase();
+  let normalized = toText(name).toLowerCase();
 
   // Remove termos indesejados
   const termsToRemove = [

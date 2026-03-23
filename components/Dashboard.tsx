@@ -32,7 +32,12 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
-import { normalizeCarrierName, isOrderOnTime, isOrderOnRoute } from "../utils";
+import {
+  normalizeCarrierName,
+  isOrderOnTime,
+  isOrderOnRoute,
+  toText,
+} from "../utils";
 
 interface DashboardProps {
   orders: Order[];
@@ -102,8 +107,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
       // Text Search
       const textMatch =
         !searchText ||
-        o.orderNumber.toLowerCase().includes(searchText.toLowerCase()) ||
-        o.customerName.toLowerCase().includes(searchText.toLowerCase());
+        toText(o.orderNumber).toLowerCase().includes(searchText.toLowerCase()) ||
+        toText(o.customerName).toLowerCase().includes(searchText.toLowerCase());
 
       // Dropdowns
       const carrierMatch =
