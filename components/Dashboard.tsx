@@ -68,6 +68,51 @@ const CHART_COLORS = [
   "#14b8a6",
 ];
 
+const DAY_IN_MS = 86400000;
+
+const isActiveDelayedOrder = (order: Order) =>
+  order.isDelayed &&
+  order.status !== OrderStatus.DELIVERED &&
+  order.status !== OrderStatus.FAILURE &&
+  order.status !== OrderStatus.RETURNED &&
+  order.status !== OrderStatus.CANCELED;
+
+const isQualityMeasurableOrder = (order: Order) =>
+  order.status === OrderStatus.DELIVERED || isActiveDelayedOrder(order);
+
+const getOrderCycleStart = (order: Order) => {
+  let start = new Date(order.shippingDate).getTime();
+
+  if (order.trackingHistory && order.trackingHistory.length > 0) {
+    const sortedHistory = [...order.trackingHistory].sort(
+      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
+    );
+    start = new Date(sortedHistory[0].date).getTime();
+  }
+
+  return start;
+};
+
+const getMeasuredOrderElapsedDays = (order: Order, now: number) => {
+  const start = getOrderCycleStart(order);
+  const end =
+    order.status === OrderStatus.DELIVERED
+      ? new Date(order.lastUpdate).getTime()
+      : now;
+
+  return (end - start) / DAY_IN_MS;
+};
+
+const isEarlyDelivery = (order: Order) => {
+  if (order.status !== OrderStatus.DELIVERED) return false;
+
+  const deliveryDate = new Date(order.lastUpdate);
+  const promisedDate = new Date(order.estimatedDeliveryDate);
+  promisedDate.setHours(23, 59, 59, 999);
+
+  return promisedDate.getTime() - deliveryDate.getTime() > DAY_IN_MS * 2;
+};
+
 export const Dashboard: React.FC<DashboardProps> = ({
   orders,
   onChangeView,
@@ -167,9 +212,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       (o) => o.status === OrderStatus.SHIPPED,
     ).length;
     const onRoute = filteredOrders.filter((o) => isOrderOnRoute(o)).length;
-    const activeDelayed = filteredOrders.filter(
-      (o) => o.isDelayed && o.status !== OrderStatus.DELIVERED,
-    ).length;
+    const activeDelayed = filteredOrders.filter(isActiveDelayedOrder).length;
 
     // No Sync: Count orders that have never been synced
     const noSync = filteredOrders.filter((o) => !o.lastApiSync).length;
@@ -221,47 +264,34 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
     // Average Time (First Tracking Update -> Delivered/LastUpdate)
     let totalDays = 0;
-    let deliveredCountForAvg = 0;
+    let measurableCount = 0;
 
     // On Time Calculation Logic
     let deliveredOnTime = 0;
+    const now = Date.now();
 
     filteredOrders.forEach((o) => {
-      if (o.status === OrderStatus.DELIVERED) {
-        // Avg Time Logic
-        let start = new Date(o.shippingDate).getTime();
-        if (o.trackingHistory && o.trackingHistory.length > 0) {
-          const sortedHistory = [...o.trackingHistory].sort(
-            (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
-          );
-          start = new Date(sortedHistory[0].date).getTime();
-        }
-        const end = new Date(o.lastUpdate).getTime();
-        const diff = (end - start) / (1000 * 3600 * 24);
-        if (diff >= 0) {
-          totalDays += diff;
-          deliveredCountForAvg++;
-        }
+      if (!isQualityMeasurableOrder(o)) return;
 
-        // On Time Logic: Check strict date comparison
-        if (isOrderOnTime(o)) {
-          deliveredOnTime++;
-        }
+      const diff = getMeasuredOrderElapsedDays(o, now);
+      if (diff >= 0) {
+        totalDays += diff;
+        measurableCount++;
+      }
+
+      if (o.status === OrderStatus.DELIVERED && isOrderOnTime(o)) {
+        deliveredOnTime++;
       }
     });
 
     const avgDays =
-      deliveredCountForAvg > 0
-        ? (totalDays / deliveredCountForAvg).toFixed(1)
+      measurableCount > 0
+        ? (totalDays / measurableCount).toFixed(1)
         : "0.0";
 
-    // On Time Percentage
-    // Numerator: Delivered On Time
-    // Denominator: Total Delivered (Standard OTD)
-    const totalMeasurable = delivered;
     const onTimePct =
-      totalMeasurable > 0
-        ? ((deliveredOnTime / totalMeasurable) * 100).toFixed(1)
+      measurableCount > 0
+        ? ((deliveredOnTime / measurableCount) * 100).toFixed(1)
         : "0.0";
 
     return {
@@ -308,42 +338,40 @@ export const Dashboard: React.FC<DashboardProps> = ({
     );
 
     // On Time (Match Dashboard KPI Logic: Delivered On Time / Total Delivered)
-    let currDelivered = 0;
+    let currMeasurable = 0;
     let currDeliveredOnTime = 0;
 
     currentMonthOrders.forEach((o) => {
-      if (o.status === OrderStatus.DELIVERED) {
-        currDelivered++;
-        if (isOrderOnTime(o)) {
-          currDeliveredOnTime++;
-        }
+      if (!isQualityMeasurableOrder(o)) return;
+
+      currMeasurable++;
+      if (o.status === OrderStatus.DELIVERED && isOrderOnTime(o)) {
+        currDeliveredOnTime++;
       }
     });
 
-    let prevDelivered = 0;
+    let prevMeasurable = 0;
     let prevDeliveredOnTime = 0;
 
     prevMonthOrders.forEach((o) => {
-      if (o.status === OrderStatus.DELIVERED) {
-        prevDelivered++;
-        if (isOrderOnTime(o)) {
-          prevDeliveredOnTime++;
-        }
+      if (!isQualityMeasurableOrder(o)) return;
+
+      prevMeasurable++;
+      if (o.status === OrderStatus.DELIVERED && isOrderOnTime(o)) {
+        prevDeliveredOnTime++;
       }
     });
 
     const currOnTimePct =
-      currDelivered > 0 ? (currDeliveredOnTime / currDelivered) * 100 : 0;
+      currMeasurable > 0 ? (currDeliveredOnTime / currMeasurable) * 100 : 0;
 
     const prevOnTimePct =
-      prevDelivered > 0 ? (prevDeliveredOnTime / prevDelivered) * 100 : 0;
+      prevMeasurable > 0 ? (prevDeliveredOnTime / prevMeasurable) * 100 : 0;
 
     const onTimeGrowth = calcGrowth(currOnTimePct, prevOnTimePct);
 
     // Delayed (Active)
-    const activeDelayed = orders.filter(
-      (o) => o.isDelayed && o.status !== OrderStatus.DELIVERED,
-    ).length;
+    const activeDelayed = orders.filter(isActiveDelayedOrder).length;
 
     return {
       total: currentMonthOrders.length,
@@ -365,11 +393,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
         late: number;
         early: number;
         totalTime: number;
-        deliveredCount: number;
+        measurableCount: number;
       }
     >();
+    const now = Date.now();
 
     filteredOrders.forEach((o) => {
+      if (!isQualityMeasurableOrder(o)) return;
+
       const name = normalizeCarrierName(o.freightType) || "Desconhecida";
       const current = map.get(name) || {
         name,
@@ -378,42 +409,22 @@ export const Dashboard: React.FC<DashboardProps> = ({
         late: 0,
         early: 0,
         totalTime: 0,
-        deliveredCount: 0,
+        measurableCount: 0,
       };
 
       current.volume++;
+      current.measurableCount++;
 
-      if (o.status === OrderStatus.DELIVERED) {
-        current.deliveredCount++;
+      const days = getMeasuredOrderElapsedDays(o, now);
+      if (days >= 0) current.totalTime += days;
 
-        // Calculate time for this specific order for ranking avg
-        let start = new Date(o.shippingDate).getTime();
-        if (o.trackingHistory && o.trackingHistory.length > 0) {
-          const sortedHistory = [...o.trackingHistory].sort(
-            (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
-          );
-          start = new Date(sortedHistory[0].date).getTime();
+      if (o.status === OrderStatus.DELIVERED && isOrderOnTime(o)) {
+        current.onTime++;
+        if (isEarlyDelivery(o)) {
+          current.early++;
         }
-        const end = new Date(o.lastUpdate).getTime();
-        const days = (end - start) / 86400000;
-
-        if (days >= 0) current.totalTime += days;
-
-        // Late / On Time Logic
-        // Compare Delivery Date vs Estimated Date
-        const deliveryDate = new Date(o.lastUpdate);
-        const promisedDate = new Date(o.estimatedDeliveryDate);
-        promisedDate.setHours(23, 59, 59, 999); // End of day
-
-        if (deliveryDate > promisedDate) {
-          current.late++;
-        } else {
-          current.onTime++;
-          // Early: Delivered > 2 days before estimate
-          if (promisedDate.getTime() - deliveryDate.getTime() > 86400000 * 2) {
-            current.early++;
-          }
-        }
+      } else {
+        current.late++;
       }
 
       map.set(name, current);
@@ -1026,9 +1037,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         Tempo Méd.
                       </p>
                       <p className="font-bold text-slate-800 dark:text-white">
-                        {carrier.deliveredCount > 0
+                        {carrier.measurableCount > 0
                           ? (
-                              carrier.totalTime / carrier.deliveredCount
+                              carrier.totalTime / carrier.measurableCount
                             ).toFixed(1)
                           : "-"}{" "}
                         d
