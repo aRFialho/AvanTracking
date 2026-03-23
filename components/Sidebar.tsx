@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { PageView } from "../types";
+import { PageView, SyncJobStatus } from "../types";
 import { LOGO_URL } from "../constants";
 import { useTheme } from "../contexts/ThemeContext";
 import { useAuth } from "../contexts/AuthContext";
@@ -28,6 +28,7 @@ interface SidebarProps {
   onSync: () => void;
   isSyncing: boolean;
   lastSync: Date | null;
+  syncJob: SyncJobStatus | null;
 }
 
 // --- Content Data ---
@@ -72,6 +73,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onChangeView,
   onSync,
   isSyncing,
+  syncJob,
 }) => {
   const { theme, toggleTheme } = useTheme();
   const { user, logout } = useAuth();
@@ -145,6 +147,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
       )}
     </button>
   );
+
+  const syncProgress =
+    syncJob && syncJob.total > 0
+      ? Math.min(100, Math.round((syncJob.processed / syncJob.total) * 100))
+      : 0;
+
+  const recentLogs = syncJob?.logs.slice(-5).reverse() || [];
 
   return (
     <aside className="w-64 bg-primary dark:bg-[#08090f] text-white flex flex-col shadow-xl z-20 hidden md:flex border-r border-slate-800 dark:border-white/5 transition-colors duration-300 relative">
@@ -392,6 +401,64 @@ export const Sidebar: React.FC<SidebarProps> = ({
           />
           {isSyncing ? "Sync..." : "Sincronizar"}
         </button>
+
+        {syncJob && (
+          <div className="mb-3 rounded-lg border border-white/10 bg-black/20 p-3">
+            <div className="mb-2 flex items-center justify-between text-[11px] text-slate-300">
+              <span className="font-semibold uppercase tracking-wide">
+                {syncJob.status === "running" ? "Sincronizando" : "Último Sync"}
+              </span>
+              <span>
+                {syncJob.processed}/{syncJob.total || 0}
+              </span>
+            </div>
+
+            <div className="mb-2 h-2 overflow-hidden rounded-full bg-white/10">
+              <div
+                className={clsx(
+                  "h-full transition-all duration-300",
+                  syncJob.status === "failed"
+                    ? "bg-red-500"
+                    : syncJob.status === "completed"
+                      ? "bg-emerald-500"
+                      : "bg-accent",
+                )}
+                style={{ width: `${syncProgress}%` }}
+              />
+            </div>
+
+            <div className="mb-2 text-[10px] text-slate-400">
+              <div>Sucesso: {syncJob.success}</div>
+              <div>Falhas: {syncJob.failed}</div>
+              {syncJob.currentOrderNumber && (
+                <div className="truncate">
+                  Atual: #{syncJob.currentOrderNumber}
+                </div>
+              )}
+            </div>
+
+            <div className="max-h-32 space-y-1 overflow-auto pr-1 text-[10px]">
+              {recentLogs.map((log, index) => (
+                <div
+                  key={`${log.timestamp}-${index}`}
+                  className={clsx(
+                    "rounded px-2 py-1",
+                    log.level === "error"
+                      ? "bg-red-500/10 text-red-300"
+                      : log.level === "success"
+                        ? "bg-emerald-500/10 text-emerald-300"
+                        : "bg-white/5 text-slate-300",
+                  )}
+                >
+                  <div className="mb-0.5 text-[9px] text-slate-500">
+                    {new Date(log.timestamp).toLocaleTimeString()}
+                  </div>
+                  <div>{log.message}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <button
           onClick={logout}

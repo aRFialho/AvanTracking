@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { Order, OrderStatus } from "../types";
+import { Order, OrderStatus, SyncJobStatus } from "../types";
 import { OrderDetail } from "./OrderDetail";
 import {
   Download,
@@ -38,6 +38,8 @@ interface OrderListProps {
   initialFilters?: any;
   onFetchSingle?: (orderId: string) => Promise<void>;
   isNoMovementView?: boolean;
+  onStartSync?: () => Promise<void> | void;
+  syncJob?: SyncJobStatus | null;
 }
 
 export const OrderList: React.FC<OrderListProps> = ({
@@ -45,6 +47,8 @@ export const OrderList: React.FC<OrderListProps> = ({
   initialFilters,
   onFetchSingle,
   isNoMovementView = false,
+  onStartSync,
+  syncJob,
 }) => {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [isFetchingSingle, setIsFetchingSingle] = useState(false);
@@ -244,6 +248,18 @@ export const OrderList: React.FC<OrderListProps> = ({
 
   // ✅ Função de sincronização
   const handleSyncAll = async () => {
+    if (onStartSync) {
+      if (
+        !confirm(
+          "Sincronizar todos os pedidos ativos? Isso pode demorar alguns minutos.",
+        )
+      ) {
+        return;
+      }
+      onStartSync();
+      return;
+    }
+
     if (
       !confirm(
         "Sincronizar todos os pedidos ativos? Isso pode demorar alguns minutos.",
@@ -275,6 +291,12 @@ export const OrderList: React.FC<OrderListProps> = ({
       setIsSyncing(false);
     }
   };
+
+  const syncProgress =
+    syncJob && syncJob.total > 0
+      ? Math.min(100, Math.round((syncJob.processed / syncJob.total) * 100))
+      : 0;
+  const isSyncRunning = isSyncing || syncJob?.status === "running";
 
   // Modern Status Badge
   const StatusBadge = ({
@@ -553,23 +575,47 @@ export const OrderList: React.FC<OrderListProps> = ({
 
       {/* ✅ Botão Sincronizar Todos */}
       <div className="flex justify-end">
-        <button
-          onClick={handleSyncAll}
-          disabled={isSyncing}
-          className="flex items-center gap-2 px-4 py-2 bg-accent dark:bg-neon-blue text-white dark:text-black rounded-lg hover:bg-blue-600 dark:hover:bg-cyan-400 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
-        >
-          {isSyncing ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Sincronizando...
-            </>
-          ) : (
-            <>
-              <RefreshCw className="w-4 h-4" />
-              Sincronizar Todos
-            </>
+        <div className="w-full max-w-md">
+          <button
+            onClick={handleSyncAll}
+            disabled={isSyncRunning}
+            className="flex w-full items-center justify-center gap-2 px-4 py-2 bg-accent dark:bg-neon-blue text-white dark:text-black rounded-lg hover:bg-blue-600 dark:hover:bg-cyan-400 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+          >
+            {isSyncRunning ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Sincronizando...
+              </>
+            ) : (
+              <>
+                <RefreshCw className="w-4 h-4" />
+                Sincronizar Todos
+              </>
+            )}
+          </button>
+
+          {syncJob && (
+            <div className="mt-2 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-white/5 p-3 text-xs">
+              <div className="mb-2 flex justify-between text-slate-500 dark:text-slate-400">
+                <span>Status: {syncJob.status}</span>
+                <span>
+                  {syncJob.processed}/{syncJob.total || 0}
+                </span>
+              </div>
+              <div className="mb-2 h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-white/10">
+                <div
+                  className="h-full bg-accent transition-all duration-300"
+                  style={{ width: `${syncProgress}%` }}
+                />
+              </div>
+              {syncJob.currentOrderNumber && (
+                <div className="truncate text-slate-600 dark:text-slate-300">
+                  Atualizando pedido #{syncJob.currentOrderNumber}
+                </div>
+              )}
+            </div>
           )}
-        </button>
+        </div>
       </div>
 
       {/* 2. Detailed Data Table */}

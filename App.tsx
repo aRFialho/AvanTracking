@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { Dashboard } from "./components/Dashboard";
 import { OrderList } from "./components/OrderList";
@@ -9,7 +9,7 @@ import { AdminPanel } from "./components/AdminPanel";
 import { Login } from "./components/Login";
 import { Chatbot } from "./components/Chatbot";
 import { CompanySwitcher } from "./components/CompanySwitcher";
-import { Order, PageView, OrderStatus } from "./types";
+import { Order, PageView, OrderStatus, SyncJobStatus } from "./types";
 import { fetchSingleOrder } from "./services/trackingApi";
 import { Loader2 } from "lucide-react";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
@@ -52,6 +52,7 @@ const MainApp: React.FC = () => {
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
   const [showIntro, setShowIntro] = useState(true);
+  const [syncJob, setSyncJob] = useState<SyncJobStatus | null>(null);
 
   // ✅ View Change Handler
   const handleChangeView = (view: PageView) => {
@@ -107,13 +108,74 @@ const MainApp: React.FC = () => {
     }
   }, []);
 
+  const previousSyncStatusRef = useRef<SyncJobStatus["status"] | null>(null);
+
+  const loadSyncStatus = useCallback(async () => {
+    if (!user?.companyId) {
+      setSyncJob(null);
+      return;
+    }
+
+    try {
+      const response = await fetchWithAuth("/api/orders/sync-all/status");
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      setSyncJob(data.job || null);
+    } catch (error) {
+      console.error("Erro ao carregar status da sincronização:", error);
+    }
+  }, [user?.companyId]);
+
   // ✅ CARREGAR AO AUTENTICAR
   useEffect(() => {
     if (isAuthenticated && !isLoading) {
       console.log("🔄 Usuário autenticado, carregando pedidos...");
       loadOrdersFromDatabase();
+      loadSyncStatus();
     }
-  }, [isAuthenticated, isLoading, loadOrdersFromDatabase]);
+  }, [isAuthenticated, isLoading, loadOrdersFromDatabase, loadSyncStatus]);
+
+  useEffect(() => {
+    setIsSyncing(syncJob?.status === "running");
+  }, [syncJob?.status]);
+
+  useEffect(() => {
+    if (syncJob?.status !== "running") return;
+
+    const statusInterval = setInterval(() => {
+      loadSyncStatus();
+    }, 2000);
+
+    const ordersInterval = setInterval(() => {
+      loadOrdersFromDatabase();
+    }, 5000);
+
+    return () => {
+      clearInterval(statusInterval);
+      clearInterval(ordersInterval);
+    };
+  }, [loadOrdersFromDatabase, loadSyncStatus, syncJob?.status]);
+
+  useEffect(() => {
+    const previousStatus = previousSyncStatusRef.current;
+    const currentStatus = syncJob?.status || null;
+
+    if (
+      previousStatus === "running" &&
+      currentStatus &&
+      currentStatus !== "running"
+    ) {
+      loadOrdersFromDatabase();
+      setLastSyncTime(
+        syncJob?.finishedAt ? new Date(syncJob.finishedAt) : new Date(),
+      );
+    }
+
+    previousSyncStatusRef.current = currentStatus;
+  }, [loadOrdersFromDatabase, syncJob]);
 
   // Intro animation
   useEffect(() => {
@@ -125,10 +187,8 @@ const MainApp: React.FC = () => {
 
   // Sync Logic
   const handleSync = useCallback(async () => {
-    if (orders.length === 0) return;
-    setIsSyncing(true);
     try {
-      const response = await fetchWithAuth("/api/orders/sync-all", {
+      const response = await fetchWithAuth("/api/orders/sync-all/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       });
@@ -138,15 +198,13 @@ const MainApp: React.FC = () => {
         throw new Error(errorData.error || `HTTP ${response.status}`);
       }
 
-      await loadOrdersFromDatabase();
-      setLastSyncTime(new Date());
+      const data = await response.json();
+      setSyncJob(data.job || null);
     } catch (error) {
       console.error("Sync failed:", error);
       alert("Erro ao sincronizar com a Intelipost.");
-    } finally {
-      setIsSyncing(false);
     }
-  }, [orders.length, loadOrdersFromDatabase]);
+  }, []);
 
   // Handle Single Order Fetch
   const handleFetchSingleOrder = useCallback(
@@ -354,6 +412,8 @@ const MainApp: React.FC = () => {
             orders={orders}
             initialFilters={activeFilters}
             onFetchSingle={handleFetchSingleOrder}
+            onStartSync={handleSync}
+            syncJob={syncJob}
           />
         );
       case "no-movement":
@@ -362,6 +422,8 @@ const MainApp: React.FC = () => {
             orders={orders}
             onFetchSingle={handleFetchSingleOrder}
             isNoMovementView={true}
+            onStartSync={handleSync}
+            syncJob={syncJob}
           />
         );
       case "upload":
@@ -404,6 +466,7 @@ const MainApp: React.FC = () => {
         onSync={handleSync}
         isSyncing={isSyncing}
         lastSync={lastSyncTime}
+        syncJob={syncJob}
       />
 
       <main className="flex-1 flex flex-col h-full relative overflow-hidden">

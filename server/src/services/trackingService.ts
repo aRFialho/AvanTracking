@@ -192,7 +192,19 @@ export class TrackingService {
     }
   }
 
-  async syncAllActive(companyId?: string | null) {
+  async syncAllActive(
+    companyId?: string | null,
+    hooks?: {
+      onStart?: (data: { total: number }) => void;
+      onOrderStart?: (data: { orderNumber: string; index: number; total: number }) => void;
+      onOrderFinish?: (data: {
+        orderNumber: string;
+        success: boolean;
+        message: string;
+        durationMs: number;
+      }) => void;
+    },
+  ) {
     try {
       const activeOrders = await prisma.order.findMany({
         where: {
@@ -215,8 +227,23 @@ export class TrackingService {
         errors: [] as string[]
       };
 
-      for (const order of activeOrders) {
+      const syncDelayMs = Math.max(
+        0,
+        Number(process.env.SYNC_DELAY_MS ?? 100),
+      );
+
+      hooks?.onStart?.({ total: activeOrders.length });
+
+      for (let index = 0; index < activeOrders.length; index++) {
+        const order = activeOrders[index];
+        const startedAt = Date.now();
+        hooks?.onOrderStart?.({
+          orderNumber: String(order.orderNumber),
+          index: index + 1,
+          total: activeOrders.length,
+        });
         const result = await this.syncOrder(order.id, companyId);
+        const durationMs = Date.now() - startedAt;
 
         if (result.success) {
           results.success++;
@@ -225,7 +252,16 @@ export class TrackingService {
           results.errors.push(`${order.orderNumber}: ${result.message}`);
         }
 
-        await new Promise(resolve => setTimeout(resolve, 500));
+        hooks?.onOrderFinish?.({
+          orderNumber: String(order.orderNumber),
+          success: !!result.success,
+          message: String(result.message || ''),
+          durationMs,
+        });
+
+        if (syncDelayMs > 0) {
+          await new Promise(resolve => setTimeout(resolve, syncDelayMs));
+        }
       }
 
       return results;

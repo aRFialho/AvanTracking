@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { importOrders, getOrders, getOrderById, syncSingleOrder, syncAllOrders, clearOrdersDatabase } from '../controllers/orderController';
+import { importOrders, getOrders, getOrderById, syncSingleOrder, syncAllOrders, startSyncAllOrders, getSyncAllStatus, clearOrdersDatabase } from '../controllers/orderController';
 
 const router = Router();
 
@@ -20,5 +20,7 @@ router.post('/:id/sync', syncSingleOrder);
 
 // POST /api/orders/sync-all - Sincronizar todos os pedidos ativos
 router.post('/sync-all', syncAllOrders);
+router.post('/sync-all/start', startSyncAllOrders);
+router.get('/sync-all/status', getSyncAllStatus);
 
 export default router;

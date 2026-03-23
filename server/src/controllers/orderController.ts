@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { PrismaClient, OrderStatus } from '@prisma/client';
+import { syncJobService } from '../services/syncJobService';
 
 const prisma = new PrismaClient();
 
@@ -397,6 +398,49 @@ export const syncAllOrders = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Erro ao sincronizar todos os pedidos:', error);
     return res.status(500).json({ error: 'Erro ao sincronizar pedidos' });
+  }
+};
+
+// POST /api/orders/sync-all/start
+export const startSyncAllOrders = async (req: Request, res: Response) => {
+  try {
+    // @ts-ignore
+    const user = req.user;
+
+    if (!user || !user.companyId) {
+      return res.status(403).json({ error: 'Acesso negado. UsuÃƒÂ¡rio sem empresa.' });
+    }
+
+    const job = syncJobService.startJob(user.companyId, user.id);
+
+    return res.json({
+      success: true,
+      message: 'SincronizaÃ§Ã£o em andamento',
+      job,
+    });
+  } catch (error) {
+    console.error('Erro ao iniciar sincronizaÃ§Ã£o:', error);
+    return res.status(500).json({ error: 'Erro ao iniciar sincronizaÃ§Ã£o' });
+  }
+};
+
+// GET /api/orders/sync-all/status
+export const getSyncAllStatus = async (req: Request, res: Response) => {
+  try {
+    // @ts-ignore
+    const user = req.user;
+
+    if (!user || !user.companyId) {
+      return res.status(403).json({ error: 'Acesso negado. UsuÃƒÂ¡rio sem empresa.' });
+    }
+
+    return res.json({
+      success: true,
+      job: syncJobService.getJob(user.companyId),
+    });
+  } catch (error) {
+    console.error('Erro ao obter status da sincronizaÃ§Ã£o:', error);
+    return res.status(500).json({ error: 'Erro ao consultar status da sincronizaÃ§Ã£o' });
   }
 };
 
