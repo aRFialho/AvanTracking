@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import type { SyncLogEntry, SyncJobStatus } from '../../../types';
+import type { SyncLogEntry, SyncJobStatus } from '../types/syncJob';
 import { TrackingService } from './trackingService';
 
 const trackingService = new TrackingService();
