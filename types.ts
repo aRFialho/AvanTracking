@@ -44,6 +44,12 @@ export interface SyncJobStatus {
   logs: SyncLogEntry[];
 }
 
+export interface SyncScheduleStatus {
+  enabled: true;
+  intervalMs: number;
+  nextScheduledAt: string | null;
+}
+
 export interface Order {
   // Identification
   id: string; // Internal ID or mapped from 'Pedido'

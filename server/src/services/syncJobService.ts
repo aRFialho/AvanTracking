@@ -1,17 +1,52 @@
 import crypto from 'crypto';
-import type { SyncLogEntry, SyncJobStatus } from '../types/syncJob';
+import type {
+  SyncLogEntry,
+  SyncJobStatus,
+  SyncScheduleStatus,
+} from '../types/syncJob';
 import { TrackingService } from './trackingService';
 
 const trackingService = new TrackingService();
-const MAX_LOGS = 100;
+const MAX_LOGS = 1000;
+const AUTO_SYNC_INTERVAL_MS = 4 * 60 * 60 * 1000;
 
 type CompanyJobMap = Map<string, SyncJobStatus>;
+type ScheduleEntry = {
+  userId: string;
+  nextScheduledAt: string | null;
+  timeout: NodeJS.Timeout | null;
+};
 
 class SyncJobService {
   private jobs: CompanyJobMap = new Map();
+  private schedules: Map<string, ScheduleEntry> = new Map();
 
   getJob(companyId: string) {
     return this.jobs.get(companyId) || null;
+  }
+
+  ensureSchedule(companyId: string, userId: string) {
+    const existing = this.schedules.get(companyId);
+
+    if (existing) {
+      existing.userId = userId;
+      if (!existing.nextScheduledAt) {
+        this.scheduleNext(companyId, userId);
+      }
+      return;
+    }
+
+    this.scheduleNext(companyId, userId);
+  }
+
+  getSchedule(companyId: string): SyncScheduleStatus {
+    const schedule = this.schedules.get(companyId);
+
+    return {
+      enabled: true,
+      intervalMs: AUTO_SYNC_INTERVAL_MS,
+      nextScheduledAt: schedule?.nextScheduledAt ?? null,
+    };
   }
 
   startJob(companyId: string, userId: string) {
@@ -39,6 +74,7 @@ class SyncJobService {
       logs: [],
     };
 
+    this.clearScheduledTimeout(companyId);
     this.pushLog(job, 'info', 'Sincronização iniciada.');
     this.jobs.set(companyId, job);
 
@@ -94,6 +130,7 @@ class SyncJobService {
         'success',
         `Sincronização finalizada. ${job.success} sucesso(s), ${job.failed} falha(s).`,
       );
+      this.scheduleNext(job.companyId, job.userId);
     } catch (error) {
       job.status = 'failed';
       job.currentOrderNumber = null;
@@ -102,6 +139,7 @@ class SyncJobService {
         error instanceof Error ? error.message : 'Erro desconhecido durante a sincronização';
       this.touch(job);
       this.pushLog(job, 'error', `Sincronização interrompida: ${job.error}`);
+      this.scheduleNext(job.companyId, job.userId);
     }
   }
 
@@ -122,6 +160,46 @@ class SyncJobService {
 
     job.logs = [...job.logs, entry].slice(-MAX_LOGS);
     this.touch(job);
+  }
+
+  private scheduleNext(companyId: string, userId: string) {
+    this.clearScheduledTimeout(companyId);
+
+    const nextRunAt = new Date(Date.now() + AUTO_SYNC_INTERVAL_MS).toISOString();
+    const timeout = setTimeout(() => {
+      this.triggerAutomaticSync(companyId);
+    }, AUTO_SYNC_INTERVAL_MS);
+
+    this.schedules.set(companyId, {
+      userId,
+      nextScheduledAt: nextRunAt,
+      timeout,
+    });
+  }
+
+  private triggerAutomaticSync(companyId: string) {
+    const schedule = this.schedules.get(companyId);
+    if (!schedule) return;
+
+    schedule.timeout = null;
+    schedule.nextScheduledAt = null;
+
+    const existing = this.jobs.get(companyId);
+    if (existing?.status === 'running') {
+      this.scheduleNext(companyId, schedule.userId);
+      return;
+    }
+
+    const job = this.startJob(companyId, schedule.userId);
+    this.pushLog(job, 'info', 'Execução automática disparada.');
+  }
+
+  private clearScheduledTimeout(companyId: string) {
+    const schedule = this.schedules.get(companyId);
+    if (!schedule?.timeout) return;
+
+    clearTimeout(schedule.timeout);
+    schedule.timeout = null;
   }
 }
 

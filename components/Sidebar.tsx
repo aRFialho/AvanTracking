@@ -8,7 +8,9 @@ import {
   Package,
   UploadCloud,
   RefreshCw,
+  ChevronDown,
   ChevronRight,
+  ChevronUp,
   BellRing,
   Shield,
   LogOut,
@@ -31,7 +33,6 @@ interface SidebarProps {
   syncJob: SyncJobStatus | null;
 }
 
-// --- Content Data ---
 const VERSES = [
   { text: "Tudo posso naquele que me fortalece.", ref: "Filipenses 4:13" },
   {
@@ -78,12 +79,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const { theme, toggleTheme } = useTheme();
   const { user, logout } = useAuth();
 
-  // State for content
   const [currentTipIndex, setCurrentTipIndex] = useState(0);
   const [verse, setVerse] = useState(VERSES[0]);
   const [animatingTip, setAnimatingTip] = useState(false);
+  const [isLogsCollapsed, setIsLogsCollapsed] = useState(false);
 
-  // Function to cycle tip
   const handleNextTip = useCallback(() => {
     setAnimatingTip(true);
     setTimeout(() => {
@@ -93,20 +93,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
   }, []);
 
   useEffect(() => {
-    // Random Tip Start
     setCurrentTipIndex(Math.floor(Math.random() * LOGISTICS_TIPS.length));
 
-    // Daily Verse (Day of month % array length)
     const dayIndex = new Date().getDate() % VERSES.length;
     setVerse(VERSES[dayIndex]);
 
-    // Auto Refresh Tip every 5 minutes (300,000 ms)
     const tipInterval = setInterval(() => {
       handleNextTip();
     }, 300000);
 
     return () => clearInterval(tipInterval);
   }, [handleNextTip]);
+
+  useEffect(() => {
+    if (syncJob?.status === "running") {
+      setIsLogsCollapsed(false);
+    }
+  }, [syncJob?.status]);
 
   const NavItem = ({
     view,
@@ -153,11 +156,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
       ? Math.min(100, Math.round((syncJob.processed / syncJob.total) * 100))
       : 0;
 
-  const recentLogs = syncJob?.logs.slice(-5).reverse() || [];
+  const recentLogs = syncJob?.logs.slice().reverse() || [];
 
   return (
     <aside className="w-64 bg-primary dark:bg-[#08090f] text-white flex flex-col shadow-xl z-20 hidden md:flex border-r border-slate-800 dark:border-white/5 transition-colors duration-300 relative">
-      {/* Brand */}
       <div className="p-6 border-b border-slate-800 dark:border-white/5 relative overflow-hidden group shrink-0">
         <div className="absolute inset-0 z-0 opacity-60">
           <LightningStorm />
@@ -172,7 +174,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </p>
       </div>
 
-      {/* Navigation */}
       <nav className="flex-1 p-4 overflow-y-auto overflow-x-hidden relative z-10 custom-scrollbar flex flex-col">
         <NavItem view="dashboard" icon={LayoutDashboard} label="Dashboard" />
         <NavItem view="alerts" icon={BellRing} label="Alertas de Risco" />
@@ -192,25 +193,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </>
         )}
 
-        {/* --- SPACER to push content down --- */}
         <div className="flex-1"></div>
 
-        {/* --- SKATEBOARD ROBOT AREA --- */}
         <div className="mt-4 mx-1">
-          {/* Street/Ramp Container UI */}
           <div className="relative h-24 bg-gradient-to-b from-slate-800 to-slate-900 dark:from-slate-900 dark:to-black rounded-lg overflow-hidden border border-slate-700 dark:border-slate-800 shadow-inner group">
-            {/* Graffiti/Street Art Background (Subtle) */}
             <div className="absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_50%_50%,rgba(59,130,246,0.4),transparent_60%)]"></div>
             <div className="absolute bottom-2 w-full h-0.5 bg-slate-500/30"></div>
 
-            {/* Robot Character on Skateboard */}
             <div className="skate-container">
               <svg
                 viewBox="0 0 100 140"
                 className="w-full h-full drop-shadow-[0_4px_6px_rgba(0,0,0,0.5)]"
               >
                 <g className="skate-body-group">
-                  {/* Head */}
                   <rect
                     x="25"
                     y="10"
@@ -221,7 +216,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     stroke="#fff"
                     strokeWidth="2"
                   />
-                  {/* Antenna */}
                   <line
                     x1="50"
                     y1="10"
@@ -237,10 +231,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     fill="#ef4444"
                     className="animate-pulse"
                   />
-                  {/* Eyes */}
                   <circle cx="40" cy="25" r="5" fill="#00f3ff" />
                   <circle cx="60" cy="25" r="5" fill="#00f3ff" />
-                  {/* Torso with attitude */}
                   <rect
                     x="25"
                     y="50"
@@ -251,7 +243,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     stroke="#64748b"
                     strokeWidth="2"
                   />
-                  {/* Arm (Back) */}
                   <rect
                     x="10"
                     y="55"
@@ -261,7 +252,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     fill="#3b82f6"
                     transform="rotate(-20 10 55)"
                   />
-                  {/* Arm (Front) */}
                   <rect
                     x="75"
                     y="55"
@@ -271,10 +261,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     fill="#3b82f6"
                     transform="rotate(20 75 55)"
                   />
-                  {/* Legs bent for skating */}
                   <rect x="30" y="90" width="12" height="15" fill="#1e293b" />
                   <rect x="58" y="90" width="12" height="15" fill="#1e293b" />
-                  {/* Skateboard Deck */}
                   <path
                     d="M15 110 Q50 115 85 110 L90 112 Q50 120 10 112 Z"
                     fill="#ec4899"
@@ -288,9 +276,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     height="3"
                     fill="#000"
                     opacity="0.5"
-                  />{" "}
-                  {/* Grip tape */}
-                  {/* Wheels */}
+                  />
                   <circle
                     cx="25"
                     cy="118"
@@ -313,13 +299,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </svg>
             </div>
 
-            {/* Speed lines effect */}
             <div className="absolute bottom-4 left-0 w-full h-1 bg-gradient-to-r from-transparent via-blue-500/20 to-transparent animate-pulse"></div>
           </div>
 
-          {/* Speech Bubble */}
           <div className="relative mt-2 bg-blue-900/40 border border-blue-500/20 rounded-lg p-3 transition-all duration-300">
-            {/* Arrow */}
             <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-blue-900/40 border-t border-l border-blue-500/20 rotate-45"></div>
 
             <div className="flex items-start gap-2">
@@ -345,9 +328,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
       </nav>
 
-      {/* Footer Controls */}
       <div className="p-4 border-t border-slate-800 dark:border-white/5 bg-slate-900/50 dark:bg-black/20 relative z-10 shrink-0">
-        {/* --- DAILY VERSE --- */}
         <div className="mb-4 text-center group cursor-default">
           <div className="flex items-center justify-center gap-2 mb-1 opacity-50 group-hover:opacity-100 transition-opacity">
             <div className="h-[1px] w-4 bg-slate-600"></div>
@@ -404,59 +385,84 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {syncJob && (
           <div className="mb-3 rounded-lg border border-white/10 bg-black/20 p-3">
-            <div className="mb-2 flex items-center justify-between text-[11px] text-slate-300">
-              <span className="font-semibold uppercase tracking-wide">
-                {syncJob.status === "running" ? "Sincronizando" : "Último Sync"}
-              </span>
-              <span>
-                {syncJob.processed}/{syncJob.total || 0}
-              </span>
-            </div>
-
-            <div className="mb-2 h-2 overflow-hidden rounded-full bg-white/10">
-              <div
-                className={clsx(
-                  "h-full transition-all duration-300",
-                  syncJob.status === "failed"
-                    ? "bg-red-500"
-                    : syncJob.status === "completed"
-                      ? "bg-emerald-500"
-                      : "bg-accent",
+            <div className="flex items-center justify-between gap-2 text-[11px] text-slate-300">
+              <div className="flex items-center gap-2">
+                <span className="font-semibold uppercase tracking-wide">
+                  {syncJob.status === "running"
+                    ? "Logs do Sync"
+                    : "Logs do Último Sync"}
+                </span>
+                <span>
+                  {syncJob.processed}/{syncJob.total || 0}
+                </span>
+              </div>
+              <button
+                onClick={() => setIsLogsCollapsed((current) => !current)}
+                type="button"
+                className="flex items-center gap-1 rounded px-2 py-1 text-[10px] text-slate-400 transition-colors hover:bg-white/5 hover:text-white"
+              >
+                {isLogsCollapsed ? "Expandir" : "Recolher"}
+                {isLogsCollapsed ? (
+                  <ChevronDown className="w-3 h-3" />
+                ) : (
+                  <ChevronUp className="w-3 h-3" />
                 )}
-                style={{ width: `${syncProgress}%` }}
-              />
+              </button>
             </div>
 
-            <div className="mb-2 text-[10px] text-slate-400">
-              <div>Sucesso: {syncJob.success}</div>
-              <div>Falhas: {syncJob.failed}</div>
-              {syncJob.currentOrderNumber && (
-                <div className="truncate">
-                  Atual: #{syncJob.currentOrderNumber}
+            {!isLogsCollapsed && (
+              <>
+                <div className="mb-2 mt-2 h-2 overflow-hidden rounded-full bg-white/10">
+                  <div
+                    className={clsx(
+                      "h-full transition-all duration-300",
+                      syncJob.status === "failed"
+                        ? "bg-red-500"
+                        : syncJob.status === "completed"
+                          ? "bg-emerald-500"
+                          : "bg-accent",
+                    )}
+                    style={{ width: `${syncProgress}%` }}
+                  />
                 </div>
-              )}
-            </div>
 
-            <div className="max-h-32 space-y-1 overflow-auto pr-1 text-[10px]">
-              {recentLogs.map((log, index) => (
-                <div
-                  key={`${log.timestamp}-${index}`}
-                  className={clsx(
-                    "rounded px-2 py-1",
-                    log.level === "error"
-                      ? "bg-red-500/10 text-red-300"
-                      : log.level === "success"
-                        ? "bg-emerald-500/10 text-emerald-300"
-                        : "bg-white/5 text-slate-300",
+                <div className="mb-2 text-[10px] text-slate-400">
+                  <div>Sucesso: {syncJob.success}</div>
+                  <div>Falhas: {syncJob.failed}</div>
+                  {syncJob.currentOrderNumber && (
+                    <div className="truncate">
+                      Atual: #{syncJob.currentOrderNumber}
+                    </div>
                   )}
-                >
-                  <div className="mb-0.5 text-[9px] text-slate-500">
-                    {new Date(log.timestamp).toLocaleTimeString()}
-                  </div>
-                  <div>{log.message}</div>
                 </div>
-              ))}
-            </div>
+
+                <div className="max-h-48 space-y-1 overflow-auto pr-1 text-[10px]">
+                  {recentLogs.length === 0 && (
+                    <div className="rounded px-2 py-1 bg-white/5 text-slate-400">
+                      Nenhum log disponível.
+                    </div>
+                  )}
+                  {recentLogs.map((log, index) => (
+                    <div
+                      key={`${log.timestamp}-${index}`}
+                      className={clsx(
+                        "rounded px-2 py-1",
+                        log.level === "error"
+                          ? "bg-red-500/10 text-red-300"
+                          : log.level === "success"
+                            ? "bg-emerald-500/10 text-emerald-300"
+                            : "bg-white/5 text-slate-300",
+                      )}
+                    >
+                      <div className="mb-0.5 text-[9px] text-slate-500">
+                        {new Date(log.timestamp).toLocaleTimeString()}
+                      </div>
+                      <div>{log.message}</div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         )}
 

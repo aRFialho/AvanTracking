@@ -9,7 +9,12 @@ import { AdminPanel } from "./components/AdminPanel";
 import { Login } from "./components/Login";
 import { Chatbot } from "./components/Chatbot";
 import { CompanySwitcher } from "./components/CompanySwitcher";
-import { Order, PageView, OrderStatus, SyncJobStatus } from "./types";
+import {
+  Order,
+  PageView,
+  OrderStatus,
+  SyncJobStatus,
+} from "./types";
 import { fetchSingleOrder } from "./services/trackingApi";
 import { Loader2 } from "lucide-react";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
@@ -44,26 +49,110 @@ const SplitIntro: React.FC = () => {
   );
 };
 
+const parseDate = (value: unknown): Date | null => {
+  if (!value) return null;
+
+  const parsed = new Date(value as string | number | Date);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const formatCountdown = (target: Date | null, nowMs: number) => {
+  if (!target) return "--:--:--";
+
+  const diffMs = Math.max(0, target.getTime() - nowMs);
+  const totalSeconds = Math.floor(diffMs / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  return [hours, minutes, seconds]
+    .map((value) => String(value).padStart(2, "0"))
+    .join(":");
+};
+
 const MainApp: React.FC = () => {
   const { isAuthenticated, isLoading, user } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
   const [currentView, setCurrentView] = useState<PageView>("dashboard");
-  const [activeFilters, setActiveFilters] = useState<any>(null); // ✅ Filters state
+  const [activeFilters, setActiveFilters] = useState<any>(null);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
+  const [nextSyncAt, setNextSyncAt] = useState<Date | null>(null);
   const [showIntro, setShowIntro] = useState(true);
   const [syncJob, setSyncJob] = useState<SyncJobStatus | null>(null);
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
+  const previousSyncStatusRef = useRef<SyncJobStatus["status"] | null>(null);
 
-  // ✅ View Change Handler
+  const normalizeOrderRecord = useCallback((order: Order) => {
+    const trackingHistory = normalizeTrackingHistory(
+      (order as any).trackingHistory ?? (order as any).trackingEvents,
+    ).map((event) => ({
+      ...event,
+      date: parseDate(event.date) ?? new Date(),
+    }));
+
+    const normalizedOrder = {
+      ...order,
+      shippingDate:
+        parseDate((order as any).shippingDate) ?? (order as any).shippingDate,
+      maxShippingDeadline:
+        parseDate((order as any).maxShippingDeadline) ??
+        (order as any).maxShippingDeadline,
+      estimatedDeliveryDate:
+        parseDate((order as any).estimatedDeliveryDate) ??
+        (order as any).estimatedDeliveryDate,
+      lastApiSync: parseDate((order as any).lastApiSync),
+      lastUpdate: parseDate((order as any).lastUpdate) ?? new Date(),
+      trackingHistory,
+    } as Order;
+
+    const effectiveStatus = getEffectiveOrderStatus(normalizedOrder);
+    const estimatedDeliveryDate = parseDate(normalizedOrder.estimatedDeliveryDate);
+    const isDelayed =
+      Boolean(estimatedDeliveryDate) &&
+      effectiveStatus !== OrderStatus.DELIVERED &&
+      new Date() > estimatedDeliveryDate;
+
+    return {
+      ...normalizedOrder,
+      status: effectiveStatus,
+      isDelayed,
+    };
+  }, []);
+
+  const upsertOrder = useCallback(
+    (incomingOrder: Order) => {
+      const normalizedIncomingOrder = normalizeOrderRecord(incomingOrder);
+
+      setOrders((previousOrders) => {
+        const existingIndex = previousOrders.findIndex(
+          (order) =>
+            order.id === normalizedIncomingOrder.id ||
+            order.orderNumber === normalizedIncomingOrder.orderNumber,
+        );
+
+        if (existingIndex === -1) {
+          return [normalizedIncomingOrder, ...previousOrders];
+        }
+
+        const nextOrders = [...previousOrders];
+        nextOrders[existingIndex] = {
+          ...nextOrders[existingIndex],
+          ...normalizedIncomingOrder,
+        };
+        return nextOrders;
+      });
+    },
+    [normalizeOrderRecord],
+  );
+
   const handleChangeView = (view: PageView) => {
     setCurrentView(view);
-    // Reset filters when switching to dashboard or other non-order views manually
     if (view !== "orders") {
       setActiveFilters(null);
     }
   };
 
-  // ✅ FUNÇÃO PARA CARREGAR DO BANCO
   const loadOrdersFromDatabase = useCallback(async () => {
     console.log("📥 Carregando pedidos do banco de dados...");
 
@@ -77,42 +166,20 @@ const MainApp: React.FC = () => {
       const data = await response.json();
       console.log("✅ Pedidos carregados do banco:", data.length);
 
-      // Filtrar pedidos cancelados e atualizar status com base no histórico
       const activeOrders = data
-        .filter((o: Order) => o.status !== OrderStatus.CANCELED)
-        .map((o: Order) => {
-          const trackingHistory = normalizeTrackingHistory(
-            (o as any).trackingHistory ?? (o as any).trackingEvents,
-          );
-          const normalizedOrder = {
-            ...o,
-            trackingHistory,
-          };
-          const effectiveStatus = getEffectiveOrderStatus(normalizedOrder);
-          // Recalcular isDelayed com base no status efetivo
-          const isDelivered = effectiveStatus === OrderStatus.DELIVERED;
-          const isDelayed =
-            !isDelivered && new Date() > new Date(o.estimatedDeliveryDate);
-
-          return {
-            ...normalizedOrder,
-            trackingHistory,
-            status: effectiveStatus,
-            isDelayed: isDelayed,
-          };
-        });
+        .filter((order: Order) => order.status !== OrderStatus.CANCELED)
+        .map((order: Order) => normalizeOrderRecord(order));
 
       setOrders(activeOrders);
     } catch (error) {
       console.error("❌ Erro ao carregar pedidos:", error);
     }
-  }, []);
-
-  const previousSyncStatusRef = useRef<SyncJobStatus["status"] | null>(null);
+  }, [normalizeOrderRecord]);
 
   const loadSyncStatus = useCallback(async () => {
     if (!user?.companyId) {
       setSyncJob(null);
+      setNextSyncAt(null);
       return;
     }
 
@@ -124,12 +191,16 @@ const MainApp: React.FC = () => {
 
       const data = await response.json();
       setSyncJob(data.job || null);
+      setNextSyncAt(parseDate(data.schedule?.nextScheduledAt));
+
+      if (data.job?.finishedAt) {
+        setLastSyncTime((current) => current ?? parseDate(data.job.finishedAt));
+      }
     } catch (error) {
       console.error("Erro ao carregar status da sincronização:", error);
     }
   }, [user?.companyId]);
 
-  // ✅ CARREGAR AO AUTENTICAR
   useEffect(() => {
     if (isAuthenticated && !isLoading) {
       console.log("🔄 Usuário autenticado, carregando pedidos...");
@@ -143,21 +214,15 @@ const MainApp: React.FC = () => {
   }, [syncJob?.status]);
 
   useEffect(() => {
-    if (syncJob?.status !== "running") return;
+    if (!isAuthenticated || isLoading) return;
 
+    const intervalMs = syncJob?.status === "running" ? 2000 : 30000;
     const statusInterval = setInterval(() => {
       loadSyncStatus();
-    }, 2000);
+    }, intervalMs);
 
-    const ordersInterval = setInterval(() => {
-      loadOrdersFromDatabase();
-    }, 5000);
-
-    return () => {
-      clearInterval(statusInterval);
-      clearInterval(ordersInterval);
-    };
-  }, [loadOrdersFromDatabase, loadSyncStatus, syncJob?.status]);
+    return () => clearInterval(statusInterval);
+  }, [isAuthenticated, isLoading, loadSyncStatus, syncJob?.status]);
 
   useEffect(() => {
     const previousStatus = previousSyncStatusRef.current;
@@ -177,15 +242,22 @@ const MainApp: React.FC = () => {
     previousSyncStatusRef.current = currentStatus;
   }, [loadOrdersFromDatabase, syncJob]);
 
-  // Intro animation
   useEffect(() => {
     const timer = setTimeout(() => {
       setShowIntro(false);
     }, 2000);
+
     return () => clearTimeout(timer);
   }, []);
 
-  // Sync Logic
+  useEffect(() => {
+    const clockInterval = setInterval(() => {
+      setNowMs(Date.now());
+    }, 1000);
+
+    return () => clearInterval(clockInterval);
+  }, []);
+
   const handleSync = useCallback(async () => {
     try {
       const response = await fetchWithAuth("/api/orders/sync-all/start", {
@@ -200,18 +272,19 @@ const MainApp: React.FC = () => {
 
       const data = await response.json();
       setSyncJob(data.job || null);
+      setNextSyncAt(parseDate(data.schedule?.nextScheduledAt));
     } catch (error) {
       console.error("Sync failed:", error);
       alert("Erro ao sincronizar com a Intelipost.");
     }
   }, []);
 
-  // Handle Single Order Fetch
   const handleFetchSingleOrder = useCallback(
     async (orderNumber: string) => {
       const localOrderIndex = orders.findIndex(
-        (o) => o.orderNumber === orderNumber,
+        (order) => order.orderNumber === orderNumber,
       );
+
       try {
         if (localOrderIndex > -1) {
           const existing = orders[localOrderIndex];
@@ -226,7 +299,10 @@ const MainApp: React.FC = () => {
             throw new Error(data.message || data.error || `HTTP ${response.status}`);
           }
 
-          await loadOrdersFromDatabase();
+          if (data.order) {
+            upsertOrder(data.order);
+          }
+
           setLastSyncTime(new Date());
           alert(`Pedido ${orderNumber} atualizado com sucesso.`);
           return;
@@ -238,103 +314,61 @@ const MainApp: React.FC = () => {
           return;
         }
 
-        if (localOrderIndex > -1) {
-          const updatedOrders = [...orders];
-          const existing = updatedOrders[localOrderIndex];
-          const newStatus = fetchedData.status || existing.status;
-          const newEstimatedDate =
-            fetchedData.estimatedDeliveryDate || existing.estimatedDeliveryDate;
-          const isDelayed =
-            new Date() > new Date(newEstimatedDate) &&
-            newStatus !== OrderStatus.DELIVERED;
+        let newOrder: Order = {
+          id: fetchedData.orderNumber || orderNumber,
+          orderNumber: fetchedData.orderNumber || orderNumber,
+          customerName: "Cliente Externo",
+          corporateName: "",
+          cpf: "",
+          cnpj: "",
+          phone: "",
+          mobile: "",
+          salesChannel: "Externo",
+          freightType: fetchedData.freightType || "Desconhecido",
+          freightValue: 0,
+          shippingDate: new Date(),
+          address: "",
+          number: "",
+          complement: "",
+          neighborhood: "",
+          city: fetchedData.city || "",
+          state: fetchedData.state || "",
+          zipCode: "",
+          totalValue: 0,
+          recipient: "",
+          maxShippingDeadline: new Date(Date.now() + 86400000 * 7),
+          estimatedDeliveryDate:
+            fetchedData.estimatedDeliveryDate || new Date(),
+          status: fetchedData.status || OrderStatus.PENDING,
+          isDelayed: false,
+          trackingHistory: fetchedData.trackingHistory || [],
+          lastUpdate: fetchedData.lastUpdate || new Date(),
+          lastApiSync: new Date(),
+        };
 
-          const updatedOrder = {
-            ...existing,
-            ...fetchedData,
-            isDelayed,
-            lastUpdate: fetchedData.lastUpdate || new Date(),
-            lastApiSync: new Date(),
-          };
-
-          // Apply Effective Status Logic
-          updatedOrder.status = getEffectiveOrderStatus(updatedOrder);
-          updatedOrder.isDelayed =
-            updatedOrder.status !== OrderStatus.DELIVERED &&
-            new Date() > new Date(updatedOrder.estimatedDeliveryDate);
-
-          updatedOrders[localOrderIndex] = updatedOrder;
-          setOrders(updatedOrders);
-          alert(`Pedido ${orderNumber} atualizado com sucesso.`);
-        } else {
-          let newOrder: Order = {
-            id: fetchedData.orderNumber || orderNumber,
-            orderNumber: fetchedData.orderNumber || orderNumber,
-            customerName: "Cliente Externo",
-            corporateName: "",
-            cpf: "",
-            cnpj: "",
-            phone: "",
-            mobile: "",
-            salesChannel: "Externo",
-            freightType: fetchedData.freightType || "Desconhecido",
-            freightValue: 0,
-            shippingDate: new Date(),
-            address: "",
-            number: "",
-            complement: "",
-            neighborhood: "",
-            city: fetchedData.city || "",
-            state: fetchedData.state || "",
-            zipCode: "",
-            totalValue: 0,
-            recipient: "",
-            maxShippingDeadline: new Date(Date.now() + 86400000 * 7),
-            estimatedDeliveryDate:
-              fetchedData.estimatedDeliveryDate || new Date(),
-            status: fetchedData.status || OrderStatus.PENDING,
-            isDelayed: false,
-            trackingHistory: fetchedData.trackingHistory || [],
-            lastUpdate: fetchedData.lastUpdate || new Date(),
-            lastApiSync: new Date(),
-          };
-
-          // Apply Effective Status
-          newOrder.status = getEffectiveOrderStatus(newOrder);
-          newOrder.isDelayed =
-            newOrder.status !== OrderStatus.DELIVERED &&
-            new Date() > new Date(newOrder.estimatedDeliveryDate);
-
-          setOrders((prev) => [newOrder, ...prev]);
-          alert(`Pedido ${orderNumber} encontrado e adicionado.`);
-        }
+        newOrder = normalizeOrderRecord(newOrder);
+        setOrders((previousOrders) => [newOrder, ...previousOrders]);
+        alert(`Pedido ${orderNumber} encontrado e adicionado.`);
       } catch (error) {
         console.error(error);
         alert("Erro ao consultar API.");
       }
     },
-    [loadOrdersFromDatabase, orders],
+    [normalizeOrderRecord, orders, upsertOrder],
   );
-
-  // Automated Sync Timer (REMOVIDO - Sync apenas manual via botão Sincronizar)
-  // Antes havia: setInterval(..., 4 * 60 * 60 * 1000)
-  // Agora: Sync APENAS quando usuário clicar em "Sincronizar"
 
   const handleOrdersUploaded = async (newOrders: Order[]) => {
     console.log("📤 Enviando", newOrders.length, "pedidos para API...");
 
-    // Os pedidos já vêm filtrados do UploadModal (sem cancelados e sem logística do canal),
-    // mas garantimos mais uma vez aqui.
-    const processedOrders = newOrders.filter((o) => {
-      if (o.status === OrderStatus.CANCELED) return false;
-      if (o.status === OrderStatus.CHANNEL_LOGISTICS) return false;
+    const processedOrders = newOrders.filter((order) => {
+      if (order.status === OrderStatus.CANCELED) return false;
+      if (order.status === OrderStatus.CHANNEL_LOGISTICS) return false;
 
       const isChannelManaged =
-        ["ColetasME2", "Shopee Xpress"].includes(toText(o.freightType)) ||
-        toText(o.freightType).toLowerCase().includes("priorit");
+        ["ColetasME2", "Shopee Xpress"].includes(toText(order.freightType)) ||
+        toText(order.freightType).toLowerCase().includes("priorit");
 
-      if (isChannelManaged) return false;
-
-      return true;
+      return !isChannelManaged;
     });
 
     if (processedOrders.length === 0) {
@@ -344,47 +378,24 @@ const MainApp: React.FC = () => {
       return;
     }
 
-    // Enviar para API
     try {
-      // Atualizar o estado local IMEDIATAMENTE para feedback instantâneo (optimistic update)
-      setOrders((prev) => {
-        // Mesclar pedidos novos/atualizados com os existentes
-        const existingMap = new Map(prev.map((o) => [o.orderNumber, o]));
-
-        processedOrders.forEach((o) => {
-          existingMap.set(o.orderNumber, {
-            ...o,
-            // Garantir que status e delay são calculados corretamente pro frontend
-            status: getEffectiveOrderStatus(o),
-            isDelayed:
-              getEffectiveOrderStatus(o) !== OrderStatus.DELIVERED &&
-              new Date() > new Date(o.estimatedDeliveryDate),
-          });
-        });
-
-        return Array.from(existingMap.values());
-      });
-
-      setCurrentView("dashboard");
-
-      // Enviar para API em background (não bloqueia a UI)
-      fetchWithAuth("/api/orders/import", {
+      const response = await fetchWithAuth("/api/orders/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orders: processedOrders }),
-      })
-        .then(async (response) => {
-          if (!response.ok) {
-            console.error("Erro na importação em background");
-          } else {
-            console.log("✅ Importação no backend concluída.");
-            // Opcional: Recarregar do banco apenas para garantir sincronia fina
-            // await loadOrdersFromDatabase();
-          }
-        })
-        .catch((err) =>
-          console.error("Erro fatal no fetch de importação", err),
-        );
+      });
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error || `HTTP ${response.status}`);
+      }
+
+      await loadOrdersFromDatabase();
+      setCurrentView("dashboard");
+
+      if (data.message) {
+        alert(data.message);
+      }
     } catch (error) {
       console.error("❌ Erro ao enviar para API:", error);
       alert(
@@ -474,7 +485,7 @@ const MainApp: React.FC = () => {
           <h1 className="text-xl font-bold text-slate-800 dark:text-white tracking-tight flex items-center gap-2">
             {currentView === "dashboard" && (
               <>
-                <span className="text-accent dark:text-neon-blue">●</span>{" "}
+                <span className="text-accent dark:text-neon-blue">●</span>
                 Dashboard Executivo
               </>
             )}
@@ -497,6 +508,14 @@ const MainApp: React.FC = () => {
                 <Loader2 className="w-4 h-4 animate-spin" />
                 Sincronizando...
               </span>
+            )}
+            {!isSyncing && nextSyncAt && (
+              <div className="flex flex-col items-end font-mono text-[11px] opacity-80">
+                <span className="text-[10px] uppercase tracking-wide opacity-60">
+                  Próximo sync
+                </span>
+                <span>{formatCountdown(nextSyncAt, nowMs)}</span>
+              </div>
             )}
             {!isSyncing && lastSyncTime && (
               <span className="font-mono text-xs opacity-70">

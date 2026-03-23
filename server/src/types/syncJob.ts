@@ -20,3 +20,9 @@ export interface SyncJobStatus {
   error: string | null;
   logs: SyncLogEntry[];
 }
+
+export interface SyncScheduleStatus {
+  enabled: true;
+  intervalMs: number;
+  nextScheduledAt: string | null;
+}

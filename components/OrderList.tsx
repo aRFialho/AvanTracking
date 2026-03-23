@@ -292,10 +292,6 @@ export const OrderList: React.FC<OrderListProps> = ({
     }
   };
 
-  const syncProgress =
-    syncJob && syncJob.total > 0
-      ? Math.min(100, Math.round((syncJob.processed / syncJob.total) * 100))
-      : 0;
   const isSyncRunning = isSyncing || syncJob?.status === "running";
 
   // Modern Status Badge
@@ -594,27 +590,6 @@ export const OrderList: React.FC<OrderListProps> = ({
             )}
           </button>
 
-          {syncJob && (
-            <div className="mt-2 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-white/5 p-3 text-xs">
-              <div className="mb-2 flex justify-between text-slate-500 dark:text-slate-400">
-                <span>Status: {syncJob.status}</span>
-                <span>
-                  {syncJob.processed}/{syncJob.total || 0}
-                </span>
-              </div>
-              <div className="mb-2 h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-white/10">
-                <div
-                  className="h-full bg-accent transition-all duration-300"
-                  style={{ width: `${syncProgress}%` }}
-                />
-              </div>
-              {syncJob.currentOrderNumber && (
-                <div className="truncate text-slate-600 dark:text-slate-300">
-                  Atualizando pedido #{syncJob.currentOrderNumber}
-                </div>
-              )}
-            </div>
-          )}
         </div>
       </div>
 

@@ -83,7 +83,7 @@ const KNOWLEDGE_BASE: KnowledgeItem[] = [
   {
     keywords: ["sync", "sincronizar", "atualizar", "tempo", "automático"],
     response:
-      "## 🔄 Sincronização\n\nO sistema mantém os dados atualizados de duas formas:\n\n1. Automática: Ocorre a cada 1 hora em segundo plano.\n2. Manual: Clique no botão 'Sincronizar' no rodapé da barra lateral para forçar uma atualização imediata de todos os pedidos ativos.",
+      "## 🔄 Sincronização\n\nO sistema mantém os dados atualizados de duas formas:\n\n1. Automática: Ocorre a cada 4 horas em segundo plano.\n2. Manual: Clique no botão 'Sincronizar' no rodapé da barra lateral para forçar uma atualização imediata de todos os pedidos ativos.",
   },
   {
     keywords: [
