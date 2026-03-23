@@ -46,6 +46,18 @@ const safeNumber = (value: any): number => {
   return isNaN(num) ? 0 : num;
 };
 
+const mapTrackingEventsToHistory = (trackingEvents: any[] | undefined) => {
+  if (!Array.isArray(trackingEvents)) return [];
+
+  return trackingEvents.map((event) => ({
+    status: safeString(event.status) || 'UNKNOWN',
+    description: safeString(event.description) || 'Evento de rastreamento',
+    date: safeDate(event.eventDate) || new Date(),
+    city: safeString(event.city) || '',
+    state: safeString(event.state) || '',
+  }));
+};
+
 // ✅ IMPORTAÇÃO OTIMIZADA EM LOTE COM TRACKING EVENTS
 export const importOrders = async (req: Request, res: Response) => {
   console.log('📦 Iniciando importação em lote...');
@@ -267,7 +279,8 @@ export const getOrders = async (req: Request, res: Response) => {
     const formattedOrders = orders.map(o => ({
       ...o,
       orderNumber: String(o.orderNumber),
-      status: o.status as OrderStatus
+      status: o.status as OrderStatus,
+      trackingHistory: mapTrackingEventsToHistory(o.trackingEvents),
     }));
 
     res.json(formattedOrders);
@@ -300,7 +313,11 @@ export const getOrderById = async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Pedido não encontrado' });
     }
 
-    return res.json(order);
+    return res.json({
+      ...order,
+      orderNumber: String(order.orderNumber),
+      trackingHistory: mapTrackingEventsToHistory(order.trackingEvents),
+    });
   } catch (error) {
     console.error('Erro ao buscar pedido:', error);
     return res.status(500).json({ error: 'Erro ao buscar pedido' });
@@ -315,12 +332,18 @@ const trackingService = new TrackingService();
 export const syncSingleOrder = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+    // @ts-ignore
+    const user = req.user;
 
     if (typeof id !== 'string') {
       return res.status(400).json({ error: 'ID inválido' });
     }
 
-    const result = await trackingService.syncOrder(id);
+    if (!user || !user.companyId) {
+      return res.status(403).json({ error: 'Acesso negado. UsuÃ¡rio sem empresa.' });
+    }
+
+    const result = await trackingService.syncOrder(id, user.companyId);
 
     if (result.success) {
       const order = await prisma.order.findUnique({
@@ -336,7 +359,11 @@ export const syncSingleOrder = async (req: Request, res: Response) => {
       return res.json({
         success: true,
         message: result.message,
-        order
+        order: order ? {
+          ...order,
+          orderNumber: String(order.orderNumber),
+          trackingHistory: mapTrackingEventsToHistory(order.trackingEvents),
+        } : null
       });
     } else {
       return res.status(400).json({
@@ -353,7 +380,14 @@ export const syncSingleOrder = async (req: Request, res: Response) => {
 // POST /api/orders/sync-all
 export const syncAllOrders = async (req: Request, res: Response) => {
   try {
-    const results = await trackingService.syncAllActive();
+    // @ts-ignore
+    const user = req.user;
+
+    if (!user || !user.companyId) {
+      return res.status(403).json({ error: 'Acesso negado. UsuÃ¡rio sem empresa.' });
+    }
+
+    const results = await trackingService.syncAllActive(user.companyId);
 
     return res.json({
       success: true,

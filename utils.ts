@@ -6,6 +6,18 @@ export const toText = (value: unknown): string => {
   return String(value);
 };
 
+export const normalizeTrackingHistory = (value: unknown) => {
+  if (!Array.isArray(value)) return [];
+
+  return value.map((event) => ({
+    status: toText((event as any)?.status) || "UNKNOWN",
+    description: toText((event as any)?.description) || "Evento de rastreamento",
+    date: (event as any)?.date ?? new Date(),
+    city: toText((event as any)?.city),
+    state: toText((event as any)?.state),
+  }));
+};
+
 export const mapIntelipostStatusToEnum = (status: string): OrderStatus => {
   const s = status ? status.toUpperCase() : '';
   if (s.includes('ENTREGUE') || s.includes('DELIVERED')) return OrderStatus.DELIVERED;
@@ -27,12 +39,14 @@ export const mapIntelipostStatusToEnum = (status: string): OrderStatus => {
  * Caso contrário, retorna o status atual do pedido.
  */
 export const getEffectiveOrderStatus = (order: Order): OrderStatus => {
-  if (!order.trackingHistory || order.trackingHistory.length === 0) {
+  const trackingHistory = normalizeTrackingHistory(order.trackingHistory);
+
+  if (trackingHistory.length === 0) {
     return order.status;
   }
 
   // Encontrar o evento mais recente
-  const latestEvent = order.trackingHistory.reduce((prev, current) => {
+  const latestEvent = trackingHistory.reduce((prev, current) => {
     return (new Date(prev.date) > new Date(current.date)) ? prev : current;
   });
 
@@ -115,23 +129,16 @@ export const isOrderOnTime = (order: Order): boolean => {
  */
 export const isOrderOnRoute = (order: Order): boolean => {
   if (order.status === OrderStatus.DELIVERY_ATTEMPT) return true;
-  
-  if (order.trackingHistory && order.trackingHistory.length > 0) {
-    const lastStatus = order.trackingHistory[0].status; // Assuming sorted descending or check logic
-    // Usually trackingHistory is not guaranteed sorted here unless we sort it.
-    // However, in our components we sort it. Here let's just check if the 0th element (if it is the latest) matches.
-    // Ideally trackingHistory should be sorted by date descending.
-    // If not sorted, we should find the latest event.
-    // But for safety, let's just check the first one assuming it's latest or check if ANY recent event is TO_BE_DELIVERED? No, must be latest.
-    // Let's assume the caller passes sorted history or we find max date.
-    
-    // Simple check: most recent event
-    const latestEvent = order.trackingHistory.reduce((prev, current) => {
-        return (new Date(prev.date) > new Date(current.date)) ? prev : current;
+
+  const trackingHistory = normalizeTrackingHistory(order.trackingHistory);
+
+  if (trackingHistory.length > 0) {
+    const latestEvent = trackingHistory.reduce((prev, current) => {
+      return (new Date(prev.date) > new Date(current.date)) ? prev : current;
     });
-    
+
     return latestEvent.status === "TO_BE_DELIVERED";
   }
-  
+
   return false;
 };

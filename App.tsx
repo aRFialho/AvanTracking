@@ -10,15 +10,12 @@ import { Login } from "./components/Login";
 import { Chatbot } from "./components/Chatbot";
 import { CompanySwitcher } from "./components/CompanySwitcher";
 import { Order, PageView, OrderStatus } from "./types";
-import {
-  syncOrdersWithIntelipost,
-  fetchSingleOrder,
-} from "./services/trackingApi";
+import { fetchSingleOrder } from "./services/trackingApi";
 import { Loader2 } from "lucide-react";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { LOGO_URL } from "./constants";
-import { getEffectiveOrderStatus, toText } from "./utils";
+import { getEffectiveOrderStatus, normalizeTrackingHistory, toText } from "./utils";
 import { TruckCursor } from "./components/TruckCursor";
 import { fetchWithAuth } from "./utils/authFetch";
 
@@ -83,14 +80,22 @@ const MainApp: React.FC = () => {
       const activeOrders = data
         .filter((o: Order) => o.status !== OrderStatus.CANCELED)
         .map((o: Order) => {
-          const effectiveStatus = getEffectiveOrderStatus(o);
+          const trackingHistory = normalizeTrackingHistory(
+            (o as any).trackingHistory ?? (o as any).trackingEvents,
+          );
+          const normalizedOrder = {
+            ...o,
+            trackingHistory,
+          };
+          const effectiveStatus = getEffectiveOrderStatus(normalizedOrder);
           // Recalcular isDelayed com base no status efetivo
           const isDelivered = effectiveStatus === OrderStatus.DELIVERED;
           const isDelayed =
             !isDelivered && new Date() > new Date(o.estimatedDeliveryDate);
 
           return {
-            ...o,
+            ...normalizedOrder,
+            trackingHistory,
             status: effectiveStatus,
             isDelayed: isDelayed,
           };
@@ -123,23 +128,17 @@ const MainApp: React.FC = () => {
     if (orders.length === 0) return;
     setIsSyncing(true);
     try {
-      const updatedOrders = await syncOrdersWithIntelipost(orders);
-      const activeOrders = updatedOrders
-        .filter((o) => o.status !== OrderStatus.CANCELED)
-        .map((o: Order) => {
-          const effectiveStatus = getEffectiveOrderStatus(o);
-          // Recalcular isDelayed com base no status efetivo
-          const isDelivered = effectiveStatus === OrderStatus.DELIVERED;
-          const isDelayed =
-            !isDelivered && new Date() > new Date(o.estimatedDeliveryDate);
+      const response = await fetchWithAuth("/api/orders/sync-all", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
 
-          return {
-            ...o,
-            status: effectiveStatus,
-            isDelayed: isDelayed,
-          };
-        });
-      setOrders(activeOrders);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP ${response.status}`);
+      }
+
+      await loadOrdersFromDatabase();
       setLastSyncTime(new Date());
     } catch (error) {
       console.error("Sync failed:", error);
@@ -147,7 +146,7 @@ const MainApp: React.FC = () => {
     } finally {
       setIsSyncing(false);
     }
-  }, [orders]);
+  }, [orders.length, loadOrdersFromDatabase]);
 
   // Handle Single Order Fetch
   const handleFetchSingleOrder = useCallback(
@@ -156,6 +155,25 @@ const MainApp: React.FC = () => {
         (o) => o.orderNumber === orderNumber,
       );
       try {
+        if (localOrderIndex > -1) {
+          const existing = orders[localOrderIndex];
+          const response = await fetchWithAuth(`/api/orders/${existing.id}/sync`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+          });
+
+          const data = await response.json().catch(() => ({}));
+
+          if (!response.ok) {
+            throw new Error(data.message || data.error || `HTTP ${response.status}`);
+          }
+
+          await loadOrdersFromDatabase();
+          setLastSyncTime(new Date());
+          alert(`Pedido ${orderNumber} atualizado com sucesso.`);
+          return;
+        }
+
         const fetchedData = await fetchSingleOrder(orderNumber);
         if (!fetchedData) {
           alert(`Pedido ${orderNumber} não encontrado na Intelipost.`);
@@ -236,7 +254,7 @@ const MainApp: React.FC = () => {
         alert("Erro ao consultar API.");
       }
     },
-    [orders],
+    [loadOrdersFromDatabase, orders],
   );
 
   // Automated Sync Timer (REMOVIDO - Sync apenas manual via botão Sincronizar)

@@ -812,9 +812,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
       </div>
 
       {/* ================= 3. CHARTS & LISTS AREA ================= */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 min-w-0">
         {/* Left Column: Month Summary & Chart */}
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-6 min-w-0">
           {/* Month Summary */}
           <div className="glass-card rounded-xl border border-slate-200 dark:border-white/10 overflow-hidden flex flex-col">
             <div className="p-4 border-b border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5">
@@ -911,15 +911,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
 
           {/* Status Chart Card */}
-          <div className="glass-card rounded-xl border border-slate-200 dark:border-white/10 p-5 flex flex-col flex-1">
+          <div className="glass-card rounded-xl border border-slate-200 dark:border-white/10 p-5 flex flex-col flex-1 min-w-0">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-bold text-slate-800 dark:text-white flex items-center gap-2">
                 <PieChartIcon className="w-4 h-4 text-accent" />
                 Distribuição
               </h3>
             </div>
-            <div className="h-[250px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
+            <div className="h-[250px] w-full min-w-0 min-h-[250px]">
+              <ResponsiveContainer width="99%" height="100%" minWidth={0}>
                 <PieChart>
                   <Pie
                     data={statusChartData}
@@ -964,7 +964,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
 
         {/* Right: Detailed Ranking List */}
-        <div className="lg:col-span-2 glass-card rounded-xl border border-slate-200 dark:border-white/10 overflow-hidden flex flex-col">
+        <div className="lg:col-span-2 glass-card rounded-xl border border-slate-200 dark:border-white/10 overflow-hidden flex flex-col min-w-0">
           <div className="p-4 border-b border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 flex justify-between items-center">
             <h3 className="font-bold text-slate-800 dark:text-white">
               Ranking de Transportadoras

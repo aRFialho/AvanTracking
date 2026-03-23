@@ -41,7 +41,7 @@ query ($clientId: ID, $orderNumber: String, $orderHash: String) {
 const mapIntelipostStatusToEnum = (status: string): OrderStatus => {
   const s = status ? status.toUpperCase() : '';
   if (s.includes('ENTREGUE') || s.includes('DELIVERED')) return OrderStatus.DELIVERED;
-  if (s.includes('EM TRÂNSITO') || s.includes('SHIPPED') || s.includes('TRANSIT')) return OrderStatus.SHIPPED;
+  if (s.includes('EM TRÃ‚NSITO') || s.includes('SHIPPED') || s.includes('TRANSIT')) return OrderStatus.SHIPPED;
   if (s.includes('SAIU PARA ENTREGA') || s.includes('DELIVERY_ATTEMPT')) return OrderStatus.DELIVERY_ATTEMPT;
   if (s.includes('CRIADO') || s.includes('CREATED')) return OrderStatus.CREATED;
   if (s.includes('FALHA') || s.includes('FAILURE') || s.includes('ROUBO') || s.includes('AVARIA')) return OrderStatus.FAILURE;
@@ -51,9 +51,6 @@ const mapIntelipostStatusToEnum = (status: string): OrderStatus => {
 };
 
 export class TrackingService {
-  /**
-   * Buscar dados de rastreio da Intelipost
-   */
   private async fetchFromIntelipost(orderNumber: string) {
     try {
       const payload = {
@@ -93,33 +90,36 @@ export class TrackingService {
     }
   }
 
-  /**
-   * Sincronizar rastreio de um pedido específico
-   */
-  async syncOrder(orderId: string) {
+  async syncOrder(orderId: string, companyId?: string | null) {
     try {
       const order = await prisma.order.findUnique({
         where: { id: orderId }
       });
 
       if (!order) {
-        return { success: false, message: 'Pedido não encontrado' };
+        return { success: false, message: 'Pedido nÃ£o encontrado' };
       }
 
-      // Skip se já finalizado
-      const finalizedStatuses: OrderStatus[] = [OrderStatus.DELIVERED, OrderStatus.FAILURE, OrderStatus.RETURNED, OrderStatus.CANCELED];
+      if (companyId && order.companyId !== companyId) {
+        return { success: false, message: 'Pedido nÃ£o pertence Ã  empresa ativa' };
+      }
+
+      const finalizedStatuses: OrderStatus[] = [
+        OrderStatus.DELIVERED,
+        OrderStatus.FAILURE,
+        OrderStatus.RETURNED,
+        OrderStatus.CANCELED,
+      ];
 
       if (finalizedStatuses.includes(order.status)) {
-        return { success: false, message: 'Pedido já finalizado' };
+        return { success: false, message: 'Pedido jÃ¡ finalizado' };
       }
 
-      // Verificar se é logística do canal
       const isChannelManaged =
         ['ColetasME2', 'Shopee Xpress'].includes(order.freightType || '') ||
         (order.freightType || '').toLowerCase().includes('priorit');
 
       if (isChannelManaged) {
-        // Atualizar para CHANNEL_LOGISTICS se ainda não estiver
         if (order.status !== OrderStatus.CHANNEL_LOGISTICS) {
           await prisma.order.update({
             where: { id: orderId },
@@ -129,14 +129,12 @@ export class TrackingService {
             }
           });
         }
-        return { success: true, message: 'Logística gerenciada pelo canal' };
+        return { success: true, message: 'LogÃ­stica gerenciada pelo canal' };
       }
 
-      // Buscar dados da Intelipost
       const trackingData = await this.fetchFromIntelipost(order.orderNumber);
 
       if (!trackingData) {
-        // Salvar erro no banco
         await prisma.order.update({
           where: { id: orderId },
           data: {
@@ -147,15 +145,13 @@ export class TrackingService {
         return { success: false, message: 'Sem dados de rastreio' };
       }
 
-      // Mapear status
       const newStatus = mapIntelipostStatusToEnum(trackingData.tracking.status);
-      
-      // Atualizar pedido
       const estimatedDate = trackingData.tracking.estimated_delivery_date_lp
         ? new Date(trackingData.tracking.estimated_delivery_date_lp)
         : order.estimatedDeliveryDate;
 
-      const isDelayed = estimatedDate && new Date() > estimatedDate && newStatus !== OrderStatus.DELIVERED;
+      const isDelayed =
+        estimatedDate && new Date() > estimatedDate && newStatus !== OrderStatus.DELIVERED;
 
       await prisma.order.update({
         where: { id: orderId },
@@ -170,7 +166,6 @@ export class TrackingService {
         }
       });
 
-      // Salvar eventos de rastreio (limpar antigos e inserir novos)
       await prisma.trackingEvent.deleteMany({
         where: { orderId }
       });
@@ -191,22 +186,24 @@ export class TrackingService {
       }
 
       return { success: true, message: 'Rastreio atualizado com sucesso' };
-
     } catch (error) {
       console.error('Erro ao sincronizar rastreio:', error);
       return { success: false, message: 'Erro ao sincronizar', error };
     }
   }
 
-  /**
-   * Sincronizar todos os pedidos ativos (não finalizados)
-   */
-  async syncAllActive() {
+  async syncAllActive(companyId?: string | null) {
     try {
       const activeOrders = await prisma.order.findMany({
         where: {
+          ...(companyId ? { companyId } : {}),
           status: {
-            notIn: [OrderStatus.DELIVERED, OrderStatus.FAILURE, OrderStatus.RETURNED, OrderStatus.CANCELED]
+            notIn: [
+              OrderStatus.DELIVERED,
+              OrderStatus.FAILURE,
+              OrderStatus.RETURNED,
+              OrderStatus.CANCELED,
+            ]
           }
         }
       });
@@ -219,8 +216,8 @@ export class TrackingService {
       };
 
       for (const order of activeOrders) {
-        const result = await this.syncOrder(order.id);
-        
+        const result = await this.syncOrder(order.id, companyId);
+
         if (result.success) {
           results.success++;
         } else {
@@ -228,7 +225,6 @@ export class TrackingService {
           results.errors.push(`${order.orderNumber}: ${result.message}`);
         }
 
-        // Delay entre requisições para não sobrecarregar API
         await new Promise(resolve => setTimeout(resolve, 500));
       }
 

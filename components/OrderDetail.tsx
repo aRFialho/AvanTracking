@@ -2,7 +2,7 @@ import React from "react";
 import { Order, OrderStatus } from "../types";
 import { X, MapPin, Calendar, Truck, User, CreditCard } from "lucide-react";
 import { clsx } from "clsx";
-import { normalizeCarrierName } from "../utils";
+import { normalizeCarrierName, normalizeTrackingHistory } from "../utils";
 
 const STATUS_TRANSLATIONS: Record<string, string> = {
   PENDING: "Aguardando Envio",
@@ -58,8 +58,9 @@ interface OrderDetailProps {
 }
 
 export const OrderDetail: React.FC<OrderDetailProps> = ({ order, onClose }) => {
+  const trackingHistory = normalizeTrackingHistory(order.trackingHistory);
   // Sort history descending
-  const sortedHistory = [...order.trackingHistory].sort(
+  const sortedHistory = [...trackingHistory].sort(
     (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
   );
 
