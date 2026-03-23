@@ -1,12 +1,15 @@
 
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
+import { ensureDemoCompanyData } from '../services/demoCompanyService';
 
 const prisma = new PrismaClient();
 
 // Listar todas as empresas
 export const getCompanies = async (req: Request, res: Response) => {
   try {
+    await ensureDemoCompanyData(prisma);
+
     const companies = await prisma.company.findMany({
       orderBy: { name: 'asc' }
     });
