@@ -25,7 +25,7 @@ import {
   getEffectiveOrderStatus,
   normalizeTrackingHistory,
   toText,
-  isChannelManagedFreight,
+  isExcludedPlatformFreight,
 } from "./utils";
 import { TruckCursor } from "./components/TruckCursor";
 import { fetchWithAuth } from "./utils/authFetch";
@@ -427,6 +427,11 @@ const MainApp: React.FC = () => {
           return;
         }
 
+        if (isExcludedPlatformFreight(fetchedData.freightType)) {
+          alert(`Pedido ${orderNumber} ignorado pelo tipo de frete.`);
+          return;
+        }
+
         let newOrder: Order = {
           id: fetchedData.orderNumber || orderNumber,
           orderNumber: fetchedData.orderNumber || orderNumber,
@@ -477,7 +482,7 @@ const MainApp: React.FC = () => {
       if (order.status === OrderStatus.CANCELED) return false;
       if (order.status === OrderStatus.CHANNEL_LOGISTICS) return false;
 
-      return !isChannelManagedFreight(order.freightType);
+      return !isExcludedPlatformFreight(order.freightType);
     });
 
     if (processedOrders.length === 0) {

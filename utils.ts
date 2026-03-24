@@ -18,7 +18,7 @@ export const normalizeTrackingHistory = (value: unknown) => {
   }));
 };
 
-export const normalizeChannelManagedFreight = (
+export const normalizeExcludedPlatformFreight = (
   freightType: string | null | undefined,
 ): string | null => {
   const normalized = toText(freightType).trim().toLowerCase();
@@ -40,16 +40,29 @@ export const normalizeChannelManagedFreight = (
     return "Shopee Xpress";
   }
 
+  if (
+    normalized.includes("sedex") ||
+    normalized.includes("correios pac") ||
+    normalized === "pac" ||
+    normalized.includes(" pac ")
+  ) {
+    return "Correios";
+  }
+
   return null;
 };
 
 export const isChannelManagedFreight = (
   freightType: string | null | undefined,
-): boolean => Boolean(normalizeChannelManagedFreight(freightType));
+): boolean => Boolean(normalizeExcludedPlatformFreight(freightType));
+
+export const isExcludedPlatformFreight = (
+  freightType: string | null | undefined,
+): boolean => Boolean(normalizeExcludedPlatformFreight(freightType));
 
 export const isChannelManagedOrder = (order: Pick<Order, "status" | "freightType">) =>
   order.status === OrderStatus.CHANNEL_LOGISTICS ||
-  isChannelManagedFreight(order.freightType);
+  isExcludedPlatformFreight(order.freightType);
 
 export const parseOptionalDate = (value: unknown): Date | null => {
   if (!value) return null;

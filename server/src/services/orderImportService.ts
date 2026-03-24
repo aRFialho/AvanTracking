@@ -1,4 +1,5 @@
 import { PrismaClient, OrderStatus } from '@prisma/client';
+import { isExcludedPlatformFreight } from '../utils/orderExclusion';
 
 const prisma = new PrismaClient();
 
@@ -153,6 +154,11 @@ export const importOrdersForCompany = async (companyId: string, orders: any[]) =
   for (const orderData of orders) {
     const orderNumber = safeString(orderData?.orderNumber);
     if (!orderNumber) {
+      skipped += 1;
+      continue;
+    }
+
+    if (isExcludedPlatformFreight(orderData?.freightType)) {
       skipped += 1;
       continue;
     }

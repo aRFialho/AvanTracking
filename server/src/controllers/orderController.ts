@@ -4,6 +4,7 @@ import { syncJobService } from '../services/syncJobService';
 import { TrackingService } from '../services/trackingService';
 import { syncReportService } from '../services/syncReportService';
 import { importOrdersForCompany } from '../services/orderImportService';
+import { isExcludedPlatformFreight } from '../utils/orderExclusion';
 
 const prisma = new PrismaClient();
 const trackingService = new TrackingService();
@@ -61,6 +62,10 @@ const formatOrderForResponse = (order: any) => ({
   lastUpdate: getMovementDate(order),
 });
 
+const shouldExcludeOrderFromPlatform = (order: any) =>
+  order.status === OrderStatus.CHANNEL_LOGISTICS ||
+  isExcludedPlatformFreight(order.freightType);
+
 export const importOrders = async (req: Request, res: Response) => {
   console.log('Importando pedidos em lote...');
 
@@ -116,7 +121,11 @@ export const getOrders = async (req: Request, res: Response) => {
       orderBy: { createdAt: 'desc' },
     });
 
-    return res.json(orders.map(formatOrderForResponse));
+    return res.json(
+      orders
+        .filter((order) => !shouldExcludeOrderFromPlatform(order))
+        .map(formatOrderForResponse),
+    );
   } catch (error) {
     console.error('Erro ao buscar pedidos:', error);
     return res.status(500).json({ error: 'Erro ao buscar pedidos' });
@@ -142,6 +151,10 @@ export const getOrderById = async (req: Request, res: Response) => {
     });
 
     if (!order) {
+      return res.status(404).json({ error: 'Pedido nao encontrado' });
+    }
+
+    if (shouldExcludeOrderFromPlatform(order)) {
       return res.status(404).json({ error: 'Pedido nao encontrado' });
     }
 
@@ -184,6 +197,13 @@ export const syncSingleOrder = async (req: Request, res: Response) => {
         },
       },
     });
+
+    if (order && shouldExcludeOrderFromPlatform(order)) {
+      return res.status(404).json({
+        success: false,
+        message: 'Pedido excluido da plataforma pelo tipo de frete.',
+      });
+    }
 
     return res.json({
       success: true,

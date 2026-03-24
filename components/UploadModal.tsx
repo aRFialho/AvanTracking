@@ -71,6 +71,15 @@ export const UploadModal: React.FC<UploadModalProps> = ({ onUpload }) => {
       return "Shopee Xpress";
     }
 
+    if (
+      type.includes("sedex") ||
+      type.includes("correios pac") ||
+      type === "pac" ||
+      type.includes(" pac ")
+    ) {
+      return "Correios";
+    }
+
     // Default return original or placeholder
     return String(rawType || '').trim() || 'Aguardando Sincronização';
   };
@@ -113,7 +122,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({ onUpload }) => {
 
       // 🛑 EXCLUDE CHANNEL LOGISTICS ORDERS IMMEDIATELY
       const isChannelManaged =
-        ["ColetasME2", "Shopee Xpress"].includes(normalizedFreight) ||
+        ["ColetasME2", "Shopee Xpress", "Correios"].includes(normalizedFreight) ||
         normalizedFreight.toLowerCase().includes("priorit");
 
       if (isChannelManaged) {

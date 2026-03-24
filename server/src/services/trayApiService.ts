@@ -1,6 +1,7 @@
 import axios, { AxiosInstance } from 'axios';
 import { trayAuthService } from './trayAuthService';
 import { trayRateLimiter } from './rateLimiter';
+import { normalizeExcludedPlatformFreight } from '../utils/orderExclusion';
 
 interface TrayPaging {
   total: number;
@@ -205,7 +206,7 @@ export class TrayApiService {
   mapTrayOrderToSystem(trayOrder: any): any {
     const customer = trayOrder.Customer || {};
     const mainAddress = customer.CustomerAddresses?.[0]?.CustomerAddress || {};
-    const normalizedChannelFreight = normalizeChannelManagedFreight(
+    const normalizedChannelFreight = normalizeExcludedPlatformFreight(
       trayOrder.shipment,
     );
 

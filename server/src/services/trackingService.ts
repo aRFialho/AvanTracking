@@ -4,6 +4,7 @@ import type {
   SyncReportSnapshot,
   TrackingSyncReportPayload,
 } from '../types/syncReport';
+import { normalizeExcludedPlatformFreight } from '../utils/orderExclusion';
 
 const prisma = new PrismaClient();
 
@@ -181,16 +182,31 @@ export class TrackingService {
       select: {
         status: true,
         isDelayed: true,
+        freightType: true,
       },
     });
 
     return {
-      totalTracked: orders.length,
-      delivered: orders.filter((order) => order.status === OrderStatus.DELIVERED)
-        .length,
-      onRoute: orders.filter((order) => isRouteStatus(order.status)).length,
-      delayed: orders.filter((order) => order.isDelayed).length,
-      failure: orders.filter((order) => order.status === OrderStatus.FAILURE).length,
+      totalTracked: orders.filter((order) => !normalizeExcludedPlatformFreight(order.freightType)).length,
+      delivered: orders.filter(
+        (order) =>
+          !normalizeExcludedPlatformFreight(order.freightType) &&
+          order.status === OrderStatus.DELIVERED,
+      ).length,
+      onRoute: orders.filter(
+        (order) =>
+          !normalizeExcludedPlatformFreight(order.freightType) &&
+          isRouteStatus(order.status),
+      ).length,
+      delayed: orders.filter(
+        (order) =>
+          !normalizeExcludedPlatformFreight(order.freightType) && order.isDelayed,
+      ).length,
+      failure: orders.filter(
+        (order) =>
+          !normalizeExcludedPlatformFreight(order.freightType) &&
+          order.status === OrderStatus.FAILURE,
+      ).length,
     };
   }
 
@@ -261,8 +277,8 @@ export class TrackingService {
         };
       }
 
-      const channelManagedFreight = normalizeChannelManagedFreight(order.freightType);
-      const isChannelManaged = Boolean(channelManagedFreight);
+      const excludedFreight = normalizeExcludedPlatformFreight(order.freightType);
+      const isChannelManaged = Boolean(excludedFreight);
 
       if (isChannelManaged) {
         if (order.status !== OrderStatus.CHANNEL_LOGISTICS) {
@@ -270,7 +286,7 @@ export class TrackingService {
           await prisma.order.update({
             where: { id: orderId },
             data: {
-              freightType: channelManagedFreight,
+              freightType: excludedFreight,
               status: OrderStatus.CHANNEL_LOGISTICS,
               lastApiSync: syncedAt,
             },
@@ -281,7 +297,7 @@ export class TrackingService {
             message: 'LogÃƒÂ­stica gerenciada pelo canal',
             change: {
               ...baseChange,
-              freightType: channelManagedFreight,
+              freightType: excludedFreight,
               currentStatus: OrderStatus.CHANNEL_LOGISTICS,
               lastApiSync: syncedAt.toISOString(),
               changed:
@@ -295,7 +311,7 @@ export class TrackingService {
           message: 'LogÃƒÂ­stica gerenciada pelo canal',
           change: {
             ...baseChange,
-            freightType: channelManagedFreight,
+              freightType: excludedFreight,
           },
         };
       }
@@ -446,6 +462,9 @@ export class TrackingService {
       const activeOrders = await prisma.order.findMany({
         where: {
           ...(companyId ? { companyId } : {}),
+          freightType: {
+            notIn: ['ColetasME2', 'Shopee Xpress', 'Correios'],
+          },
           status: {
             notIn: FINALIZED_STATUSES,
           },
