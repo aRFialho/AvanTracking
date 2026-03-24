@@ -45,7 +45,7 @@ export interface SyncJobStatus {
 }
 
 export interface SyncScheduleStatus {
-  enabled: true;
+  enabled: boolean;
   intervalMs: number;
   nextScheduledAt: string | null;
 }

@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { traySyncJobService } from '../services/traySyncJobService';
 import { traySyncService } from '../services/traySyncService';
+import { trayAuthService } from '../services/trayAuthService';
 
 const getUserCompany = (req: Request) => {
   if (!req.user) {
@@ -26,6 +27,13 @@ export const syncTrayOrders = async (req: Request, res: Response) => {
       return res.status(context.status).json({ error: context.error });
     }
 
+    const auth = await trayAuthService.getCurrentAuth();
+    if (!auth) {
+      return res.status(400).json({
+        error: 'Nenhuma integracao Tray autorizada para a empresa atual.',
+      });
+    }
+
     traySyncJobService.ensureSchedule(context.companyId, context.userId);
     const result = await traySyncService.executeSync(context.companyId, req.body || {});
     return res.json(result);
@@ -43,6 +51,13 @@ export const startTraySyncJob = async (req: Request, res: Response) => {
     const context = getUserCompany(req);
     if ('error' in context) {
       return res.status(context.status).json({ error: context.error });
+    }
+
+    const auth = await trayAuthService.getCurrentAuth();
+    if (!auth) {
+      return res.status(400).json({
+        error: 'Nenhuma integracao Tray autorizada para a empresa atual.',
+      });
     }
 
     traySyncJobService.ensureSchedule(context.companyId, context.userId);
@@ -82,6 +97,15 @@ export const getTraySyncStatus = async (req: Request, res: Response) => {
     const context = getUserCompany(req);
     if ('error' in context) {
       return res.status(context.status).json({ error: context.error });
+    }
+
+    const auth = await trayAuthService.getCurrentAuth();
+    if (!auth) {
+      return res.json({
+        success: true,
+        job: null,
+        schedule: traySyncJobService.getDisabledSchedule(),
+      });
     }
 
     traySyncJobService.ensureSchedule(context.companyId, context.userId);

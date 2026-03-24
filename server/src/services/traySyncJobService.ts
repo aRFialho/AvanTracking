@@ -63,6 +63,14 @@ class TraySyncJobService {
     };
   }
 
+  getDisabledSchedule(): SyncScheduleStatus {
+    return {
+      enabled: false,
+      intervalMs: AUTO_TRAY_SYNC_INTERVAL_MS,
+      nextScheduledAt: null,
+    };
+  }
+
   async initializeSchedules() {
     const auth = await trayAuthService.getLatestAuth();
     if (!auth) {

@@ -15,6 +15,7 @@ import {
   OrderStatus,
   SyncJobStatus,
   TraySyncFilters,
+  TrayIntegrationStatus,
 } from "./types";
 import { fetchSingleOrder } from "./services/trackingApi";
 import { Loader2 } from "lucide-react";
@@ -126,6 +127,8 @@ const MainApp: React.FC = () => {
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
   const [nextSyncAt, setNextSyncAt] = useState<Date | null>(null);
   const [nextTraySyncAt, setNextTraySyncAt] = useState<Date | null>(null);
+  const [trayIntegrationStatus, setTrayIntegrationStatus] =
+    useState<TrayIntegrationStatus | null>(null);
   const [showIntro, setShowIntro] = useState(true);
   const [syncJob, setSyncJob] = useState<SyncJobStatus | null>(null);
   const [traySyncJob, setTraySyncJob] = useState<SyncJobStatus | null>(null);
@@ -261,10 +264,39 @@ const MainApp: React.FC = () => {
     if (!user?.companyId) {
       setTraySyncJob(null);
       setNextTraySyncAt(null);
+      setTrayIntegrationStatus(null);
       return;
     }
 
     try {
+      const statusResponse = await fetchWithAuth("/api/tray/status");
+      const statusData = await statusResponse.json().catch(() => ({}));
+
+      if (!statusResponse.ok) {
+        throw new Error(`HTTP ${statusResponse.status}`);
+      }
+
+      const normalizedTrayIntegrationStatus: TrayIntegrationStatus = {
+        authorized: Boolean(statusData.authorized),
+        status: statusData.status === "online" ? "online" : "offline",
+        storeId: statusData.storeId || null,
+        storeName: statusData.storeName || null,
+        updatedAt: statusData.updatedAt || null,
+        message:
+          statusData.message ||
+          (statusData.authorized
+            ? "Integracao Tray online."
+            : "Nenhuma integracao Tray autorizada."),
+      };
+
+      setTrayIntegrationStatus(normalizedTrayIntegrationStatus);
+
+      if (!normalizedTrayIntegrationStatus.authorized) {
+        setTraySyncJob(null);
+        setNextTraySyncAt(null);
+        return;
+      }
+
       const response = await fetchWithAuth("/api/tray/sync/status");
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
@@ -275,6 +307,9 @@ const MainApp: React.FC = () => {
       setNextTraySyncAt(parseDate(data.schedule?.nextScheduledAt));
     } catch (error) {
       console.error("Erro ao carregar status da sincronizacao da Tray:", error);
+      setTrayIntegrationStatus(null);
+      setTraySyncJob(null);
+      setNextTraySyncAt(null);
     }
   }, [user?.companyId]);
 
@@ -593,6 +628,7 @@ const MainApp: React.FC = () => {
             onStartTraySync={handleTraySync}
             syncJob={syncJob}
             traySyncJob={traySyncJob}
+            trayIntegrationStatus={trayIntegrationStatus}
           />
         );
       case "no-movement":
@@ -604,6 +640,7 @@ const MainApp: React.FC = () => {
             onStartSync={handleSync}
             syncJob={syncJob}
             traySyncJob={traySyncJob}
+            trayIntegrationStatus={trayIntegrationStatus}
           />
         );
       case "upload":
@@ -687,13 +724,15 @@ const MainApp: React.FC = () => {
                 <span>{formatCountdown(nextSyncAt, nowMs)}</span>
               </div>
             )}
-            {traySyncJob?.status === "running" && (
+            {trayIntegrationStatus?.authorized && traySyncJob?.status === "running" && (
               <span className="flex items-center gap-2 text-cyan-600 dark:text-cyan-300 animate-pulse">
                 <Loader2 className="w-4 h-4 animate-spin" />
                 Sync Tray em andamento...
               </span>
             )}
-            {traySyncJob?.status !== "running" && nextTraySyncAt && (
+            {trayIntegrationStatus?.authorized &&
+              traySyncJob?.status !== "running" &&
+              nextTraySyncAt && (
               <div className="flex flex-col items-end font-mono text-[11px] opacity-80">
                 <span className="text-[10px] uppercase tracking-wide opacity-60">
                   Próximo Sync de Pedidos com a Tray

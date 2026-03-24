@@ -1,5 +1,11 @@
 import React, { useState, useMemo } from "react";
-import { Order, OrderStatus, SyncJobStatus, TraySyncFilters } from "../types";
+import {
+  Order,
+  OrderStatus,
+  SyncJobStatus,
+  TraySyncFilters,
+  TrayIntegrationStatus,
+} from "../types";
 import { OrderDetail } from "./OrderDetail";
 import {
   Download,
@@ -60,6 +66,7 @@ interface OrderListProps {
   onStartTraySync?: (filters: TraySyncFilters) => Promise<void>;
   syncJob?: SyncJobStatus | null;
   traySyncJob?: SyncJobStatus | null;
+  trayIntegrationStatus?: TrayIntegrationStatus | null;
 }
 
 export const OrderList: React.FC<OrderListProps> = ({
@@ -71,6 +78,7 @@ export const OrderList: React.FC<OrderListProps> = ({
   onStartTraySync,
   syncJob,
   traySyncJob,
+  trayIntegrationStatus,
 }) => {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [isFetchingSingle, setIsFetchingSingle] = useState(false);
@@ -355,6 +363,7 @@ export const OrderList: React.FC<OrderListProps> = ({
 
   const isSyncRunning = isSyncing || syncJob?.status === "running";
   const isTrayJobRunning = traySyncJob?.status === "running";
+  const isTrayAvailable = Boolean(trayIntegrationStatus?.authorized);
   const hasTrayJob = Boolean(traySyncJob);
   const trayLogs = traySyncJob?.logs || [];
   const trayStatusLabel =
@@ -651,7 +660,7 @@ export const OrderList: React.FC<OrderListProps> = ({
 
       <div className="flex justify-end">
         <div className="w-full flex flex-col gap-3 sm:max-w-xl sm:flex-row sm:justify-end">
-          {onStartTraySync && !isNoMovementView && (
+          {onStartTraySync && !isNoMovementView && isTrayAvailable && (
             <button
               onClick={() => setIsTraySyncModalOpen(true)}
               disabled={isTraySyncing}
@@ -822,7 +831,7 @@ export const OrderList: React.FC<OrderListProps> = ({
         />
       )}
 
-      {isTraySyncModalOpen && onStartTraySync && (
+      {isTraySyncModalOpen && onStartTraySync && isTrayAvailable && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div className="glass-card w-full max-w-3xl rounded-xl p-6 shadow-2xl animate-in zoom-in-95 border border-slate-200 dark:border-white/10 bg-white dark:bg-dark-card">
             <div className="flex justify-between items-center mb-6">
