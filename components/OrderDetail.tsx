@@ -2,7 +2,11 @@ import React from "react";
 import { Order, OrderStatus } from "../types";
 import { X, MapPin, Calendar, Truck, User, CreditCard } from "lucide-react";
 import { clsx } from "clsx";
-import { normalizeCarrierName, normalizeTrackingHistory } from "../utils";
+import {
+  normalizeCarrierName,
+  normalizeTrackingHistory,
+  formatDateOrDash,
+} from "../utils";
 
 const STATUS_TRANSLATIONS: Record<string, string> = {
   PENDING: "Aguardando Envio",
@@ -168,7 +172,7 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({ order, onClose }) => {
                     <span className="text-slate-500 dark:text-slate-400 font-normal">
                       Previsto:
                     </span>{" "}
-                    {new Date(order.estimatedDeliveryDate).toLocaleDateString()}
+                    {formatDateOrDash(order.estimatedDeliveryDate)}
                   </p>
                 </div>
               </div>

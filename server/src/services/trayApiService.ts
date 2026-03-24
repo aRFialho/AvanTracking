@@ -19,31 +19,45 @@ interface TrayOrderCompleteResponse {
   Order: any;
 }
 
+const normalizeChannelManagedFreight = (freightType: string | null | undefined) => {
+  const normalized = String(freightType || '').trim().toLowerCase();
+
+  if (!normalized) return null;
+
+  if (
+    ['encomenda normal', 'normal ao endereço', 'normal ao endereco'].includes(
+      normalized,
+    ) ||
+    normalized.includes('priorit')
+  ) {
+    return 'ColetasME2';
+  }
+
+  if (['shopee xpress', 'retirada pelo comprador'].includes(normalized)) {
+    return 'Shopee Xpress';
+  }
+
+  return null;
+};
+
 export class TrayApiService {
   private storeId: string;
-  private manualToken?: string; // ← ADICIONAR (para testes futuros)
+  private manualToken?: string;
 
   constructor(storeId: string, manualToken?: string) {
     this.storeId = storeId;
     this.manualToken = manualToken;
   }
 
-  /**
-   * Obter cliente HTTP configurado com token válido
-   */
-  private async getClient(): Promise<{ client: AxiosInstance; apiAddress: string }> {
-    // Buscar autenticação do banco
-    const auth = await trayAuthService.getAuthData(this.storeId);
+  private async getClient(): Promise<{
+    client: AxiosInstance;
+    apiAddress: string;
+    accessToken: string;
+  }> {
+    const auth = await trayAuthService.getValidAuthData(this.storeId);
 
     if (!auth) {
-      throw new Error('Loja não autorizada. Execute o fluxo OAuth primeiro.');
-    }
-
-    // Verificar se token está válido ou renovar
-    const accessToken = await trayAuthService.getValidAuth(this.storeId);
-
-    if (!accessToken) {
-      throw new Error('Não foi possível obter token válido.');
+      throw new Error('Loja nao autorizada. Execute o fluxo OAuth primeiro.');
     }
 
     const client = axios.create({
@@ -51,26 +65,25 @@ export class TrayApiService {
       timeout: 30000,
       headers: {
         'Content-Type': 'application/json',
-      }
+      },
     });
 
-    return { client, apiAddress: auth.apiAddress };
+    return {
+      client,
+      apiAddress: auth.apiAddress,
+      accessToken: this.manualToken || auth.accessToken,
+    };
   }
 
-  /**
-   * Listar pedidos com paginação - COM RATE LIMIT
-   */
   async listOrders(params: {
     page?: number;
     limit?: number;
     status?: string;
     modified?: string;
   } = {}): Promise<TrayOrderListResponse> {
-    // ✅ USAR RATE LIMITER
-    return await trayRateLimiter.execute(async () => {
+    return trayRateLimiter.execute(async () => {
       try {
-        const { client } = await this.getClient();
-        const accessToken = this.manualToken || await trayAuthService.getValidAuth(this.storeId);
+        const { client, accessToken } = await this.getClient();
 
         const response = await client.get('/orders', {
           params: {
@@ -79,121 +92,139 @@ export class TrayApiService {
             limit: params.limit || 50,
             status: params.status,
             modified: params.modified,
-          }
+          },
         });
 
         return response.data;
       } catch (error: any) {
-        console.error('❌ Erro ao listar pedidos da Tray:', error.response?.data || error.message);
+        console.error('Erro ao listar pedidos da Tray:', error.response?.data || error.message);
         throw new Error(`Erro na API Tray: ${error.response?.data?.message || error.message}`);
       }
     });
   }
 
-  /**
-   * Buscar dados completos de um pedido - COM RATE LIMIT
-   */
   async getOrderComplete(orderId: string | number): Promise<TrayOrderCompleteResponse> {
-    // ✅ USAR RATE LIMITER
-    return await trayRateLimiter.execute(async () => {
+    return trayRateLimiter.execute(async () => {
       try {
-        const { client } = await this.getClient();
-        const accessToken = this.manualToken || await trayAuthService.getValidAuth(this.storeId);
+        const { client, accessToken } = await this.getClient();
 
         const response = await client.get(`/orders/${orderId}/complete`, {
           params: {
-            access_token: accessToken
-          }
+            access_token: accessToken,
+          },
         });
 
         return response.data;
       } catch (error: any) {
-        console.error(`❌ Erro ao buscar pedido ${orderId}:`, error.response?.data || error.message);
+        console.error(`Erro ao buscar pedido ${orderId}:`, error.response?.data || error.message);
         throw new Error(`Erro na API Tray: ${error.response?.data?.message || error.message}`);
       }
     });
   }
 
-  /**
-   * Sincronizar todos os pedidos (com paginação automática) - COM RATE LIMIT
-   */
   async syncAllOrders(params: {
     status?: string;
     modified?: string;
-  } = {}): Promise<any[]> {
-    console.log('📦 Iniciando sincronização com API Tray...');
-    console.log('🔒 Rate limit ativo: 180 requisições/minuto');
-    
+    skipOrderNumbers?: Set<string>;
+  } = {}, hooks?: {
+    onLog?: (message: string) => void;
+    onOrdersBatch?: (orders: any[]) => Promise<void> | void;
+  }): Promise<any[]> {
+    console.log('Iniciando sincronizacao com API Tray...');
+    console.log('Rate limit ativo: 180 requisicoes/minuto');
+
     const allOrders: any[] = [];
     let currentPage = 1;
     let hasMorePages = true;
 
     while (hasMorePages) {
-      console.log(`📄 Buscando página ${currentPage}...`);
-      
-      // Mostrar estatísticas do rate limit
+      console.log(`Buscando pagina ${currentPage}...`);
+      hooks?.onLog?.(`Buscando pagina ${currentPage} da Tray.`);
+
       const stats = trayRateLimiter.getStats();
-      console.log(`   📊 Rate limit: ${stats.requestsInWindow}/${stats.maxRequests} (${stats.utilizationPercent}%)`);
-      
+      console.log(
+        `Rate limit: ${stats.requestsInWindow}/${stats.maxRequests} (${stats.utilizationPercent}%)`,
+      );
+      hooks?.onLog?.(
+        `Rate limit Tray: ${stats.requestsInWindow}/${stats.maxRequests} (${stats.utilizationPercent}%).`,
+      );
+
       const response = await this.listOrders({
         ...params,
         page: currentPage,
-        limit: 50
+        limit: 50,
       });
 
       const orders = response.Orders || [];
-      console.log(`   ✓ ${orders.length} pedidos encontrados`);
+      console.log(`${orders.length} pedidos encontrados na pagina ${currentPage}`);
+      hooks?.onLog?.(`${orders.length} pedido(s) encontrados na pagina ${currentPage}.`);
 
-      // Buscar dados completos de cada pedido
-      for (const orderWrapper of orders) {
+      const pageOrders: any[] = [];
+      const completeOrderTasks = orders.map(async (orderWrapper) => {
         const orderId = orderWrapper.Order.id;
+
+        if (params.skipOrderNumbers?.has(String(orderId))) {
+          console.log(`Pedido ${orderId} ja existe no banco, pulando...`);
+          hooks?.onLog?.(`Pedido ${orderId} ja existe no banco e foi ignorado.`);
+          return;
+        }
+
         try {
           const completeData = await this.getOrderComplete(orderId);
           allOrders.push(completeData.Order);
+          pageOrders.push(completeData.Order);
         } catch (error) {
-          console.error(`   ⚠️ Erro ao buscar pedido ${orderId}, pulando...`);
+          console.error(`Erro ao buscar pedido ${orderId}, pulando...`);
+          hooks?.onLog?.(`Erro ao buscar pedido ${orderId}; item ignorado.`);
         }
+      });
+
+      await Promise.all(completeOrderTasks);
+
+      if (pageOrders.length > 0) {
+        await hooks?.onOrdersBatch?.(pageOrders);
       }
 
-      // Verificar se há mais páginas
       const { total, limit } = response.paging;
       const totalPages = Math.ceil(total / limit);
       hasMorePages = currentPage < totalPages;
-      currentPage++;
+      currentPage += 1;
     }
 
-    console.log(`✅ Total de ${allOrders.length} pedidos sincronizados`);
-    
-    // Mostrar estatísticas finais
+    console.log(`Total de ${allOrders.length} pedidos sincronizados`);
+    hooks?.onLog?.(`Total de ${allOrders.length} pedido(s) novo(s) retornados pela Tray.`);
+
     const finalStats = trayRateLimiter.getStats();
-    console.log(`📊 Estatísticas finais: ${finalStats.requestsInWindow} requisições utilizadas (${finalStats.utilizationPercent}%)`);
-    
+    console.log(
+      `Estatisticas finais: ${finalStats.requestsInWindow} requisicoes utilizadas (${finalStats.utilizationPercent}%)`,
+    );
+
     return allOrders;
   }
 
-  /**
-   * Mapear pedido da Tray para formato do sistema
-   */
   mapTrayOrderToSystem(trayOrder: any): any {
     const customer = trayOrder.Customer || {};
     const mainAddress = customer.CustomerAddresses?.[0]?.CustomerAddress || {};
+    const normalizedChannelFreight = normalizeChannelManagedFreight(
+      trayOrder.shipment,
+    );
 
-    // Mapear status da Tray para OrderStatus
     const statusMap: Record<string, string> = {
       'A ENVIAR': 'PENDING',
       '5- AGUARDANDO FATURAMENTO': 'PENDING',
       'AGUARDANDO ENVIO': 'CREATED',
-      'ENVIADO': 'SHIPPED',
-      'FINALIZADO': 'DELIVERED',
-      'ENTREGUE': 'DELIVERED',
-      'CANCELADO': 'CANCELED',
-      'DEVOLVIDO': 'RETURNED',
-      'EM SEPARAÇÃO': 'CREATED',
+      ENVIADO: 'SHIPPED',
+      FINALIZADO: 'DELIVERED',
+      ENTREGUE: 'DELIVERED',
+      CANCELADO: 'CANCELED',
+      DEVOLVIDO: 'RETURNED',
       'EM SEPARACAO': 'CREATED',
+      'EM SEPARAÇÃO': 'CREATED',
     };
 
     const trayStatus = (trayOrder.status || 'A ENVIAR').toUpperCase();
-    const mappedStatus = statusMap[trayStatus] || 'PENDING';
+    const mappedStatus =
+      normalizedChannelFreight ? 'CHANNEL_LOGISTICS' : statusMap[trayStatus] || 'PENDING';
 
     return {
       orderNumber: String(trayOrder.id),
@@ -206,11 +237,12 @@ export class TrayApiService {
       phone: customer.phone || null,
       mobile: customer.cellphone || null,
       salesChannel: 'Tray - ' + (trayOrder.point_sale || 'LOJA VIRTUAL'),
-      freightType: trayOrder.shipment || 'Não informado',
+      freightType: normalizedChannelFreight || trayOrder.shipment || 'Nao informado',
       freightValue: parseFloat(trayOrder.shipment_value || '0'),
-      shippingDate: trayOrder.shipment_date && trayOrder.shipment_date !== '0000-00-00' 
-        ? new Date(trayOrder.shipment_date) 
-        : new Date(trayOrder.date),
+      shippingDate:
+        trayOrder.shipment_date && trayOrder.shipment_date !== '0000-00-00'
+          ? new Date(trayOrder.shipment_date)
+          : new Date(trayOrder.date),
       address: mainAddress.address || customer.address || '',
       number: mainAddress.number || customer.number || '',
       complement: mainAddress.complement || customer.complement || null,
@@ -220,21 +252,27 @@ export class TrayApiService {
       zipCode: (mainAddress.zip_code || customer.zip_code || '').replace('-', ''),
       totalValue: parseFloat(trayOrder.total || '0'),
       recipient: mainAddress.recipient || customer.name || null,
-      maxShippingDeadline: trayOrder.estimated_delivery_date && trayOrder.estimated_delivery_date !== '0000-00-00'
-        ? new Date(trayOrder.estimated_delivery_date)
-        : null,
-      estimatedDeliveryDate: trayOrder.estimated_delivery_date && trayOrder.estimated_delivery_date !== '0000-00-00'
-        ? new Date(trayOrder.estimated_delivery_date)
-        : null,
+      maxShippingDeadline:
+        trayOrder.estimated_delivery_date &&
+        trayOrder.estimated_delivery_date !== '0000-00-00'
+          ? new Date(trayOrder.estimated_delivery_date)
+          : null,
+      estimatedDeliveryDate:
+        trayOrder.estimated_delivery_date &&
+        trayOrder.estimated_delivery_date !== '0000-00-00'
+          ? new Date(trayOrder.estimated_delivery_date)
+          : null,
       status: mappedStatus,
       isDelayed: false,
-      trackingHistory: [{
-        status: mappedStatus,
-        description: `Pedido ${trayOrder.status || 'criado'}`,
-        date: new Date(trayOrder.date),
-        city: mainAddress.city || customer.city || '',
-        state: mainAddress.state || customer.state || '',
-      }]
+      trackingHistory: [
+        {
+          status: mappedStatus,
+          description: `Pedido ${trayOrder.status || 'criado'}`,
+          date: new Date(trayOrder.date),
+          city: mainAddress.city || customer.city || '',
+          state: mainAddress.state || customer.state || '',
+        },
+      ],
     };
   }
 }

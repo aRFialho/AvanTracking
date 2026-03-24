@@ -10,7 +10,11 @@ import {
   handleAuthCallback,
   checkAuthStatus,
 } from './controllers/trayAuthController';
-import { syncTrayOrders } from './controllers/traySyncController';
+import {
+  syncTrayOrders,
+  startTraySyncJob,
+  getTraySyncStatus,
+} from './controllers/traySyncController';
 import { trayRateLimiter } from './services/rateLimiter';
 import { quoteOrderFreight, quoteBatchFreight } from './controllers/freightController';
 import { authenticateToken } from './middleware/auth';
@@ -171,6 +175,8 @@ app.get('/api/tray/callback', showInstallPage);
 app.get('/api/tray/callback/auth', handleAuthCallback);
 app.get('/api/tray/status', authenticateToken, checkAuthStatus);
 app.post('/api/tray/sync', authenticateToken, syncTrayOrders);
+app.post('/api/tray/sync/start', authenticateToken, startTraySyncJob);
+app.get('/api/tray/sync/status', authenticateToken, getTraySyncStatus);
 app.get('/tray/callback', showInstallPage);
 app.get('/tray/callback/auth', handleAuthCallback);
 

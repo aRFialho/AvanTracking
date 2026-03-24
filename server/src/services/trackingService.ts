@@ -110,6 +110,27 @@ const buildEmptySnapshot = (): SyncReportSnapshot => ({
   failure: 0,
 });
 
+const normalizeChannelManagedFreight = (freightType: string | null | undefined) => {
+  const normalized = String(freightType || '').trim().toLowerCase();
+
+  if (!normalized) return null;
+
+  if (
+    ['coletasme2', 'encomenda normal', 'normal ao endereço', 'normal ao endereco'].includes(
+      normalized,
+    ) ||
+    normalized.includes('priorit')
+  ) {
+    return 'ColetasME2';
+  }
+
+  if (['shopee xpress', 'retirada pelo comprador'].includes(normalized)) {
+    return 'Shopee Xpress';
+  }
+
+  return null;
+};
+
 export class TrackingService {
   private async fetchFromIntelipost(orderNumber: string) {
     try {
@@ -240,9 +261,8 @@ export class TrackingService {
         };
       }
 
-      const isChannelManaged =
-        ['ColetasME2', 'Shopee Xpress'].includes(order.freightType || '') ||
-        (order.freightType || '').toLowerCase().includes('priorit');
+      const channelManagedFreight = normalizeChannelManagedFreight(order.freightType);
+      const isChannelManaged = Boolean(channelManagedFreight);
 
       if (isChannelManaged) {
         if (order.status !== OrderStatus.CHANNEL_LOGISTICS) {
@@ -250,6 +270,7 @@ export class TrackingService {
           await prisma.order.update({
             where: { id: orderId },
             data: {
+              freightType: channelManagedFreight,
               status: OrderStatus.CHANNEL_LOGISTICS,
               lastApiSync: syncedAt,
             },
@@ -260,6 +281,7 @@ export class TrackingService {
             message: 'LogÃƒÂ­stica gerenciada pelo canal',
             change: {
               ...baseChange,
+              freightType: channelManagedFreight,
               currentStatus: OrderStatus.CHANNEL_LOGISTICS,
               lastApiSync: syncedAt.toISOString(),
               changed:
@@ -271,7 +293,10 @@ export class TrackingService {
         return {
           success: true,
           message: 'LogÃƒÂ­stica gerenciada pelo canal',
-          change: baseChange,
+          change: {
+            ...baseChange,
+            freightType: channelManagedFreight,
+          },
         };
       }
 

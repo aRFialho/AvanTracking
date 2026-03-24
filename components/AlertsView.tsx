@@ -10,7 +10,12 @@ import {
   CheckCircle,
 } from "lucide-react";
 import { clsx } from "clsx";
-import { normalizeCarrierName, toText } from "../utils";
+import {
+  normalizeCarrierName,
+  parseOptionalDate,
+  formatDateOrDash,
+  isChannelManagedOrder,
+} from "../utils";
 
 interface AlertsViewProps {
   orders: Order[];
@@ -23,7 +28,8 @@ export const AlertsView: React.FC<AlertsViewProps> = ({ orders }) => {
   // Calculate delay days helper
   const getDelayDays = (order: Order) => {
     if (!order.isDelayed) return 0;
-    const targetDate = new Date(order.estimatedDeliveryDate);
+    const targetDate = parseOptionalDate(order.estimatedDeliveryDate);
+    if (!targetDate) return 0;
     const now = new Date();
     const diffTime = Math.abs(now.getTime() - targetDate.getTime());
     return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
@@ -38,12 +44,7 @@ export const AlertsView: React.FC<AlertsViewProps> = ({ orders }) => {
 
         // Exclude Channel Logistics / Priority
         // Check Status or FreightType string to be sure
-        const isChannelLogistics =
-          o.status === OrderStatus.CHANNEL_LOGISTICS ||
-          toText(o.freightType).toLowerCase().includes("priorit") ||
-          ["ColetasME2", "Shopee Xpress"].includes(toText(o.freightType));
-
-        if (isChannelLogistics) return false;
+        if (isChannelManagedOrder(o)) return false;
 
         // Determine Risk
         const hasDelay = o.isDelayed && o.status !== OrderStatus.DELIVERED;
@@ -147,9 +148,7 @@ export const AlertsView: React.FC<AlertsViewProps> = ({ orders }) => {
                         <div className="flex items-center gap-3 mt-1 text-xs text-slate-500 dark:text-slate-500">
                           <span className="flex items-center gap-1">
                             <CalendarX className="w-3 h-3" /> Previsto:{" "}
-                            {new Date(
-                              order.estimatedDeliveryDate,
-                            ).toLocaleDateString()}
+                            {formatDateOrDash(order.estimatedDeliveryDate)}
                           </span>
                         </div>
                       </div>

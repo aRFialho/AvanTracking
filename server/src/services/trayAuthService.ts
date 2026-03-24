@@ -19,6 +19,14 @@ interface TrayAuthResponse {
 export class TrayAuthService {
   private consumerKey: string;
   private consumerSecret: string;
+  private authCache = new Map<
+    string,
+    { accessToken: string; apiAddress: string; expiresAt: Date }
+  >();
+  private refreshLocks = new Map<
+    string,
+    Promise<{ accessToken: string; apiAddress: string; expiresAt: Date } | null>
+  >();
 
   constructor() {
     this.consumerKey = process.env.TRAY_CONSUMER_KEY || '';
@@ -166,7 +174,7 @@ export class TrayAuthService {
     code?: string;
     storeName?: string;
   }) {
-    return await prisma.trayAuth.upsert({
+    const saved = await prisma.trayAuth.upsert({
       where: { storeId },
       create: {
         storeId,
@@ -186,51 +194,40 @@ export class TrayAuthService {
         expiresAt: authData.expiresAt,
       },
     });
+
+    this.authCache.set(storeId, {
+      accessToken: saved.accessToken,
+      apiAddress: this.normalizeApiAddress(saved.apiAddress),
+      expiresAt: saved.expiresAt,
+    });
+
+    return saved;
   }
 
   async getValidAuth(storeId: string): Promise<string | null> {
-    const auth = await prisma.trayAuth.findUnique({
-      where: { storeId },
-    });
+    const authData = await this.getValidAuthData(storeId);
+    return authData?.accessToken || null;
+  }
 
-    if (!auth) {
-      console.log('Nenhuma autenticacao Tray encontrada');
-      return null;
+  async getValidAuthData(storeId: string) {
+    const cached = this.authCache.get(storeId);
+    if (cached && !this.isExpired(cached.expiresAt)) {
+      return cached;
     }
 
-    if (new Date() >= auth.expiresAt) {
-      console.log('Token da Tray expirado, renovando...');
-
-      if (!auth.refreshToken) {
-        console.log('Sem refresh_token da Tray disponivel');
-        return null;
-      }
-
-      if (!this.normalizeApiAddress(auth.apiAddress)) {
-        console.log('api_address da Tray invalido ou ausente no banco');
-        return null;
-      }
-
-      const renewed = await this.refreshAccessToken(
-        auth.refreshToken,
-        auth.apiAddress,
-      );
-
-      await this.saveAuth(storeId, {
-        apiAddress: renewed.api_host || auth.apiAddress,
-        accessToken: renewed.access_token,
-        refreshToken: renewed.refresh_token,
-        expiresAt: this.parseExpirationDate(
-          renewed.date_expiration_access_token ||
-            renewed.date_expiration_refresh_token ||
-            renewed.date_expiration,
-        ),
-      });
-
-      return renewed.access_token;
+    const pendingRefresh = this.refreshLocks.get(storeId);
+    if (pendingRefresh) {
+      return pendingRefresh;
     }
 
-    return auth.accessToken;
+    const refreshPromise = this.resolveValidAuthData(storeId);
+    this.refreshLocks.set(storeId, refreshPromise);
+
+    try {
+      return await refreshPromise;
+    } finally {
+      this.refreshLocks.delete(storeId);
+    }
   }
 
   async getAuthData(storeId: string) {
@@ -254,7 +251,79 @@ export class TrayAuthService {
   }
 
   parseExpirationDate(dateStr: string): Date {
-    return new Date(dateStr.replace(' ', 'T'));
+    const normalized = String(dateStr || '').trim();
+
+    if (!normalized) {
+      return new Date(Date.now() + 5 * 60 * 1000);
+    }
+
+    if (/[zZ]|[+-]\d{2}:\d{2}$/.test(normalized)) {
+      return new Date(normalized.replace(' ', 'T'));
+    }
+
+    return new Date(normalized.replace(' ', 'T') + '-03:00');
+  }
+
+  private isExpired(expiresAt: Date): boolean {
+    return Date.now() >= expiresAt.getTime() - 60 * 1000;
+  }
+
+  private async resolveValidAuthData(storeId: string) {
+    const auth = await prisma.trayAuth.findUnique({
+      where: { storeId },
+    });
+
+    if (!auth) {
+      console.log('Nenhuma autenticacao Tray encontrada');
+      return null;
+    }
+
+    const normalizedApiAddress = this.normalizeApiAddress(auth.apiAddress);
+    if (!normalizedApiAddress) {
+      console.log('api_address da Tray invalido ou ausente no banco');
+      return null;
+    }
+
+    if (!this.isExpired(auth.expiresAt)) {
+      const current = {
+        accessToken: auth.accessToken,
+        apiAddress: normalizedApiAddress,
+        expiresAt: auth.expiresAt,
+      };
+      this.authCache.set(storeId, current);
+      return current;
+    }
+
+    console.log('Token da Tray expirado, renovando...');
+
+    if (!auth.refreshToken) {
+      console.log('Sem refresh_token da Tray disponivel');
+      return null;
+    }
+
+    const renewed = await this.refreshAccessToken(
+      auth.refreshToken,
+      normalizedApiAddress,
+    );
+
+    const renewedData = {
+      accessToken: renewed.access_token,
+      apiAddress: this.normalizeApiAddress(renewed.api_host || normalizedApiAddress),
+      expiresAt: this.parseExpirationDate(
+        renewed.date_expiration_access_token ||
+          renewed.date_expiration_refresh_token ||
+          renewed.date_expiration,
+      ),
+    };
+
+    await this.saveAuth(storeId, {
+      apiAddress: renewedData.apiAddress,
+      accessToken: renewedData.accessToken,
+      refreshToken: renewed.refresh_token || auth.refreshToken,
+      expiresAt: renewedData.expiresAt,
+    });
+
+    return renewedData;
   }
 }
 

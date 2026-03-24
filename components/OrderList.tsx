@@ -18,7 +18,13 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { clsx } from "clsx";
-import { normalizeCarrierName, isOrderOnRoute, toText } from "../utils";
+import {
+  normalizeCarrierName,
+  isOrderOnRoute,
+  toText,
+  parseOptionalDate,
+  formatDateOrDash,
+} from "../utils";
 import { fetchWithAuth } from "../utils/authFetch";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -52,6 +58,7 @@ interface OrderListProps {
   onStartSync?: () => Promise<void> | void;
   onStartTraySync?: (filters: TraySyncFilters) => Promise<void>;
   syncJob?: SyncJobStatus | null;
+  traySyncJob?: SyncJobStatus | null;
 }
 
 export const OrderList: React.FC<OrderListProps> = ({
@@ -62,6 +69,7 @@ export const OrderList: React.FC<OrderListProps> = ({
   onStartSync,
   onStartTraySync,
   syncJob,
+  traySyncJob,
 }) => {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [isFetchingSingle, setIsFetchingSingle] = useState(false);
@@ -168,7 +176,8 @@ export const OrderList: React.FC<OrderListProps> = ({
       if (dueToday) {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
-        const d = new Date(o.estimatedDeliveryDate);
+        const d = parseOptionalDate(o.estimatedDeliveryDate);
+        if (!d) return false;
         d.setHours(0, 0, 0, 0);
         if (
           d.getTime() !== today.getTime() ||
@@ -183,14 +192,18 @@ export const OrderList: React.FC<OrderListProps> = ({
       // 4. Date Range (Estimated Delivery)
       let matchDate = true;
       if (dateRangeStart) {
+        const estimatedDate = parseOptionalDate(o.estimatedDeliveryDate);
         matchDate =
           matchDate &&
-          new Date(o.estimatedDeliveryDate) >= new Date(dateRangeStart);
+          Boolean(estimatedDate) &&
+          estimatedDate >= new Date(dateRangeStart);
       }
       if (dateRangeEnd) {
+        const estimatedDate = parseOptionalDate(o.estimatedDeliveryDate);
         matchDate =
           matchDate &&
-          new Date(o.estimatedDeliveryDate) <= new Date(dateRangeEnd);
+          Boolean(estimatedDate) &&
+          estimatedDate <= new Date(dateRangeEnd);
       }
 
       // 5. No Movement Filter
@@ -334,13 +347,31 @@ export const OrderList: React.FC<OrderListProps> = ({
         statusMode: trayStatusMode,
         statuses: selectedTrayStatuses,
       });
-      setIsTraySyncModalOpen(false);
     } finally {
       setIsTraySyncing(false);
     }
   };
 
   const isSyncRunning = isSyncing || syncJob?.status === "running";
+  const isTrayJobRunning = traySyncJob?.status === "running";
+  const hasTrayJob = Boolean(traySyncJob);
+  const trayLogs = traySyncJob?.logs || [];
+  const trayStatusLabel =
+    traySyncJob?.status === "running"
+      ? "Em andamento"
+      : traySyncJob?.status === "completed"
+        ? "Concluido"
+        : traySyncJob?.status === "failed"
+          ? "Falhou"
+          : "Pronto";
+  const trayStatusClass =
+    traySyncJob?.status === "running"
+      ? "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-300 dark:border-blue-800/40"
+      : traySyncJob?.status === "completed"
+        ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-300 dark:border-emerald-800/40"
+        : traySyncJob?.status === "failed"
+          ? "bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-300 dark:border-red-800/40"
+          : "bg-slate-100 text-slate-700 border-slate-200 dark:bg-white/10 dark:text-slate-300 dark:border-white/10";
 
   // Modern Status Badge
   const StatusBadge = ({
@@ -628,7 +659,12 @@ export const OrderList: React.FC<OrderListProps> = ({
               {isTraySyncing ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  Sincronizando Tray...
+                  Iniciando Tray...
+                </>
+              ) : isTrayJobRunning ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Acompanhar Sync Tray
                 </>
               ) : (
                 <>
@@ -722,9 +758,7 @@ export const OrderList: React.FC<OrderListProps> = ({
                       {normalizeCarrierName(order.freightType)}
                     </td>
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">
-                      {new Date(
-                        order.estimatedDeliveryDate,
-                      ).toLocaleDateString()}
+                      {formatDateOrDash(order.estimatedDeliveryDate)}
                     </td>
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">
                       <div className="flex flex-col">
@@ -783,7 +817,7 @@ export const OrderList: React.FC<OrderListProps> = ({
 
       {isTraySyncModalOpen && onStartTraySync && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <div className="glass-card w-full max-w-xl rounded-xl p-6 shadow-2xl animate-in zoom-in-95 border border-slate-200 dark:border-white/10 bg-white dark:bg-dark-card">
+          <div className="glass-card w-full max-w-3xl rounded-xl p-6 shadow-2xl animate-in zoom-in-95 border border-slate-200 dark:border-white/10 bg-white dark:bg-dark-card">
             <div className="flex justify-between items-center mb-6">
               <div>
                 <h3 className="text-lg font-bold text-slate-800 dark:text-white">
@@ -794,7 +828,7 @@ export const OrderList: React.FC<OrderListProps> = ({
                 </p>
               </div>
               <button
-                onClick={() => !isTraySyncing && setIsTraySyncModalOpen(false)}
+                onClick={() => setIsTraySyncModalOpen(false)}
                 className="text-slate-500 hover:text-white"
               >
                 <X className="w-5 h-5" />
@@ -802,6 +836,60 @@ export const OrderList: React.FC<OrderListProps> = ({
             </div>
 
             <div className="space-y-5">
+              <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                      Status da sincronizacao
+                    </p>
+                    <div className="mt-2 flex flex-wrap items-center gap-3">
+                      <span
+                        className={clsx(
+                          "inline-flex items-center rounded-full border px-3 py-1 text-xs font-bold uppercase tracking-wide",
+                          trayStatusClass,
+                        )}
+                      >
+                        {trayStatusLabel}
+                      </span>
+                      {traySyncJob?.currentOrderNumber && (
+                        <span className="text-sm text-slate-600 dark:text-slate-300">
+                          Status atual: <strong>{traySyncJob.currentOrderNumber}</strong>
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  {hasTrayJob && (
+                    <div className="grid grid-cols-2 gap-3 text-sm sm:min-w-[240px]">
+                      <div className="rounded-lg bg-white dark:bg-dark-card border border-slate-200 dark:border-white/10 px-3 py-2">
+                        <p className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                          Progresso
+                        </p>
+                        <p className="font-semibold text-slate-800 dark:text-white">
+                          {traySyncJob?.processed || 0}/{traySyncJob?.total || 0}
+                        </p>
+                      </div>
+                      <div className="rounded-lg bg-white dark:bg-dark-card border border-slate-200 dark:border-white/10 px-3 py-2">
+                        <p className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                          Novos pedidos
+                        </p>
+                        <p className="font-semibold text-slate-800 dark:text-white">
+                          {traySyncJob?.success || 0}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                {isTrayJobRunning && (
+                  <p className="mt-3 text-xs text-blue-600 dark:text-blue-300">
+                    O processo continua executando mesmo se esta janela for fechada.
+                  </p>
+                )}
+                {traySyncJob?.error && (
+                  <p className="mt-3 text-xs text-red-600 dark:text-red-300">
+                    {traySyncJob.error}
+                  </p>
+                )}
+              </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase mb-2">
                   Buscar pedidos
@@ -812,6 +900,7 @@ export const OrderList: React.FC<OrderListProps> = ({
                     setTraySyncDays(Number(e.target.value) as TraySyncFilters["days"])
                   }
                   className="w-full p-3 border border-slate-200 dark:border-white/10 rounded-lg text-sm bg-white dark:bg-dark-card dark:text-white focus:border-accent outline-none"
+                  disabled={isTrayJobRunning}
                 >
                   {TRAY_DAY_OPTIONS.map((days) => (
                     <option key={days} value={days}>
@@ -834,6 +923,7 @@ export const OrderList: React.FC<OrderListProps> = ({
                       checked={trayStatusMode === "all_except_canceled"}
                       onChange={() => setTrayStatusMode("all_except_canceled")}
                       className="mt-1"
+                      disabled={isTrayJobRunning}
                     />
                     <div>
                       <p className="text-sm font-medium text-slate-700 dark:text-white">
@@ -852,6 +942,7 @@ export const OrderList: React.FC<OrderListProps> = ({
                       checked={trayStatusMode === "selected"}
                       onChange={() => setTrayStatusMode("selected")}
                       className="mt-1"
+                      disabled={isTrayJobRunning}
                     />
                     <div className="w-full">
                       <p className="text-sm font-medium text-slate-700 dark:text-white">
@@ -872,7 +963,9 @@ export const OrderList: React.FC<OrderListProps> = ({
                               type="checkbox"
                               checked={selectedTrayStatuses.includes(status)}
                               onChange={() => toggleTrayStatus(status)}
-                              disabled={trayStatusMode !== "selected"}
+                              disabled={
+                                trayStatusMode !== "selected" || isTrayJobRunning
+                              }
                             />
                             <span className="capitalize">{status}</span>
                           </label>
@@ -883,26 +976,75 @@ export const OrderList: React.FC<OrderListProps> = ({
                 </div>
               </div>
 
+              <div>
+                <div className="mb-2 flex items-center justify-between">
+                  <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">
+                    Logs da sincronizacao
+                  </label>
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                    {trayLogs.length} registro(s)
+                  </span>
+                </div>
+                <div className="max-h-64 overflow-auto rounded-xl border border-slate-200 dark:border-white/10 bg-slate-950 text-slate-100">
+                  {trayLogs.length > 0 ? (
+                    <div className="divide-y divide-white/5">
+                      {trayLogs.map((log, index) => (
+                        <div
+                          key={`${log.timestamp}-${index}`}
+                          className="px-4 py-3 font-mono text-xs"
+                        >
+                          <div className="flex items-start gap-3">
+                            <span className="min-w-[72px] text-slate-400">
+                              {new Date(log.timestamp).toLocaleTimeString()}
+                            </span>
+                            <span
+                              className={clsx(
+                                "min-w-[64px] uppercase tracking-wide",
+                                log.level === "error"
+                                  ? "text-red-300"
+                                  : log.level === "success"
+                                    ? "text-emerald-300"
+                                    : "text-blue-300",
+                              )}
+                            >
+                              {log.level}
+                            </span>
+                            <span className="flex-1 whitespace-pre-wrap break-words text-slate-100">
+                              {log.message}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="px-4 py-6 text-center text-xs text-slate-400">
+                      Os logs da Tray aparecem aqui assim que a sincronizacao for iniciada.
+                    </div>
+                  )}
+                </div>
+              </div>
+
               <div className="pt-2 flex gap-3">
                 <button
                   type="button"
                   onClick={() => setIsTraySyncModalOpen(false)}
-                  disabled={isTraySyncing}
                   className="flex-1 px-4 py-3 border border-slate-200 dark:border-white/10 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/5 disabled:opacity-50"
                 >
-                  Cancelar
+                  Fechar
                 </button>
                 <button
                   type="button"
                   onClick={handleTraySync}
-                  disabled={isTraySyncing}
+                  disabled={isTraySyncing || isTrayJobRunning}
                   className="flex-1 px-4 py-3 bg-accent dark:bg-neon-blue hover:bg-blue-600 dark:hover:bg-cyan-400 text-white dark:text-black rounded-lg font-bold shadow-lg shadow-blue-500/20 dark:shadow-neon-blue/20 flex items-center justify-center gap-2 disabled:opacity-50"
                 >
                   {isTraySyncing ? (
                     <>
                       <Loader2 className="w-5 h-5 animate-spin" />
-                      Buscar pedidos...
+                      Iniciando...
                     </>
+                  ) : isTrayJobRunning ? (
+                    "Sincronizando em segundo plano"
                   ) : (
                     "Buscar pedidos"
                   )}

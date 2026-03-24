@@ -37,6 +37,8 @@ import {
   isOrderOnTime,
   isOrderOnRoute,
   toText,
+  parseOptionalDate,
+  isChannelManagedOrder,
 } from "../utils";
 
 interface DashboardProps {
@@ -107,7 +109,8 @@ const isEarlyDelivery = (order: Order) => {
   if (order.status !== OrderStatus.DELIVERED) return false;
 
   const deliveryDate = new Date(order.lastUpdate);
-  const promisedDate = new Date(order.estimatedDeliveryDate);
+  const promisedDate = parseOptionalDate(order.estimatedDeliveryDate);
+  if (!promisedDate) return false;
   promisedDate.setHours(23, 59, 59, 999);
 
   return promisedDate.getTime() - deliveryDate.getTime() > DAY_IN_MS * 2;
@@ -148,6 +151,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const filteredOrders = useMemo(() => {
     return orders.filter((o) => {
       if (o.status === OrderStatus.CANCELED) return false;
+      if (isChannelManagedOrder(o)) return false;
 
       // Text Search
       const textMatch =
@@ -169,7 +173,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
         const targetDate =
           dateType === "shipping"
             ? new Date(o.shippingDate)
-            : new Date(o.estimatedDeliveryDate);
+            : parseOptionalDate(o.estimatedDeliveryDate);
+        if (!targetDate) return false;
         if (startDate)
           dateMatch = dateMatch && targetDate >= new Date(startDate);
         if (endDate) dateMatch = dateMatch && targetDate <= new Date(endDate);
@@ -221,7 +226,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const dueToday = filteredOrders.filter((o) => {
-      const d = new Date(o.estimatedDeliveryDate);
+      const d = parseOptionalDate(o.estimatedDeliveryDate);
+      if (!d) return false;
       d.setHours(0, 0, 0, 0);
       return (
         d.getTime() === today.getTime() && o.status !== OrderStatus.DELIVERED
@@ -243,7 +249,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
       )
         return false;
 
-      const est = new Date(o.estimatedDeliveryDate);
+      const est = parseOptionalDate(o.estimatedDeliveryDate);
+      if (!est) return false;
       est.setHours(0, 0, 0, 0);
 
       const diffTime = est.getTime() - today.getTime();

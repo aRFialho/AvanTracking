@@ -18,6 +18,55 @@ export const normalizeTrackingHistory = (value: unknown) => {
   }));
 };
 
+export const normalizeChannelManagedFreight = (
+  freightType: string | null | undefined,
+): string | null => {
+  const normalized = toText(freightType).trim().toLowerCase();
+
+  if (!normalized) return null;
+
+  if (
+    [
+      "encomenda normal",
+      "normal ao endereço",
+      "normal ao endereco",
+    ].includes(normalized) ||
+    normalized.includes("priorit")
+  ) {
+    return "ColetasME2";
+  }
+
+  if (["shopee xpress", "retirada pelo comprador"].includes(normalized)) {
+    return "Shopee Xpress";
+  }
+
+  return null;
+};
+
+export const isChannelManagedFreight = (
+  freightType: string | null | undefined,
+): boolean => Boolean(normalizeChannelManagedFreight(freightType));
+
+export const isChannelManagedOrder = (order: Pick<Order, "status" | "freightType">) =>
+  order.status === OrderStatus.CHANNEL_LOGISTICS ||
+  isChannelManagedFreight(order.freightType);
+
+export const parseOptionalDate = (value: unknown): Date | null => {
+  if (!value) return null;
+
+  const parsed = new Date(value as string | number | Date);
+  if (Number.isNaN(parsed.getTime()) || parsed.getFullYear() < 1900) {
+    return null;
+  }
+
+  return parsed;
+};
+
+export const formatDateOrDash = (value: unknown, locale = "pt-BR"): string => {
+  const parsed = parseOptionalDate(value);
+  return parsed ? parsed.toLocaleDateString(locale) : "-";
+};
+
 export const mapIntelipostStatusToEnum = (status: string): OrderStatus => {
   const s = status ? status.toUpperCase() : '';
   if (s.includes('ENTREGUE') || s.includes('DELIVERED')) return OrderStatus.DELIVERED;
@@ -114,7 +163,9 @@ export const normalizeCarrierName = (name: string | null | undefined): string =>
 export const isOrderOnTime = (order: Order): boolean => {
   if (order.status !== OrderStatus.DELIVERED) return false;
 
-  const estimated = new Date(order.estimatedDeliveryDate);
+  const estimated = parseOptionalDate(order.estimatedDeliveryDate);
+  if (!estimated) return false;
+
   // Set estimated to end of day to be inclusive
   estimated.setHours(23, 59, 59, 999);
 

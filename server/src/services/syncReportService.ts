@@ -49,7 +49,10 @@ const formatDateOnly = (value: string | null) =>
 
 const getPublicBaseUrl = () => {
   const configuredBaseUrl = String(
-    process.env.APP_BASE_URL || process.env.FRONTEND_URL || '',
+    process.env.APP_BASE_URL ||
+      process.env.FRONTEND_URL ||
+      process.env.RENDER_EXTERNAL_URL ||
+      '',
   ).trim();
 
   if (configuredBaseUrl) {

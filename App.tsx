@@ -21,7 +21,12 @@ import { Loader2 } from "lucide-react";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { LOGO_URL } from "./constants";
-import { getEffectiveOrderStatus, normalizeTrackingHistory, toText } from "./utils";
+import {
+  getEffectiveOrderStatus,
+  normalizeTrackingHistory,
+  toText,
+  isChannelManagedFreight,
+} from "./utils";
 import { TruckCursor } from "./components/TruckCursor";
 import { fetchWithAuth } from "./utils/authFetch";
 
@@ -81,8 +86,10 @@ const MainApp: React.FC = () => {
   const [nextSyncAt, setNextSyncAt] = useState<Date | null>(null);
   const [showIntro, setShowIntro] = useState(true);
   const [syncJob, setSyncJob] = useState<SyncJobStatus | null>(null);
+  const [traySyncJob, setTraySyncJob] = useState<SyncJobStatus | null>(null);
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const previousSyncStatusRef = useRef<SyncJobStatus["status"] | null>(null);
+  const previousTraySyncStatusRef = useRef<SyncJobStatus["status"] | null>(null);
 
   const normalizeOrderRecord = useCallback((order: Order) => {
     const trackingHistory = normalizeTrackingHistory(
@@ -202,13 +209,39 @@ const MainApp: React.FC = () => {
     }
   }, [user?.companyId]);
 
+  const loadTraySyncStatus = useCallback(async () => {
+    if (!user?.companyId) {
+      setTraySyncJob(null);
+      return;
+    }
+
+    try {
+      const response = await fetchWithAuth("/api/tray/sync/status");
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      setTraySyncJob(data.job || null);
+    } catch (error) {
+      console.error("Erro ao carregar status da sincronizacao da Tray:", error);
+    }
+  }, [user?.companyId]);
+
   useEffect(() => {
     if (isAuthenticated && !isLoading) {
       console.log("🔄 Usuário autenticado, carregando pedidos...");
       loadOrdersFromDatabase();
       loadSyncStatus();
+      loadTraySyncStatus();
     }
-  }, [isAuthenticated, isLoading, loadOrdersFromDatabase, loadSyncStatus]);
+  }, [
+    isAuthenticated,
+    isLoading,
+    loadOrdersFromDatabase,
+    loadSyncStatus,
+    loadTraySyncStatus,
+  ]);
 
   useEffect(() => {
     if (!isAuthenticated || isLoading) return;
@@ -235,6 +268,34 @@ const MainApp: React.FC = () => {
   }, [isAuthenticated, isLoading, loadSyncStatus, syncJob?.status]);
 
   useEffect(() => {
+    if (!isAuthenticated || isLoading) return;
+
+    const intervalMs = traySyncJob?.status === "running" ? 2000 : 30000;
+    const statusInterval = setInterval(() => {
+      loadTraySyncStatus();
+    }, intervalMs);
+
+    return () => clearInterval(statusInterval);
+  }, [isAuthenticated, isLoading, loadTraySyncStatus, traySyncJob?.status]);
+
+  useEffect(() => {
+    if (!isAuthenticated || isLoading || traySyncJob?.status !== "running") {
+      return;
+    }
+
+    const refreshInterval = setInterval(() => {
+      loadOrdersFromDatabase();
+    }, 10000);
+
+    return () => clearInterval(refreshInterval);
+  }, [
+    isAuthenticated,
+    isLoading,
+    loadOrdersFromDatabase,
+    traySyncJob?.status,
+  ]);
+
+  useEffect(() => {
     const previousStatus = previousSyncStatusRef.current;
     const currentStatus = syncJob?.status || null;
 
@@ -251,6 +312,24 @@ const MainApp: React.FC = () => {
 
     previousSyncStatusRef.current = currentStatus;
   }, [loadOrdersFromDatabase, syncJob]);
+
+  useEffect(() => {
+    const previousStatus = previousTraySyncStatusRef.current;
+    const currentStatus = traySyncJob?.status || null;
+
+    if (
+      previousStatus === "running" &&
+      currentStatus &&
+      currentStatus !== "running"
+    ) {
+      loadOrdersFromDatabase();
+      setLastSyncTime(
+        traySyncJob?.finishedAt ? new Date(traySyncJob.finishedAt) : new Date(),
+      );
+    }
+
+    previousTraySyncStatusRef.current = currentStatus;
+  }, [loadOrdersFromDatabase, traySyncJob]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -292,7 +371,7 @@ const MainApp: React.FC = () => {
   const handleTraySync = useCallback(
     async (filters: TraySyncFilters) => {
       try {
-        const response = await fetchWithAuth("/api/tray/sync", {
+        const response = await fetchWithAuth("/api/tray/sync/start", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(filters),
@@ -304,15 +383,13 @@ const MainApp: React.FC = () => {
           throw new Error(data.error || `HTTP ${response.status}`);
         }
 
-        await loadOrdersFromDatabase();
-        setLastSyncTime(new Date());
-        alert(data.message || "Pedidos da Tray sincronizados com sucesso.");
+        setTraySyncJob(data.job || null);
       } catch (error: any) {
         console.error("Tray sync failed:", error);
         alert(error.message || "Erro ao sincronizar pedidos da Tray.");
       }
     },
-    [loadOrdersFromDatabase],
+    [],
   );
 
   const handleFetchSingleOrder = useCallback(
@@ -400,11 +477,7 @@ const MainApp: React.FC = () => {
       if (order.status === OrderStatus.CANCELED) return false;
       if (order.status === OrderStatus.CHANNEL_LOGISTICS) return false;
 
-      const isChannelManaged =
-        ["ColetasME2", "Shopee Xpress"].includes(toText(order.freightType)) ||
-        toText(order.freightType).toLowerCase().includes("priorit");
-
-      return !isChannelManaged;
+      return !isChannelManagedFreight(order.freightType);
     });
 
     if (processedOrders.length === 0) {
@@ -462,6 +535,7 @@ const MainApp: React.FC = () => {
             onStartSync={handleSync}
             onStartTraySync={handleTraySync}
             syncJob={syncJob}
+            traySyncJob={traySyncJob}
           />
         );
       case "no-movement":
@@ -472,6 +546,7 @@ const MainApp: React.FC = () => {
             isNoMovementView={true}
             onStartSync={handleSync}
             syncJob={syncJob}
+            traySyncJob={traySyncJob}
           />
         );
       case "upload":
