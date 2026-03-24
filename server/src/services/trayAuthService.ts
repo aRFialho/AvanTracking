@@ -38,6 +38,26 @@ export class TrayAuthService {
     return normalized;
   }
 
+  normalizeApiAddress(apiAddress: string): string {
+    let normalized = String(apiAddress || '').trim();
+
+    if (!normalized) {
+      return '';
+    }
+
+    if (!/^https?:\/\//i.test(normalized)) {
+      normalized = `https://${normalized}`;
+    }
+
+    normalized = normalized.replace(/\/+$/, '');
+
+    if (!/\/web_api$/i.test(normalized)) {
+      normalized = `${normalized}/web_api`;
+    }
+
+    return normalized;
+  }
+
   getAuthorizationUrl(storeUrl: string): string {
     const callbackUrl = encodeURIComponent(process.env.TRAY_CALLBACK_URL || '');
     const normalizedStoreUrl = this.normalizeStoreUrl(storeUrl);
@@ -51,13 +71,18 @@ export class TrayAuthService {
   ): Promise<TrayAuthResponse> {
     try {
       console.log('Gerando access_token da Tray...');
+      const normalizedApiAddress = this.normalizeApiAddress(apiAddress);
+
+      if (!normalizedApiAddress) {
+        throw new Error('api_address invalido para gerar token da Tray.');
+      }
 
       const body = new URLSearchParams();
       body.set('consumer_key', this.consumerKey);
       body.set('consumer_secret', this.consumerSecret);
       body.set('code', code);
 
-      const response = await axios.post(`${apiAddress}/auth`, body.toString(), {
+      const response = await axios.post(`${normalizedApiAddress}/auth`, body.toString(), {
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
         },
@@ -80,10 +105,16 @@ export class TrayAuthService {
     refreshToken: string,
     apiAddress: string,
   ): Promise<TrayAuthResponse> {
+    const normalizedApiAddress = this.normalizeApiAddress(apiAddress);
+
+    if (!normalizedApiAddress) {
+      throw new Error('api_address invalido para renovar token da Tray.');
+    }
+
     try {
       console.log('Renovando access_token da Tray...');
 
-      const response = await axios.get(`${apiAddress}/auth`, {
+      const response = await axios.get(`${normalizedApiAddress}/auth`, {
         params: {
           refresh_token: refreshToken,
         },
@@ -93,12 +124,37 @@ export class TrayAuthService {
       return response.data;
     } catch (error: any) {
       console.error(
-        'Erro ao renovar access_token da Tray:',
+        'Erro ao renovar access_token da Tray via GET:',
         error.response?.data || error.message,
       );
-      throw new Error(
-        `Erro ao renovar token: ${error.response?.data?.message || error.message}`,
-      );
+
+      try {
+        const body = new URLSearchParams();
+        body.set('consumer_key', this.consumerKey);
+        body.set('consumer_secret', this.consumerSecret);
+        body.set('refresh_token', refreshToken);
+
+        const fallbackResponse = await axios.post(
+          `${normalizedApiAddress}/auth`,
+          body.toString(),
+          {
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+          },
+        );
+
+        console.log('Access token da Tray renovado com sucesso via POST fallback');
+        return fallbackResponse.data;
+      } catch (fallbackError: any) {
+        console.error(
+          'Erro ao renovar access_token da Tray:',
+          fallbackError.response?.data || fallbackError.message,
+        );
+        throw new Error(
+          `Erro ao renovar token: ${fallbackError.response?.data?.message || fallbackError.message}`,
+        );
+      }
     }
   }
 
@@ -147,6 +203,11 @@ export class TrayAuthService {
 
       if (!auth.refreshToken) {
         console.log('Sem refresh_token da Tray disponivel');
+        return null;
+      }
+
+      if (!this.normalizeApiAddress(auth.apiAddress)) {
+        console.log('api_address da Tray invalido ou ausente no banco');
         return null;
       }
 
