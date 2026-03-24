@@ -26,7 +26,7 @@ import { fetchWithAuth } from "./utils/authFetch";
 
 const SplitIntro: React.FC = () => {
   return (
-    <div className="split-overlay">
+    <div className="split-overlay intro-splitting">
       <div className="split-part split-left">
         <div className="w-[150px] h-[120px] overflow-hidden relative">
           <img
@@ -45,6 +45,85 @@ const SplitIntro: React.FC = () => {
           />
         </div>
       </div>
+    </div>
+  );
+};
+
+const IntroExperience: React.FC<{ onComplete: () => void }> = ({ onComplete }) => {
+  const [phase, setPhase] = useState<"video" | "split">("video");
+  const [requiresInteraction, setRequiresInteraction] = useState(false);
+  const hasCompletedRef = useRef(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  const finishIntro = useCallback(() => {
+    if (hasCompletedRef.current) return;
+    hasCompletedRef.current = true;
+    onComplete();
+  }, [onComplete]);
+
+  const startSplit = useCallback(() => {
+    setPhase((currentPhase) => {
+      if (currentPhase === "split") return currentPhase;
+      return "split";
+    });
+  }, []);
+
+  useEffect(() => {
+    if (phase !== "split") return;
+
+    const timer = window.setTimeout(() => {
+      finishIntro();
+    }, 2200);
+
+    return () => window.clearTimeout(timer);
+  }, [finishIntro, phase]);
+
+  useEffect(() => {
+    if (phase !== "video") return;
+
+    const video = videoRef.current;
+    if (!video) return;
+
+    const playPromise = video.play();
+    if (!playPromise || typeof playPromise.catch !== "function") return;
+
+    playPromise.catch(() => {
+      setRequiresInteraction(true);
+    });
+  }, [phase]);
+
+  const handleManualStart = useCallback(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    video.play().then(() => {
+      setRequiresInteraction(false);
+    }).catch(() => {
+      setRequiresInteraction(true);
+    });
+  }, []);
+
+  if (phase === "split") {
+    return <SplitIntro />;
+  }
+
+  return (
+    <div className="intro-video-overlay">
+      <video
+        ref={videoRef}
+        className="intro-video"
+        src="/intro.mp4"
+        autoPlay
+        playsInline
+        preload="auto"
+        onEnded={startSplit}
+        onError={startSplit}
+      />
+      {requiresInteraction && (
+        <button className="intro-video-cta" onClick={handleManualStart}>
+          Iniciar apresentacao
+        </button>
+      )}
     </div>
   );
 };
@@ -241,14 +320,6 @@ const MainApp: React.FC = () => {
 
     previousSyncStatusRef.current = currentStatus;
   }, [loadOrdersFromDatabase, syncJob]);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setShowIntro(false);
-    }, 2000);
-
-    return () => clearTimeout(timer);
-  }, []);
 
   useEffect(() => {
     const clockInterval = setInterval(() => {
@@ -461,7 +532,7 @@ const MainApp: React.FC = () => {
   if (!isAuthenticated) {
     return (
       <>
-        {showIntro && <SplitIntro />}
+        {showIntro && <IntroExperience onComplete={() => setShowIntro(false)} />}
         <Login />
       </>
     );
@@ -469,7 +540,7 @@ const MainApp: React.FC = () => {
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-[#0B0C15] text-slate-900 dark:text-slate-100 transition-colors duration-300 font-sans">
-      {showIntro && <SplitIntro />}
+      {showIntro && <IntroExperience onComplete={() => setShowIntro(false)} />}
 
       <Sidebar
         currentView={currentView}
