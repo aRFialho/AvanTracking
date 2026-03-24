@@ -80,6 +80,11 @@ export const formatDateOrDash = (value: unknown, locale = "pt-BR"): string => {
   return parsed ? parsed.toLocaleDateString(locale) : "-";
 };
 
+export const formatCarrierForecast = (value: unknown, locale = "pt-BR"): string => {
+  const parsed = parseOptionalDate(value);
+  return parsed ? parsed.toLocaleDateString(locale) : "Sem previsão no rastreio";
+};
+
 export const mapIntelipostStatusToEnum = (status: string): OrderStatus => {
   const s = status ? status.toUpperCase() : '';
   // Colocando SAIU PARA ENTREGA ANTES de EM TRÂNSITO para evitar sobrescrever

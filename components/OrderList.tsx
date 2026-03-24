@@ -24,6 +24,7 @@ import {
   toText,
   parseOptionalDate,
   formatDateOrDash,
+  formatCarrierForecast,
 } from "../utils";
 import { fetchWithAuth } from "../utils/authFetch";
 
@@ -764,7 +765,7 @@ export const OrderList: React.FC<OrderListProps> = ({
                       {formatDateOrDash(order.estimatedDeliveryDate)}
                     </td>
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">
-                      {formatDateOrDash(order.carrierEstimatedDeliveryDate)}
+                      {formatCarrierForecast(order.carrierEstimatedDeliveryDate)}
                     </td>
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">
                       <div className="flex flex-col">

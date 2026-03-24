@@ -6,6 +6,7 @@ import {
   normalizeCarrierName,
   normalizeTrackingHistory,
   formatDateOrDash,
+  formatCarrierForecast,
 } from "../utils";
 
 const STATUS_TRANSLATIONS: Record<string, string> = {
@@ -178,7 +179,7 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({ order, onClose }) => {
                     <span className="text-slate-500 dark:text-slate-400">
                       Previsão transportadora:
                     </span>{" "}
-                    {formatDateOrDash(order.carrierEstimatedDeliveryDate)}
+                    {formatCarrierForecast(order.carrierEstimatedDeliveryDate)}
                   </p>
                 </div>
               </div>

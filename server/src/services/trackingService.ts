@@ -157,25 +157,12 @@ const parseCarrierForecastFromText = (text: string | null | undefined) => {
 };
 
 const resolveCarrierEstimatedDate = (
-  trackingData: any,
   events: Array<{ description: string; eventDate: Date }>,
-  fallback: Date | null,
 ) => {
-  if (trackingData?.tracking?.estimated_delivery_date_lp) {
-    const parsedDate = new Date(trackingData.tracking.estimated_delivery_date_lp);
-    if (!Number.isNaN(parsedDate.getTime())) {
-      return parsedDate;
-    }
-  }
-
-  const orderedTexts = [
-    ...events
-      .slice()
-      .sort((left, right) => right.eventDate.getTime() - left.eventDate.getTime())
-      .map((event) => event.description),
-    trackingData?.tracking?.status_label,
-    trackingData?.tracking?.status,
-  ];
+  const orderedTexts = events
+    .slice()
+    .sort((left, right) => right.eventDate.getTime() - left.eventDate.getTime())
+    .map((event) => event.description);
 
   for (const text of orderedTexts) {
     const parsedDate = parseCarrierForecastFromText(text);
@@ -184,7 +171,7 @@ const resolveCarrierEstimatedDate = (
     }
   }
 
-  return fallback;
+  return null;
 };
 
 const isRouteStatus = (status: OrderStatus) => ROUTE_STATUSES.includes(status);
@@ -417,11 +404,7 @@ export class TrackingService {
       }));
 
       const newStatus = resolveTrackingStatus(trackingData, events);
-      const carrierEstimatedDate = resolveCarrierEstimatedDate(
-        trackingData,
-        events,
-        order.carrierEstimatedDeliveryDate,
-      );
+      const carrierEstimatedDate = resolveCarrierEstimatedDate(events);
       const estimatedDate = order.estimatedDeliveryDate;
 
       const isDelayed =

@@ -98,24 +98,12 @@ const parseCarrierForecastFromText = (text: string | null | undefined) => {
 };
 
 const resolveCarrierEstimatedDate = (
-  trackingData: any,
   historyMapped: TrackingEvent[],
 ) => {
-  if (trackingData?.tracking?.estimated_delivery_date_lp) {
-    const parsedDate = new Date(trackingData.tracking.estimated_delivery_date_lp);
-    if (!Number.isNaN(parsedDate.getTime())) {
-      return parsedDate;
-    }
-  }
-
-  const orderedTexts = [
-    ...historyMapped
-      .slice()
-      .sort((left, right) => new Date(right.date).getTime() - new Date(left.date).getTime())
-      .map((event) => event.description),
-    trackingData?.tracking?.status_label,
-    trackingData?.tracking?.status,
-  ];
+  const orderedTexts = historyMapped
+    .slice()
+    .sort((left, right) => new Date(right.date).getTime() - new Date(left.date).getTime())
+    .map((event) => event.description);
 
   for (const text of orderedTexts) {
     const parsedDate = parseCarrierForecastFromText(text);
@@ -181,7 +169,7 @@ export const fetchSingleOrder = async (orderNumber: string): Promise<Partial<Ord
         }));
 
         const carrierEstimatedDate =
-          resolveCarrierEstimatedDate(trackingData, historyMapped);
+          resolveCarrierEstimatedDate(historyMapped);
         
         // Determine last update date from history or current time
         const lastEventDate = historyMapped.length > 0 
