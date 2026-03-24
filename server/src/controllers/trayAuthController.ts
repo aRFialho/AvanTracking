@@ -137,7 +137,7 @@ export const showInstallPage = (req: Request, res: Response) => {
  */
 export const handleAuthCallback = async (req: Request, res: Response) => {
   try {
-    const { code, api_address, store, store_host } = req.query;
+    const { code, api_address, store, store_host, adm_user } = req.query;
 
     if (!code || !api_address || !store) {
       return res.redirect(getIntegrationReturnUrl(req, 'error'));
@@ -153,8 +153,11 @@ export const handleAuthCallback = async (req: Request, res: Response) => {
       (authData as any).date_expiration_refresh_token ||
       authData.date_expiration;
 
-    await trayAuthService.saveAuth(String(store), {
-      apiAddress: String(api_address),
+    const resolvedStoreId = String((authData as any).store_id || store);
+    const resolvedApiAddress = String((authData as any).api_host || api_address);
+
+    await trayAuthService.saveAuth(resolvedStoreId, {
+      apiAddress: resolvedApiAddress,
       accessToken: authData.access_token,
       refreshToken: authData.refresh_token,
       expiresAt: trayAuthService.parseExpirationDate(expirationDate),
@@ -204,6 +207,9 @@ export const handleAuthCallback = async (req: Request, res: Response) => {
         <div class="card">
           <h1>Integracao Tray conectada</h1>
           <p>Redirecionando para a area de Integracao do app...</p>
+          <p style="margin-top:12px;font-size:13px;color:#cbd5e1;">
+            Loja ${String(store)}${adm_user ? ` • Usuario ${String(adm_user)}` : ''}
+          </p>
         </div>
         <script>
           const target = ${JSON.stringify(redirectUrl)};

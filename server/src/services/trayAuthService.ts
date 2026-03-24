@@ -4,10 +4,16 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 interface TrayAuthResponse {
+  message?: string;
+  code?: string;
   access_token: string;
   refresh_token?: string;
   date_expiration: string;
+  date_expiration_access_token?: string;
+  date_expiration_refresh_token?: string;
+  date_activated?: string;
   api_host: string;
+  store_id?: string | number;
 }
 
 export class TrayAuthService {
@@ -46,10 +52,15 @@ export class TrayAuthService {
     try {
       console.log('Gerando access_token da Tray...');
 
-      const response = await axios.post(`${apiAddress}/auth`, {
-        consumer_key: this.consumerKey,
-        consumer_secret: this.consumerSecret,
-        code,
+      const body = new URLSearchParams();
+      body.set('consumer_key', this.consumerKey);
+      body.set('consumer_secret', this.consumerSecret);
+      body.set('code', code);
+
+      const response = await axios.post(`${apiAddress}/auth`, body.toString(), {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
       });
 
       console.log('Access token da Tray gerado com sucesso');
@@ -72,10 +83,10 @@ export class TrayAuthService {
     try {
       console.log('Renovando access_token da Tray...');
 
-      const response = await axios.post(`${apiAddress}/auth`, {
-        consumer_key: this.consumerKey,
-        consumer_secret: this.consumerSecret,
-        refresh_token: refreshToken,
+      const response = await axios.get(`${apiAddress}/auth`, {
+        params: {
+          refresh_token: refreshToken,
+        },
       });
 
       console.log('Access token da Tray renovado com sucesso');
@@ -145,10 +156,14 @@ export class TrayAuthService {
       );
 
       await this.saveAuth(storeId, {
-        apiAddress: auth.apiAddress,
+        apiAddress: renewed.api_host || auth.apiAddress,
         accessToken: renewed.access_token,
         refreshToken: renewed.refresh_token,
-        expiresAt: new Date(renewed.date_expiration),
+        expiresAt: this.parseExpirationDate(
+          renewed.date_expiration_access_token ||
+            renewed.date_expiration_refresh_token ||
+            renewed.date_expiration,
+        ),
       });
 
       return renewed.access_token;
