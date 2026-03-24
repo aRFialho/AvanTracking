@@ -84,6 +84,7 @@ const MainApp: React.FC = () => {
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
   const [nextSyncAt, setNextSyncAt] = useState<Date | null>(null);
+  const [nextTraySyncAt, setNextTraySyncAt] = useState<Date | null>(null);
   const [showIntro, setShowIntro] = useState(true);
   const [syncJob, setSyncJob] = useState<SyncJobStatus | null>(null);
   const [traySyncJob, setTraySyncJob] = useState<SyncJobStatus | null>(null);
@@ -215,6 +216,7 @@ const MainApp: React.FC = () => {
   const loadTraySyncStatus = useCallback(async () => {
     if (!user?.companyId) {
       setTraySyncJob(null);
+      setNextTraySyncAt(null);
       return;
     }
 
@@ -226,6 +228,7 @@ const MainApp: React.FC = () => {
 
       const data = await response.json();
       setTraySyncJob(data.job || null);
+      setNextTraySyncAt(parseDate(data.schedule?.nextScheduledAt));
     } catch (error) {
       console.error("Erro ao carregar status da sincronizacao da Tray:", error);
     }
@@ -635,9 +638,23 @@ const MainApp: React.FC = () => {
             {!isSyncing && nextSyncAt && (
               <div className="flex flex-col items-end font-mono text-[11px] opacity-80">
                 <span className="text-[10px] uppercase tracking-wide opacity-60">
-                  Próximo sync
+                  Próximo Sync de Rastreio
                 </span>
                 <span>{formatCountdown(nextSyncAt, nowMs)}</span>
+              </div>
+            )}
+            {traySyncJob?.status === "running" && (
+              <span className="flex items-center gap-2 text-cyan-600 dark:text-cyan-300 animate-pulse">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Sync Tray em andamento...
+              </span>
+            )}
+            {traySyncJob?.status !== "running" && nextTraySyncAt && (
+              <div className="flex flex-col items-end font-mono text-[11px] opacity-80">
+                <span className="text-[10px] uppercase tracking-wide opacity-60">
+                  Próximo Sync de Pedidos com a Tray
+                </span>
+                <span>{formatCountdown(nextTraySyncAt, nowMs)}</span>
               </div>
             )}
             {!isSyncing && lastSyncTime && (

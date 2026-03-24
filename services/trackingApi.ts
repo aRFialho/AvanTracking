@@ -71,6 +71,62 @@ const resolveTrackingStatus = (trackingData: any, historyMapped: TrackingEvent[]
   );
 };
 
+const parseCarrierForecastFromText = (text: string | null | undefined) => {
+  const normalizedText = String(text || '').trim();
+  if (!normalizedText) return null;
+
+  const match = normalizedText.match(
+    /previs[aã]o\s+de\s+entrega\s*:\s*(\d{2})\/(\d{2})\/(\d{2,4})/i,
+  );
+
+  if (!match) {
+    return null;
+  }
+
+  const day = Number(match[1]);
+  const month = Number(match[2]) - 1;
+  const rawYear = Number(match[3]);
+  const year = rawYear < 100 ? 2000 + rawYear : rawYear;
+  const parsedDate = new Date(year, month, day);
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    return null;
+  }
+
+  parsedDate.setHours(23, 59, 59, 999);
+  return parsedDate;
+};
+
+const resolveCarrierEstimatedDate = (
+  trackingData: any,
+  historyMapped: TrackingEvent[],
+) => {
+  if (trackingData?.tracking?.estimated_delivery_date_lp) {
+    const parsedDate = new Date(trackingData.tracking.estimated_delivery_date_lp);
+    if (!Number.isNaN(parsedDate.getTime())) {
+      return parsedDate;
+    }
+  }
+
+  const orderedTexts = [
+    ...historyMapped
+      .slice()
+      .sort((left, right) => new Date(right.date).getTime() - new Date(left.date).getTime())
+      .map((event) => event.description),
+    trackingData?.tracking?.status_label,
+    trackingData?.tracking?.status,
+  ];
+
+  for (const text of orderedTexts) {
+    const parsedDate = parseCarrierForecastFromText(text);
+    if (parsedDate) {
+      return parsedDate;
+    }
+  }
+
+  return null;
+};
+
 const toCleanString = (value: unknown): string => {
   if (value === null || value === undefined) return '';
   return String(value).trim();
@@ -124,9 +180,8 @@ export const fetchSingleOrder = async (orderNumber: string): Promise<Partial<Ord
           state: trackingData.end_customer?.address?.state || ''
         }));
 
-        const estimatedDate = trackingData.tracking.estimated_delivery_date_lp 
-          ? new Date(trackingData.tracking.estimated_delivery_date_lp)
-          : new Date();
+        const carrierEstimatedDate =
+          resolveCarrierEstimatedDate(trackingData, historyMapped);
         
         // Determine last update date from history or current time
         const lastEventDate = historyMapped.length > 0 
@@ -137,8 +192,8 @@ export const fetchSingleOrder = async (orderNumber: string): Promise<Partial<Ord
           orderNumber: trackingData.order.order_number,
           status: resolveTrackingStatus(trackingData, historyMapped),
           freightType: trackingData.logistic_provider?.name || 'Desconhecida',
-          estimatedDeliveryDate: estimatedDate,
-          carrierEstimatedDeliveryDate: estimatedDate,
+          estimatedDeliveryDate: carrierEstimatedDate || new Date(),
+          carrierEstimatedDeliveryDate: carrierEstimatedDate,
           trackingHistory: historyMapped,
           lastUpdate: lastEventDate,
           city: trackingData.end_customer?.address?.city || '',

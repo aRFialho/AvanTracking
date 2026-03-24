@@ -130,6 +130,63 @@ const resolveTrackingStatus = (
   );
 };
 
+const parseCarrierForecastFromText = (text: string | null | undefined) => {
+  const normalizedText = String(text || '').trim();
+  if (!normalizedText) return null;
+
+  const match = normalizedText.match(
+    /previs[aã]o\s+de\s+entrega\s*:\s*(\d{2})\/(\d{2})\/(\d{2,4})/i,
+  );
+
+  if (!match) {
+    return null;
+  }
+
+  const day = Number(match[1]);
+  const month = Number(match[2]) - 1;
+  const rawYear = Number(match[3]);
+  const year = rawYear < 100 ? 2000 + rawYear : rawYear;
+  const parsedDate = new Date(year, month, day);
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    return null;
+  }
+
+  parsedDate.setHours(23, 59, 59, 999);
+  return parsedDate;
+};
+
+const resolveCarrierEstimatedDate = (
+  trackingData: any,
+  events: Array<{ description: string; eventDate: Date }>,
+  fallback: Date | null,
+) => {
+  if (trackingData?.tracking?.estimated_delivery_date_lp) {
+    const parsedDate = new Date(trackingData.tracking.estimated_delivery_date_lp);
+    if (!Number.isNaN(parsedDate.getTime())) {
+      return parsedDate;
+    }
+  }
+
+  const orderedTexts = [
+    ...events
+      .slice()
+      .sort((left, right) => right.eventDate.getTime() - left.eventDate.getTime())
+      .map((event) => event.description),
+    trackingData?.tracking?.status_label,
+    trackingData?.tracking?.status,
+  ];
+
+  for (const text of orderedTexts) {
+    const parsedDate = parseCarrierForecastFromText(text);
+    if (parsedDate) {
+      return parsedDate;
+    }
+  }
+
+  return fallback;
+};
+
 const isRouteStatus = (status: OrderStatus) => ROUTE_STATUSES.includes(status);
 
 const toIsoString = (value: Date | null | undefined) =>
@@ -360,9 +417,11 @@ export class TrackingService {
       }));
 
       const newStatus = resolveTrackingStatus(trackingData, events);
-      const carrierEstimatedDate = trackingData.tracking.estimated_delivery_date_lp
-        ? new Date(trackingData.tracking.estimated_delivery_date_lp)
-        : order.carrierEstimatedDeliveryDate;
+      const carrierEstimatedDate = resolveCarrierEstimatedDate(
+        trackingData,
+        events,
+        order.carrierEstimatedDeliveryDate,
+      );
       const estimatedDate = order.estimatedDeliveryDate;
 
       const isDelayed =
