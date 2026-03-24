@@ -6,7 +6,7 @@ const prisma = new PrismaClient();
 interface TrayAuthResponse {
   access_token: string;
   refresh_token?: string;
-  date_expiration: string; // Formato: "2025-12-31 23:59:59"
+  date_expiration: string;
   api_host: string;
 }
 
@@ -19,63 +19,78 @@ export class TrayAuthService {
     this.consumerSecret = process.env.TRAY_CONSUMER_SECRET || '';
   }
 
-  /**
-   * Gerar URL de autorização para redirecionar o usuário
-   */
+  normalizeStoreUrl(storeUrl: string): string {
+    let normalized = String(storeUrl || '').trim();
+
+    if (!/^https?:\/\//i.test(normalized)) {
+      normalized = `https://${normalized}`;
+    }
+
+    normalized = normalized.replace(/\/+$/, '');
+    normalized = normalized.replace(/\/web_api$/i, '');
+
+    return normalized;
+  }
+
   getAuthorizationUrl(storeUrl: string): string {
     const callbackUrl = encodeURIComponent(process.env.TRAY_CALLBACK_URL || '');
-    return `${storeUrl}/auth.php?response_type=code&consumer_key=${this.consumerKey}&callback=${callbackUrl}`;
+    const normalizedStoreUrl = this.normalizeStoreUrl(storeUrl);
+
+    return `${normalizedStoreUrl}/auth.php?response_type=code&consumer_key=${this.consumerKey}&callback=${callbackUrl}`;
   }
 
-  /**
-   * Gerar chave de acesso (access_token) a partir do código
-   */
-  async generateAccessToken(code: string, apiAddress: string): Promise<TrayAuthResponse> {
+  async generateAccessToken(
+    code: string,
+    apiAddress: string,
+  ): Promise<TrayAuthResponse> {
     try {
-      console.log('🔑 Gerando access_token...');
+      console.log('Gerando access_token da Tray...');
 
-      // CORREÇÃO: Mudado de GET para POST e dados movidos para o Body
       const response = await axios.post(`${apiAddress}/auth`, {
         consumer_key: this.consumerKey,
         consumer_secret: this.consumerSecret,
-        code: code
+        code,
       });
 
-      console.log('✅ Access token gerado com sucesso');
+      console.log('Access token da Tray gerado com sucesso');
       return response.data;
-
     } catch (error: any) {
-      console.error('❌ Erro ao gerar access_token:', error.response?.data || error.message);
-      throw new Error(`Erro ao gerar token: ${error.response?.data?.message || error.message}`);
+      console.error(
+        'Erro ao gerar access_token da Tray:',
+        error.response?.data || error.message,
+      );
+      throw new Error(
+        `Erro ao gerar token: ${error.response?.data?.message || error.message}`,
+      );
     }
   }
 
-  /**
-   * Renovar chave de acesso (refresh token)
-   */
-  async refreshAccessToken(refreshToken: string, apiAddress: string): Promise<TrayAuthResponse> {
+  async refreshAccessToken(
+    refreshToken: string,
+    apiAddress: string,
+  ): Promise<TrayAuthResponse> {
     try {
-      console.log('🔄 Renovando access_token...');
+      console.log('Renovando access_token da Tray...');
 
-      // CORREÇÃO: Mudado de GET para POST e dados movidos para o Body
       const response = await axios.post(`${apiAddress}/auth`, {
         consumer_key: this.consumerKey,
         consumer_secret: this.consumerSecret,
-        refresh_token: refreshToken
+        refresh_token: refreshToken,
       });
 
-      console.log('✅ Access token renovado com sucesso');
+      console.log('Access token da Tray renovado com sucesso');
       return response.data;
-
     } catch (error: any) {
-      console.error('❌ Erro ao renovar access_token:', error.response?.data || error.message);
-      throw new Error(`Erro ao renovar token: ${error.response?.data?.message || error.message}`);
+      console.error(
+        'Erro ao renovar access_token da Tray:',
+        error.response?.data || error.message,
+      );
+      throw new Error(
+        `Erro ao renovar token: ${error.response?.data?.message || error.message}`,
+      );
     }
   }
 
-  /**
-   * Salvar ou atualizar autenticação no banco
-   */
   async saveAuth(storeId: string, authData: {
     apiAddress: string;
     accessToken: string;
@@ -93,48 +108,45 @@ export class TrayAuthService {
         accessToken: authData.accessToken,
         refreshToken: authData.refreshToken,
         code: authData.code,
-        expiresAt: authData.expiresAt
+        expiresAt: authData.expiresAt,
       },
       update: {
         apiAddress: authData.apiAddress,
         accessToken: authData.accessToken,
         refreshToken: authData.refreshToken,
-        expiresAt: authData.expiresAt
-      }
+        expiresAt: authData.expiresAt,
+      },
     });
   }
 
-  /**
-   * Buscar autenticação válida do banco
-   */
   async getValidAuth(storeId: string): Promise<string | null> {
     const auth = await prisma.trayAuth.findUnique({
-      where: { storeId }
+      where: { storeId },
     });
 
     if (!auth) {
-      console.log('⚠️ Nenhuma autenticação encontrada');
+      console.log('Nenhuma autenticacao Tray encontrada');
       return null;
     }
 
-    // Verificar se expirou
     if (new Date() >= auth.expiresAt) {
-      console.log('⏰ Token expirado, renovando...');
-      
+      console.log('Token da Tray expirado, renovando...');
+
       if (!auth.refreshToken) {
-        console.log('❌ Sem refresh_token disponível');
+        console.log('Sem refresh_token da Tray disponivel');
         return null;
       }
 
-      // Renovar token
-      const renewed = await this.refreshAccessToken(auth.refreshToken, auth.apiAddress);
-      
-      // Salvar novo token
+      const renewed = await this.refreshAccessToken(
+        auth.refreshToken,
+        auth.apiAddress,
+      );
+
       await this.saveAuth(storeId, {
         apiAddress: auth.apiAddress,
         accessToken: renewed.access_token,
         refreshToken: renewed.refresh_token,
-        expiresAt: new Date(renewed.date_expiration)
+        expiresAt: new Date(renewed.date_expiration),
       });
 
       return renewed.access_token;
@@ -143,20 +155,13 @@ export class TrayAuthService {
     return auth.accessToken;
   }
 
-  /**
-   * Buscar dados de autenticação completos
-   */
   async getAuthData(storeId: string) {
     return await prisma.trayAuth.findUnique({
-      where: { storeId }
+      where: { storeId },
     });
   }
 
-  /**
-   * Converter data de expiração da Tray para Date
-   */
   parseExpirationDate(dateStr: string): Date {
-    // Formato: "2025-12-31 23:59:59"
     return new Date(dateStr.replace(' ', 'T'));
   }
 }

@@ -12,6 +12,7 @@ import {
   Power,
   X,
   Edit,
+  Link2,
   Lock,
   AlertTriangle,
 } from "lucide-react";
@@ -40,11 +41,14 @@ interface UserData {
 export const AdminPanel: React.FC = () => {
   const { user } = useAuth();
 
-  const [activeTab, setActiveTab] = useState<"users" | "companies">("users");
+  const [activeTab, setActiveTab] = useState<
+    "users" | "companies" | "integration"
+  >("users");
   const [users, setUsers] = useState<UserData[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [trayStoreUrl, setTrayStoreUrl] = useState("");
 
   // User Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -221,6 +225,36 @@ export const AdminPanel: React.FC = () => {
     }
   };
 
+  const handleConnectTray = async () => {
+    const normalizedUrl = trayStoreUrl.trim();
+
+    if (!normalizedUrl) {
+      alert("Informe a URL da loja ou a URL /web_api da Tray.");
+      return;
+    }
+
+    try {
+      const params = new URLSearchParams({
+        url: normalizedUrl,
+      });
+
+      const response = await fetchWithAuth(`/api/tray/connect?${params.toString()}`);
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.error || "Nao foi possivel iniciar a integracao Tray.");
+      }
+
+      if (!data.authUrl) {
+        throw new Error("A URL de autorizacao da Tray nao foi retornada.");
+      }
+
+      window.open(data.authUrl, "_blank", "noopener,noreferrer");
+    } catch (err: any) {
+      alert(err.message || "Erro ao iniciar a integracao Tray.");
+    }
+  };
+
   const handleClearDatabase = async (e: React.FormEvent) => {
     e.preventDefault();
     if (clearPassword !== "172839") {
@@ -302,6 +336,17 @@ export const AdminPanel: React.FC = () => {
             )}
           >
             Empresas
+          </button>
+          <button
+            onClick={() => setActiveTab("integration")}
+            className={clsx(
+              "px-4 py-2 rounded-md text-sm font-medium transition-all",
+              activeTab === "integration"
+                ? "bg-white dark:bg-slate-700 shadow text-blue-600 dark:text-white"
+                : "text-slate-500 hover:text-slate-700 dark:text-slate-400",
+            )}
+          >
+            Integração
           </button>
         </div>
       </div>
@@ -471,6 +516,55 @@ export const AdminPanel: React.FC = () => {
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {activeTab === "integration" && (
+        <div className="glass-card rounded-xl overflow-hidden border border-slate-200 dark:border-white/10">
+          <div className="p-4 border-b border-slate-200 dark:border-white/10 bg-slate-50/50 dark:bg-white/5">
+            <h3 className="font-semibold text-slate-800 dark:text-white">
+              Integração Tray
+            </h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+              Inicie a autorização da loja Tray em uma nova aba. Se a Tray já
+              estiver logada no navegador, o id e o usuário serão reconhecidos
+              automaticamente no fluxo de autorização.
+            </p>
+          </div>
+
+          <div className="p-6 space-y-5">
+            <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700 dark:border-blue-900/30 dark:bg-blue-900/10 dark:text-blue-300">
+              Você pode informar a URL da loja ou a URL completa com{" "}
+              <span className="font-semibold">/web_api</span>. O sistema
+              normaliza a URL antes de redirecionar para a Tray.
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                URL da loja Tray
+              </label>
+              <input
+                type="text"
+                value={trayStoreUrl}
+                onChange={(e) => setTrayStoreUrl(e.target.value)}
+                placeholder="https://www.drossiinteriores.com.br/web_api"
+                className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white focus:border-blue-500 outline-none"
+              />
+              <p className="text-[11px] text-slate-400 mt-2">
+                Exemplo aceito: https://www.drossiinteriores.com.br/web_api
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-3">
+              <button
+                onClick={handleConnectTray}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg font-medium text-white bg-blue-600 hover:bg-blue-700 transition-colors"
+              >
+                <Link2 className="w-4 h-4" />
+                Conectar Tray
+              </button>
+            </div>
           </div>
         </div>
       )}

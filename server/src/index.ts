@@ -4,7 +4,12 @@ import { PrismaClient } from '@prisma/client';
 import orderRoutes from "./routes/orders";
 import userRoutes from "./routes/users";
 import companyRoutes from "./routes/companies";
-import { showInstallPage, handleAuthCallback, checkAuthStatus } from './controllers/trayAuthController';
+import {
+  startTrayAuthorization,
+  showInstallPage,
+  handleAuthCallback,
+  checkAuthStatus,
+} from './controllers/trayAuthController';
 import { syncTrayOrders } from './controllers/traySyncController';
 import { trayRateLimiter } from './services/rateLimiter';
 import { quoteOrderFreight, quoteBatchFreight } from './controllers/freightController';
@@ -161,6 +166,7 @@ app.use("/api/companies", authenticateToken, companyRoutes);
 app.use("/api/orders", authenticateToken, orderRoutes);
 
 // ✅ ROTAS OAUTH TRAY (sem autenticação obrigatória)
+app.get('/api/tray/connect', authenticateToken, startTrayAuthorization);
 app.get('/api/tray/callback', showInstallPage);
 app.get('/api/tray/callback/auth', handleAuthCallback);
 app.get('/api/tray/status', checkAuthStatus);

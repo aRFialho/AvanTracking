@@ -1,21 +1,46 @@
 import { Request, Response } from 'express';
 import { trayAuthService } from '../services/trayAuthService';
 
+export const startTrayAuthorization = (req: Request, res: Response) => {
+  const { url } = req.query;
+
+  if (!req.user || req.user.role !== 'ADMIN') {
+    return res.status(403).json({ error: 'Apenas administradores podem iniciar a integracao Tray' });
+  }
+
+  if (!url) {
+    return res.status(400).json({ error: 'A URL da loja Tray e obrigatoria' });
+  }
+
+  try {
+    const authUrl = trayAuthService.getAuthorizationUrl(String(url));
+    return res.json({ authUrl });
+  } catch (error) {
+    return res.status(500).json({
+      error: error instanceof Error ? error.message : 'Erro ao iniciar autorizacao da Tray',
+    });
+  }
+};
+
 /**
  * GET /api/tray/callback
- * Landing Page de instalação do app
+ * Landing page opcional de instalacao
  */
 export const showInstallPage = (req: Request, res: Response) => {
   const { url, adm_user, store } = req.query;
 
-  console.log('📦 Callback recebido:', { url, adm_user, store });
+  if (!url) {
+    return res.status(400).json({ error: 'A URL da loja Tray e obrigatoria' });
+  }
 
-  // Renderizar HTML de instalação
+  const normalizedStoreUrl = trayAuthService.normalizeStoreUrl(String(url));
+  const authUrl = trayAuthService.getAuthorizationUrl(normalizedStoreUrl);
+
   const html = `
     <!DOCTYPE html>
     <html>
     <head>
-      <title>Instalar Integração Tray</title>
+      <title>Instalar Integracao Tray</title>
       <style>
         body {
           font-family: Arial, sans-serif;
@@ -30,7 +55,7 @@ export const showInstallPage = (req: Request, res: Response) => {
           background: white;
           border-radius: 16px;
           padding: 40px;
-          max-width: 500px;
+          max-width: 520px;
           box-shadow: 0 20px 60px rgba(0,0,0,0.3);
           text-align: center;
         }
@@ -62,19 +87,16 @@ export const showInstallPage = (req: Request, res: Response) => {
     </head>
     <body>
       <div class="container">
-        <h1>🚀 Integração de Pedidos</h1>
-        <p>Conecte sua loja Tray com nosso sistema de rastreamento de pedidos.</p>
-        <p><strong>Loja:</strong> ${url}</p>
-        <p><strong>Usuário:</strong> ${adm_user}</p>
-        <button onclick="authorize()">Autorizar Agora</button>
+        <h1>Integracao de Pedidos Tray</h1>
+        <p>Conecte sua loja Tray com o sistema para sincronizar pedidos.</p>
+        <p><strong>Loja:</strong> ${normalizedStoreUrl}</p>
+        ${store ? `<p><strong>Store:</strong> ${store}</p>` : ''}
+        ${adm_user ? `<p><strong>Usuario:</strong> ${adm_user}</p>` : ''}
+        <button onclick="authorize()">Autorizar agora</button>
       </div>
       <script>
         function authorize() {
-          const storeUrl = '${url}';
-          const callbackUrl = encodeURIComponent('${process.env.TRAY_CALLBACK_URL}/auth');
-          const consumerKey = '${process.env.TRAY_CONSUMER_KEY}';
-          
-          window.location.href = storeUrl + '/auth.php?response_type=code&consumer_key=' + consumerKey + '&callback=' + callbackUrl;
+          window.location.href = ${JSON.stringify(authUrl)};
         }
       </script>
     </body>
@@ -86,45 +108,48 @@ export const showInstallPage = (req: Request, res: Response) => {
 
 /**
  * GET /api/tray/callback/auth
- * Receber código de autorização e gerar token
+ * Receber codigo de autorizacao e gerar token
  */
 export const handleAuthCallback = async (req: Request, res: Response) => {
   try {
     const { code, api_address, store, store_host, adm_user } = req.query;
 
-    console.log('🔐 Callback de autorização:', { code, api_address, store, store_host, adm_user });
+    console.log('Callback de autorizacao Tray:', {
+      code,
+      api_address,
+      store,
+      store_host,
+      adm_user,
+    });
 
     if (!code || !api_address || !store) {
-      return res.status(400).json({ error: 'Parâmetros faltando' });
+      return res.status(400).json({ error: 'Parametros faltando' });
     }
 
-        // 1. Gerar access_token
     const authData = await trayAuthService.generateAccessToken(
       String(code),
-      String(api_address)
+      String(api_address),
     );
 
-    // Pegamos o nome correto do campo que a Tray envia (usando 'as any' para o TypeScript não reclamar)
-    const expirationDate = (authData as any).date_expiration_access_token || (authData as any).date_expiration_refresh_token;
+    const expirationDate =
+      (authData as any).date_expiration_access_token ||
+      (authData as any).date_expiration_refresh_token ||
+      authData.date_expiration;
 
-    // 2. Salvar no banco
     await trayAuthService.saveAuth(String(store), {
       apiAddress: String(api_address),
       accessToken: authData.access_token,
       refreshToken: authData.refresh_token,
-      expiresAt: trayAuthService.parseExpirationDate(expirationDate), // <-- CORRIGIDO AQUI
+      expiresAt: trayAuthService.parseExpirationDate(expirationDate),
       code: String(code),
-      storeName: String(store_host)
+      storeName: String(store_host || ''),
     });
 
-    console.log('✅ Autenticação salva com sucesso');
-
-    // 3. Renderizar página de sucesso
     const html = `
       <!DOCTYPE html>
       <html>
       <head>
-        <title>Autorização Concluída</title>
+        <title>Autorizacao Concluida</title>
         <style>
           body {
             font-family: Arial, sans-serif;
@@ -150,40 +175,49 @@ export const handleAuthCallback = async (req: Request, res: Response) => {
             font-size: 64px;
             color: #10b981;
           }
+          .meta {
+            margin-top: 16px;
+            color: #64748b;
+            font-size: 14px;
+          }
         </style>
       </head>
       <body>
         <div class="container">
           <div class="checkmark">✓</div>
-          <h1>Autorização Concluída!</h1>
-          <p>Sua loja foi conectada com sucesso.</p>
-          <p>Você já pode sincronizar seus pedidos.</p>
+          <h1>Autorizacao concluida</h1>
+          <p>Sua loja Tray foi conectada com sucesso.</p>
+          <p>Voce ja pode sincronizar os pedidos.</p>
+          <div class="meta">
+            <div><strong>Store:</strong> ${String(store)}</div>
+            ${store_host ? `<div><strong>Host:</strong> ${String(store_host)}</div>` : ''}
+            ${adm_user ? `<div><strong>Usuario:</strong> ${String(adm_user)}</div>` : ''}
+          </div>
         </div>
       </body>
       </html>
     `;
 
     res.send(html);
-
   } catch (error) {
-    console.error('❌ Erro no callback:', error);
-    res.status(500).json({ 
-      error: 'Erro ao processar autorização',
-      details: error instanceof Error ? error.message : 'Erro desconhecido'
+    console.error('Erro no callback da Tray:', error);
+    res.status(500).json({
+      error: 'Erro ao processar autorizacao',
+      details: error instanceof Error ? error.message : 'Erro desconhecido',
     });
   }
 };
 
 /**
  * GET /api/tray/status
- * Verificar status da autenticação
+ * Verificar status da autenticacao
  */
 export const checkAuthStatus = async (req: Request, res: Response) => {
   try {
     const { storeId } = req.query;
 
     if (!storeId) {
-      return res.status(400).json({ error: 'storeId é obrigatório' });
+      return res.status(400).json({ error: 'storeId e obrigatorio' });
     }
 
     const token = await trayAuthService.getValidAuth(String(storeId));
@@ -191,18 +225,17 @@ export const checkAuthStatus = async (req: Request, res: Response) => {
     if (!token) {
       return res.json({
         authorized: false,
-        message: 'Loja não autorizada ou token expirado'
+        message: 'Loja nao autorizada ou token expirado',
       });
     }
 
     return res.json({
       authorized: true,
-      message: 'Loja autorizada e token válido'
+      message: 'Loja autorizada e token valido',
     });
-
   } catch (error) {
     return res.status(500).json({
-      error: error instanceof Error ? error.message : 'Erro desconhecido'
+      error: error instanceof Error ? error.message : 'Erro desconhecido',
     });
   }
 };
