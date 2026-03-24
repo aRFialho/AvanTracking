@@ -171,6 +171,8 @@ app.get('/api/tray/callback', showInstallPage);
 app.get('/api/tray/callback/auth', handleAuthCallback);
 app.get('/api/tray/status', authenticateToken, checkAuthStatus);
 app.post('/api/tray/sync', authenticateToken, syncTrayOrders);
+app.get('/tray/callback', showInstallPage);
+app.get('/tray/callback/auth', handleAuthCallback);
 
 // ✅ ROTAS DE COTAÇÃO DE FRETE (protegidas)
 app.post('/api/freight/quote/:orderId', authenticateToken, quoteOrderFreight);
