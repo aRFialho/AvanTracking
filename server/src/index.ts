@@ -18,6 +18,7 @@ import {
 import { trayRateLimiter } from './services/rateLimiter';
 import { quoteOrderFreight, quoteBatchFreight } from './controllers/freightController';
 import { authenticateToken } from './middleware/auth';
+import { traySyncJobService } from './services/traySyncJobService';
 
 const prisma = new PrismaClient();
 const app = express();
@@ -218,4 +219,8 @@ app.get(/.*/, (req, res) => {
 
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
+});
+
+void traySyncJobService.initializeSchedules().catch((error) => {
+  console.error('Erro ao inicializar agendas automaticas da Tray:', error);
 });

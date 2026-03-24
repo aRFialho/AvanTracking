@@ -113,6 +113,7 @@ const buildOrderData = (orderData: any, status: OrderStatus) => ({
   recipient: safeString(orderData.recipient),
   maxShippingDeadline: safeDate(orderData.maxShippingDeadline),
   estimatedDeliveryDate: safeDate(orderData.estimatedDeliveryDate),
+  carrierEstimatedDeliveryDate: safeDate(orderData.carrierEstimatedDeliveryDate),
   status,
   isDelayed: Boolean(orderData.isDelayed),
 });

@@ -20,26 +20,8 @@ interface TrayOrderCompleteResponse {
   Order: any;
 }
 
-const normalizeChannelManagedFreight = (freightType: string | null | undefined) => {
-  const normalized = String(freightType || '').trim().toLowerCase();
-
-  if (!normalized) return null;
-
-  if (
-    ['encomenda normal', 'normal ao endereço', 'normal ao endereco'].includes(
-      normalized,
-    ) ||
-    normalized.includes('priorit')
-  ) {
-    return 'ColetasME2';
-  }
-
-  if (['shopee xpress', 'retirada pelo comprador'].includes(normalized)) {
-    return 'Shopee Xpress';
-  }
-
-  return null;
-};
+const isTrayParticularSalesChannel = (salesChannel: string | null | undefined) =>
+  String(salesChannel || '').trim().toUpperCase() === 'TRAY - PARTICULAR';
 
 export class TrayApiService {
   private storeId: string;
@@ -226,6 +208,12 @@ export class TrayApiService {
     const trayStatus = (trayOrder.status || 'A ENVIAR').toUpperCase();
     const mappedStatus =
       normalizedChannelFreight ? 'CHANNEL_LOGISTICS' : statusMap[trayStatus] || 'PENDING';
+    const salesChannel = 'Tray - ' + (trayOrder.point_sale || 'LOJA VIRTUAL');
+    const trayEstimatedDeliveryDate =
+      trayOrder.estimated_delivery_date &&
+      trayOrder.estimated_delivery_date !== '0000-00-00'
+        ? new Date(trayOrder.estimated_delivery_date)
+        : null;
 
     return {
       orderNumber: String(trayOrder.id),
@@ -237,7 +225,7 @@ export class TrayApiService {
       cnpj: customer.cnpj || null,
       phone: customer.phone || null,
       mobile: customer.cellphone || null,
-      salesChannel: 'Tray - ' + (trayOrder.point_sale || 'LOJA VIRTUAL'),
+      salesChannel,
       freightType: normalizedChannelFreight || trayOrder.shipment || 'Nao informado',
       freightValue: parseFloat(trayOrder.shipment_value || '0'),
       shippingDate:
@@ -253,16 +241,11 @@ export class TrayApiService {
       zipCode: (mainAddress.zip_code || customer.zip_code || '').replace('-', ''),
       totalValue: parseFloat(trayOrder.total || '0'),
       recipient: mainAddress.recipient || customer.name || null,
-      maxShippingDeadline:
-        trayOrder.estimated_delivery_date &&
-        trayOrder.estimated_delivery_date !== '0000-00-00'
-          ? new Date(trayOrder.estimated_delivery_date)
-          : null,
-      estimatedDeliveryDate:
-        trayOrder.estimated_delivery_date &&
-        trayOrder.estimated_delivery_date !== '0000-00-00'
-          ? new Date(trayOrder.estimated_delivery_date)
-          : null,
+      maxShippingDeadline: trayEstimatedDeliveryDate,
+      estimatedDeliveryDate: isTrayParticularSalesChannel(salesChannel)
+        ? null
+        : trayEstimatedDeliveryDate,
+      carrierEstimatedDeliveryDate: null,
       status: mappedStatus,
       isDelayed: false,
       trackingHistory: [

@@ -13,6 +13,25 @@ import { fetchWithAuth } from "../utils/authFetch";
 
 const BOT_NAME = "Muriçoca";
 const BOT_AVATAR_SRC = "/muricoca.png";
+const BOT_BUTTON_SIZE = 64;
+const BOT_WINDOW_GAP = 16;
+const BOT_MARGIN = 24;
+const BOT_STORAGE_KEY = "muricoca-launcher-position";
+
+const clampLauncherPosition = (
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+) => {
+  const maxX = Math.max(BOT_MARGIN, width - BOT_BUTTON_SIZE - BOT_MARGIN);
+  const maxY = Math.max(BOT_MARGIN, height - BOT_BUTTON_SIZE - BOT_MARGIN);
+
+  return {
+    x: Math.min(Math.max(BOT_MARGIN, x), maxX),
+    y: Math.min(Math.max(BOT_MARGIN, y), maxY),
+  };
+};
 
 interface Message {
   id: string;
@@ -144,7 +163,17 @@ export const Chatbot: React.FC = () => {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isAvatarOk, setIsAvatarOk] = useState(true);
+  const [launcherPosition, setLauncherPosition] = useState({ x: 0, y: 0 });
+  const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const dragStateRef = useRef({
+    pointerId: -1,
+    startX: 0,
+    startY: 0,
+    originX: 0,
+    originY: 0,
+    moved: false,
+  });
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -156,18 +185,65 @@ export const Chatbot: React.FC = () => {
     }
   }, [messages, isOpen]);
 
-  // --- LOCAL INTELLIGENCE ENGINE ---
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const updateViewport = () => {
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+
+      setViewportSize({ width, height });
+      setLauncherPosition((current) => {
+        if (current.x > 0 || current.y > 0) {
+          return clampLauncherPosition(current.x, current.y, width, height);
+        }
+
+        const savedPosition = window.localStorage.getItem(BOT_STORAGE_KEY);
+        if (savedPosition) {
+          try {
+            const parsed = JSON.parse(savedPosition);
+            return clampLauncherPosition(
+              Number(parsed.x || 0),
+              Number(parsed.y || 0),
+              width,
+              height,
+            );
+          } catch {
+            // ignore invalid localStorage payload
+          }
+        }
+
+        return {
+          x: Math.max(BOT_MARGIN, width - BOT_BUTTON_SIZE - BOT_MARGIN),
+          y: Math.max(BOT_MARGIN, height - BOT_BUTTON_SIZE - BOT_MARGIN),
+        };
+      });
+    };
+
+    updateViewport();
+    window.addEventListener("resize", updateViewport);
+    return () => window.removeEventListener("resize", updateViewport);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (launcherPosition.x <= 0 && launcherPosition.y <= 0) return;
+
+    window.localStorage.setItem(
+      BOT_STORAGE_KEY,
+      JSON.stringify(launcherPosition),
+    );
+  }, [launcherPosition]);
+
   const findResponse = (text: string): string => {
     const normalizedText = text.toLowerCase().trim();
 
-    // 1. Exact/Keyword Match
     for (const item of KNOWLEDGE_BASE) {
       if (item.keywords.some((keyword) => normalizedText.includes(keyword))) {
         return item.response;
       }
     }
 
-    // 2. Default Fallback
     return "Desculpe, não entendi exatamente. 😕\n\nTente usar palavras-chave como:\n\n* 'Dashboard' (para dúvidas sobre gráficos)\n* 'Importar' (para dúvidas sobre CSV/Excel)\n* 'Alertas' (para riscos de atraso)\n* 'API' (para consulta de pedido único)\n* 'Sync' (para sincronização)";
   };
 
@@ -205,7 +281,6 @@ export const Chatbot: React.FC = () => {
     const userText = input;
     setInput("");
 
-    // Add User Message
     const userMsg: Message = {
       id: Date.now().toString(),
       role: "user",
@@ -232,12 +307,87 @@ export const Chatbot: React.FC = () => {
     }
   };
 
+  const handlePointerDown = (event: React.PointerEvent<HTMLButtonElement>) => {
+    dragStateRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: launcherPosition.x,
+      originY: launcherPosition.y,
+      moved: false,
+    };
+
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const handlePointerMove = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (dragStateRef.current.pointerId !== event.pointerId) return;
+
+    const deltaX = event.clientX - dragStateRef.current.startX;
+    const deltaY = event.clientY - dragStateRef.current.startY;
+
+    if (
+      !dragStateRef.current.moved &&
+      Math.abs(deltaX) < 4 &&
+      Math.abs(deltaY) < 4
+    ) {
+      return;
+    }
+
+    dragStateRef.current.moved = true;
+    setLauncherPosition(
+      clampLauncherPosition(
+        dragStateRef.current.originX + deltaX,
+        dragStateRef.current.originY + deltaY,
+        viewportSize.width,
+        viewportSize.height,
+      ),
+    );
+  };
+
+  const handlePointerUp = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (dragStateRef.current.pointerId !== event.pointerId) return;
+
+    event.currentTarget.releasePointerCapture(event.pointerId);
+    const shouldToggle = !dragStateRef.current.moved;
+    dragStateRef.current.pointerId = -1;
+    dragStateRef.current.moved = false;
+
+    if (shouldToggle) {
+      setIsOpen((current) => !current);
+    }
+  };
+
+  const handlePointerCancel = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (dragStateRef.current.pointerId !== event.pointerId) return;
+
+    event.currentTarget.releasePointerCapture(event.pointerId);
+    dragStateRef.current.pointerId = -1;
+    dragStateRef.current.moved = false;
+  };
+
+  const shouldOpenToLeft =
+    viewportSize.width > 0 && launcherPosition.x > viewportSize.width / 2;
+  const shouldOpenAbove =
+    viewportSize.height > 0 && launcherPosition.y > 540;
+
   return (
-    <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end pointer-events-none">
-      {/* Chat Window */}
+    <div
+      className="fixed z-50 pointer-events-none"
+      style={{
+        left: launcherPosition.x,
+        top: launcherPosition.y,
+      }}
+    >
       {isOpen && (
-        <div className="pointer-events-auto mb-4 w-[320px] md:w-[380px] h-[500px] bg-white dark:bg-[#151725] rounded-2xl shadow-2xl border border-slate-200 dark:border-white/10 flex flex-col overflow-hidden animate-in slide-in-from-bottom-10 fade-in duration-300">
-          {/* Header */}
+        <div
+          className="pointer-events-auto w-[320px] md:w-[380px] h-[500px] bg-white dark:bg-[#151725] rounded-2xl shadow-2xl border border-slate-200 dark:border-white/10 flex flex-col overflow-hidden animate-in slide-in-from-bottom-10 fade-in duration-300"
+          style={{
+            position: "absolute",
+            [shouldOpenAbove ? "bottom" : "top"]: BOT_BUTTON_SIZE + BOT_WINDOW_GAP,
+            [shouldOpenToLeft ? "right" : "left"]: 0,
+          }}
+        >
           <div className="p-4 bg-gradient-to-r from-blue-600 to-purple-600 flex items-center justify-between shrink-0">
             <div className="flex items-center gap-2 text-white">
               <div className="p-1.5 bg-white/20 rounded-full backdrop-blur-sm">
@@ -259,7 +409,6 @@ export const Chatbot: React.FC = () => {
             </button>
           </div>
 
-          {/* Messages Area */}
           <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50 dark:bg-[#0B0C15]">
             {messages.map((msg) => (
               <div
@@ -269,7 +418,6 @@ export const Chatbot: React.FC = () => {
                   msg.role === "user" ? "ml-auto flex-row-reverse" : "",
                 )}
               >
-                {/* Avatar */}
                 <div
                   className={clsx(
                     "w-8 h-8 rounded-full flex items-center justify-center shrink-0 border",
@@ -292,7 +440,6 @@ export const Chatbot: React.FC = () => {
                   )}
                 </div>
 
-                {/* Bubble */}
                 <div
                   className={clsx(
                     "p-3 rounded-2xl text-sm shadow-sm",
@@ -301,7 +448,6 @@ export const Chatbot: React.FC = () => {
                       : "bg-white dark:bg-[#1A1D2D] text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-white/5 rounded-tl-none",
                   )}
                 >
-                  {/* Markdown-like simple rendering */}
                   <div className="whitespace-pre-wrap leading-relaxed">
                     {msg.text}
                   </div>
@@ -334,7 +480,6 @@ export const Chatbot: React.FC = () => {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Input Area */}
           <form
             onSubmit={handleSend}
             className="p-3 bg-white dark:bg-[#151725] border-t border-slate-200 dark:border-white/5"
@@ -359,15 +504,20 @@ export const Chatbot: React.FC = () => {
         </div>
       )}
 
-      {/* Floating Toggle Button */}
       <button
-        onClick={() => setIsOpen(!isOpen)}
         className={clsx(
-          "pointer-events-auto h-16 w-16 rounded-full shadow-lg flex items-center justify-center transition-all duration-300 hover:scale-110 active:scale-95 group relative overflow-hidden",
+          "pointer-events-auto h-16 w-16 rounded-full shadow-lg flex items-center justify-center transition-all duration-300 hover:scale-110 active:scale-95 group relative overflow-hidden touch-none",
           isOpen
             ? "bg-slate-800 text-white"
             : "bg-white dark:bg-[#151725] border border-slate-200 dark:border-white/10",
         )}
+        style={{
+          cursor: dragStateRef.current.pointerId === -1 ? "grab" : "grabbing",
+        }}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerCancel}
       >
         {!isOpen && (
           <div className="absolute inset-0 bg-blue-500/10 dark:bg-blue-400/10 rounded-full animate-pulse opacity-70"></div>

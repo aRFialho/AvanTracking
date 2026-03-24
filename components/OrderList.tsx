@@ -717,6 +717,9 @@ export const OrderList: React.FC<OrderListProps> = ({
                   Prev. Entrega
                 </th>
                 <th className="px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]">
+                  Previsão Transportadora
+                </th>
+                <th className="px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]">
                   Última Movimentação
                 </th>
                 <th className="px-4 py-3 whitespace-nowrap text-center bg-slate-50 dark:bg-[#11131f]">
@@ -761,6 +764,9 @@ export const OrderList: React.FC<OrderListProps> = ({
                       {formatDateOrDash(order.estimatedDeliveryDate)}
                     </td>
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                      {formatDateOrDash(order.carrierEstimatedDeliveryDate)}
+                    </td>
+                    <td className="px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">
                       <div className="flex flex-col">
                         <span className="text-xs">
                           {order.lastUpdate
@@ -795,7 +801,7 @@ export const OrderList: React.FC<OrderListProps> = ({
               ) : (
                 <tr>
                   <td
-                    colSpan={8}
+                    colSpan={9}
                     className="px-6 py-12 text-center text-slate-400 dark:text-slate-500"
                   >
                     <Search className="w-12 h-12 mx-auto mb-3 opacity-20" />

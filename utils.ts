@@ -82,9 +82,9 @@ export const formatDateOrDash = (value: unknown, locale = "pt-BR"): string => {
 
 export const mapIntelipostStatusToEnum = (status: string): OrderStatus => {
   const s = status ? status.toUpperCase() : '';
-  if (s.includes('ENTREGUE') || s.includes('DELIVERED')) return OrderStatus.DELIVERED;
   // Colocando SAIU PARA ENTREGA ANTES de EM TRÂNSITO para evitar sobrescrever
   if (s.includes('SAIU PARA ENTREGA') || s.includes('DELIVERY_ATTEMPT') || s.includes('TO_BE_DELIVERED') || s.includes('SAIU PARA')) return OrderStatus.DELIVERY_ATTEMPT;
+  if (s.includes('ENTREGUE') || s.includes('DELIVERED')) return OrderStatus.DELIVERED;
   if (s.includes('EM TRÂNSITO') || s.includes('SHIPPED') || s.includes('TRANSIT') || s.includes('IN_TRANSIT')) return OrderStatus.SHIPPED;
   if (s.includes('CRIADO') || s.includes('CREATED') || s.includes('NEW')) return OrderStatus.CREATED;
   if (s.includes('FALHA') || s.includes('FAILURE') || s.includes('ROUBO') || s.includes('AVARIA') || s.includes('CLARIFY_DELIVERY_FAIL')) return OrderStatus.FAILURE;
@@ -114,7 +114,9 @@ export const getEffectiveOrderStatus = (order: Order): OrderStatus => {
 
   // Mapear o status do evento para o enum OrderStatus
   // Se o status mapeado for PENDING (não reconhecido), manter o status original se ele for mais específico
-  const mappedStatus = mapIntelipostStatusToEnum(latestEvent.status);
+  const mappedStatus = mapIntelipostStatusToEnum(
+    `${latestEvent.status || ""} ${latestEvent.description || ""}`,
+  );
 
   // Se o status mapeado for válido e diferente de PENDING, usar ele.
   // PENDING é o fallback do mapIntelipostStatusToEnum.
@@ -201,7 +203,12 @@ export const isOrderOnRoute = (order: Order): boolean => {
       return (new Date(prev.date) > new Date(current.date)) ? prev : current;
     });
 
-    return latestEvent.status === "TO_BE_DELIVERED";
+    return (
+      latestEvent.status === "TO_BE_DELIVERED" ||
+      mapIntelipostStatusToEnum(
+        `${latestEvent.status || ""} ${latestEvent.description || ""}`,
+      ) === OrderStatus.DELIVERY_ATTEMPT
+    );
   }
 
   return false;

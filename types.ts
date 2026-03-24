@@ -99,8 +99,9 @@ export interface Order {
   
   // Delivery Constraints
   recipient?: string; // 'Destinatário'
-  maxShippingDeadline: Date; // 'Prazo máximo de envio'
-  estimatedDeliveryDate: Date; // 'Data estimada de entrega'
+  maxShippingDeadline: Date | null; // 'Prazo máximo de envio'
+  estimatedDeliveryDate: Date | null; // 'Data estimada de entrega'
+  carrierEstimatedDeliveryDate?: Date | null; // 'Previsão transportadora'
   
   // Tracking State (Mutable)
   status: OrderStatus;

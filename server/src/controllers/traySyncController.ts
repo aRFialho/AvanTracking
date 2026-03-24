@@ -26,6 +26,7 @@ export const syncTrayOrders = async (req: Request, res: Response) => {
       return res.status(context.status).json({ error: context.error });
     }
 
+    traySyncJobService.ensureSchedule(context.companyId, context.userId);
     const result = await traySyncService.executeSync(context.companyId, req.body || {});
     return res.json(result);
   } catch (error) {
@@ -44,12 +45,14 @@ export const startTraySyncJob = async (req: Request, res: Response) => {
       return res.status(context.status).json({ error: context.error });
     }
 
+    traySyncJobService.ensureSchedule(context.companyId, context.userId);
     const existing = traySyncJobService.getJob(context.companyId);
     if (existing?.status === 'running') {
       return res.json({
         success: true,
         message: 'A sincronizacao da Tray ja esta em andamento.',
         job: existing,
+        schedule: traySyncJobService.getSchedule(context.companyId),
       });
     }
 
@@ -63,6 +66,7 @@ export const startTraySyncJob = async (req: Request, res: Response) => {
       success: true,
       message: 'Sincronizacao da Tray iniciada em segundo plano.',
       job,
+      schedule: traySyncJobService.getSchedule(context.companyId),
     });
   } catch (error) {
     console.error('Erro ao iniciar sincronizacao da Tray:', error);
@@ -80,9 +84,11 @@ export const getTraySyncStatus = async (req: Request, res: Response) => {
       return res.status(context.status).json({ error: context.error });
     }
 
+    traySyncJobService.ensureSchedule(context.companyId, context.userId);
     return res.json({
       success: true,
       job: traySyncJobService.getJob(context.companyId),
+      schedule: traySyncJobService.getSchedule(context.companyId),
     });
   } catch (error) {
     console.error('Erro ao consultar status da sincronizacao da Tray:', error);

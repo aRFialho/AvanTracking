@@ -19,7 +19,7 @@ const DEFAULT_TRAY_STATUSES = TRAY_STATUS_OPTIONS.filter(
   (status) => status !== 'cancelado',
 );
 
-const VALID_DAY_OPTIONS = [90, 60, 30, 15, 7] as const;
+const VALID_DAY_OPTIONS = [90, 60, 30, 15, 7, 2] as const;
 
 type TrayStatusOption = (typeof TRAY_STATUS_OPTIONS)[number];
 

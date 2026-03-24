@@ -42,14 +42,33 @@ query ($clientId: ID, $orderNumber: String, $orderHash: String) {
 
 const mapIntelipostStatusToEnum = (status: string): OrderStatus => {
   const s = status ? status.toUpperCase() : '';
+  if (s.includes('SAIU PARA ENTREGA') || s.includes('DELIVERY_ATTEMPT') || s.includes('TO_BE_DELIVERED') || s.includes('SAIU PARA')) return OrderStatus.DELIVERY_ATTEMPT;
   if (s.includes('ENTREGUE') || s.includes('DELIVERED')) return OrderStatus.DELIVERED;
   if (s.includes('EM TRÂNSITO') || s.includes('SHIPPED') || s.includes('TRANSIT')) return OrderStatus.SHIPPED;
-  if (s.includes('SAIU PARA ENTREGA') || s.includes('DELIVERY_ATTEMPT')) return OrderStatus.DELIVERY_ATTEMPT;
   if (s.includes('CRIADO') || s.includes('CREATED')) return OrderStatus.CREATED;
   if (s.includes('FALHA') || s.includes('FAILURE') || s.includes('ROUBO') || s.includes('AVARIA')) return OrderStatus.FAILURE;
   if (s.includes('DEVOL') || s.includes('RETURN')) return OrderStatus.RETURNED;
   if (s.includes('CANCEL') || s.includes('CANCELED')) return OrderStatus.CANCELED;
   return OrderStatus.PENDING;
+};
+
+const resolveTrackingStatus = (trackingData: any, historyMapped: TrackingEvent[]): OrderStatus => {
+  const latestHistory = historyMapped.length > 0
+    ? historyMapped.reduce((prev, current) =>
+        new Date(prev.date) > new Date(current.date) ? prev : current,
+      )
+    : null;
+
+  return mapIntelipostStatusToEnum(
+    [
+      trackingData?.tracking?.status,
+      trackingData?.tracking?.status_label,
+      latestHistory?.status,
+      latestHistory?.description,
+    ]
+      .filter(Boolean)
+      .join(' '),
+  );
 };
 
 const toCleanString = (value: unknown): string => {
@@ -116,9 +135,10 @@ export const fetchSingleOrder = async (orderNumber: string): Promise<Partial<Ord
 
         return {
           orderNumber: trackingData.order.order_number,
-          status: mapIntelipostStatusToEnum(trackingData.tracking.status),
+          status: resolveTrackingStatus(trackingData, historyMapped),
           freightType: trackingData.logistic_provider?.name || 'Desconhecida',
           estimatedDeliveryDate: estimatedDate,
+          carrierEstimatedDeliveryDate: estimatedDate,
           trackingHistory: historyMapped,
           lastUpdate: lastEventDate,
           city: trackingData.end_customer?.address?.city || '',

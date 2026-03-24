@@ -1,20 +1,105 @@
 import crypto from 'crypto';
-import type { SyncLogEntry, SyncJobStatus } from '../types/syncJob';
+import { PrismaClient } from '@prisma/client';
+import type {
+  SyncLogEntry,
+  SyncJobStatus,
+  SyncScheduleStatus,
+} from '../types/syncJob';
 import {
   traySyncService,
   type TraySyncFiltersInput,
 } from './traySyncService';
+import { trayAuthService } from './trayAuthService';
 
+const prisma = new PrismaClient();
 const MAX_LOGS = 1000;
+const AUTO_TRAY_SYNC_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const AUTO_TRAY_SYNC_FILTERS: TraySyncFiltersInput = {
+  days: 2,
+  statusMode: 'selected',
+  statuses: [
+    'a enviar',
+    '5- aguardando faturamento',
+    'enviado',
+    'aguardando envio',
+  ],
+};
+
+type ScheduleEntry = {
+  userId: string;
+  nextScheduledAt: string | null;
+  timeout: NodeJS.Timeout | null;
+};
 
 class TraySyncJobService {
   private jobs: Map<string, SyncJobStatus> = new Map();
+  private schedules: Map<string, ScheduleEntry> = new Map();
 
   getJob(companyId: string) {
     return this.jobs.get(companyId) || null;
   }
 
-  startJob(companyId: string, userId: string, filters: TraySyncFiltersInput) {
+  ensureSchedule(companyId: string, userId: string) {
+    const existing = this.schedules.get(companyId);
+
+    if (existing) {
+      existing.userId = userId;
+      if (!existing.nextScheduledAt) {
+        this.scheduleNext(companyId, userId);
+      }
+      return;
+    }
+
+    this.scheduleNext(companyId, userId);
+  }
+
+  getSchedule(companyId: string): SyncScheduleStatus {
+    const schedule = this.schedules.get(companyId);
+
+    return {
+      enabled: true,
+      intervalMs: AUTO_TRAY_SYNC_INTERVAL_MS,
+      nextScheduledAt: schedule?.nextScheduledAt ?? null,
+    };
+  }
+
+  async initializeSchedules() {
+    const auth = await trayAuthService.getLatestAuth();
+    if (!auth) {
+      return;
+    }
+
+    const users = await prisma.user.findMany({
+      where: {
+        companyId: {
+          not: null,
+        },
+      },
+      select: {
+        id: true,
+        companyId: true,
+      },
+      orderBy: [{ createdAt: 'asc' }],
+    });
+
+    const seenCompanies = new Set<string>();
+
+    for (const user of users) {
+      if (!user.companyId || seenCompanies.has(user.companyId)) {
+        continue;
+      }
+
+      seenCompanies.add(user.companyId);
+      this.ensureSchedule(user.companyId, user.id);
+    }
+  }
+
+  startJob(
+    companyId: string,
+    userId: string,
+    filters: TraySyncFiltersInput,
+    mode: 'manual' | 'automatic' = 'manual',
+  ) {
     const existing = this.jobs.get(companyId);
 
     if (existing?.status === 'running') {
@@ -39,14 +124,25 @@ class TraySyncJobService {
       logs: [],
     };
 
-    this.pushLog(job, 'info', 'Sincronizacao da Tray iniciada em segundo plano.');
+    this.clearScheduledTimeout(companyId);
+    this.pushLog(
+      job,
+      'info',
+      mode === 'automatic'
+        ? 'Sincronizacao automatica da Tray iniciada.'
+        : 'Sincronizacao da Tray iniciada em segundo plano.',
+    );
     this.jobs.set(companyId, job);
-    void this.run(job, filters);
+    void this.run(job, filters, mode);
 
     return job;
   }
 
-  private async run(job: SyncJobStatus, filters: TraySyncFiltersInput) {
+  private async run(
+    job: SyncJobStatus,
+    filters: TraySyncFiltersInput,
+    mode: 'manual' | 'automatic',
+  ) {
     try {
       const result = await traySyncService.executeSync(job.companyId, filters, {
         onStart: ({ total }) => {
@@ -87,6 +183,7 @@ class TraySyncJobService {
       job.failed = Number(result?.results?.skipped || 0);
       this.touch(job);
       this.pushLog(job, 'success', result.message);
+      this.scheduleNext(job.companyId, job.userId);
     } catch (error) {
       job.status = 'failed';
       job.currentOrderNumber = null;
@@ -95,6 +192,7 @@ class TraySyncJobService {
         error instanceof Error ? error.message : 'Erro desconhecido na sincronizacao da Tray.';
       this.touch(job);
       this.pushLog(job, 'error', job.error);
+      this.scheduleNext(job.companyId, job.userId);
     }
   }
 
@@ -115,6 +213,57 @@ class TraySyncJobService {
 
     job.logs = [...job.logs, entry].slice(-MAX_LOGS);
     this.touch(job);
+  }
+
+  private scheduleNext(companyId: string, userId: string) {
+    this.clearScheduledTimeout(companyId);
+
+    const nextRunAt = new Date(
+      Date.now() + AUTO_TRAY_SYNC_INTERVAL_MS,
+    ).toISOString();
+    const timeout = setTimeout(() => {
+      this.triggerAutomaticSync(companyId);
+    }, AUTO_TRAY_SYNC_INTERVAL_MS);
+
+    this.schedules.set(companyId, {
+      userId,
+      nextScheduledAt: nextRunAt,
+      timeout,
+    });
+  }
+
+  private triggerAutomaticSync(companyId: string) {
+    const schedule = this.schedules.get(companyId);
+    if (!schedule) return;
+
+    schedule.timeout = null;
+    schedule.nextScheduledAt = null;
+
+    const existing = this.jobs.get(companyId);
+    if (existing?.status === 'running') {
+      this.scheduleNext(companyId, schedule.userId);
+      return;
+    }
+
+    const job = this.startJob(
+      companyId,
+      schedule.userId,
+      AUTO_TRAY_SYNC_FILTERS,
+      'automatic',
+    );
+    this.pushLog(
+      job,
+      'info',
+      'Execucao automatica da Tray disparada com janela de 2 dias.',
+    );
+  }
+
+  private clearScheduledTimeout(companyId: string) {
+    const schedule = this.schedules.get(companyId);
+    if (!schedule?.timeout) return;
+
+    clearTimeout(schedule.timeout);
+    schedule.timeout = null;
   }
 }
 

@@ -109,6 +109,9 @@ const MainApp: React.FC = () => {
       estimatedDeliveryDate:
         parseDate((order as any).estimatedDeliveryDate) ??
         (order as any).estimatedDeliveryDate,
+      carrierEstimatedDeliveryDate:
+        parseDate((order as any).carrierEstimatedDeliveryDate) ??
+        (order as any).carrierEstimatedDeliveryDate,
       lastApiSync: parseDate((order as any).lastApiSync),
       lastUpdate: parseDate((order as any).lastUpdate) ?? new Date(),
       trackingHistory,
@@ -457,6 +460,8 @@ const MainApp: React.FC = () => {
           maxShippingDeadline: new Date(Date.now() + 86400000 * 7),
           estimatedDeliveryDate:
             fetchedData.estimatedDeliveryDate || new Date(),
+          carrierEstimatedDeliveryDate:
+            fetchedData.carrierEstimatedDeliveryDate || null,
           status: fetchedData.status || OrderStatus.PENDING,
           isDelayed: false,
           trackingHistory: fetchedData.trackingHistory || [],

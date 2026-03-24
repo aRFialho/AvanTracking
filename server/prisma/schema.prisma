@@ -122,6 +122,7 @@ model Order {
     recipient             String?
     maxShippingDeadline   DateTime?
     estimatedDeliveryDate DateTime?
+    carrierEstimatedDeliveryDate DateTime?
 
     // Estado Atual
     status    OrderStatus @default(PENDING)

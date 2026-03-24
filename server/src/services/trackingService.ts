@@ -57,16 +57,18 @@ query ($clientId: ID, $orderNumber: String, $orderHash: String) {
 const mapIntelipostStatusToEnum = (status: string): OrderStatus => {
   const normalizedStatus = status ? status.toUpperCase() : '';
   if (
+    normalizedStatus.includes('SAIU PARA ENTREGA') ||
+    normalizedStatus.includes('DELIVERY_ATTEMPT') ||
+    normalizedStatus.includes('TO_BE_DELIVERED') ||
+    normalizedStatus.includes('SAIU PARA')
+  ) {
+    return OrderStatus.DELIVERY_ATTEMPT;
+  }
+  if (
     normalizedStatus.includes('ENTREGUE') ||
     normalizedStatus.includes('DELIVERED')
   ) {
     return OrderStatus.DELIVERED;
-  }
-  if (
-    normalizedStatus.includes('SAIU PARA ENTREGA') ||
-    normalizedStatus.includes('DELIVERY_ATTEMPT')
-  ) {
-    return OrderStatus.DELIVERY_ATTEMPT;
   }
   if (
     normalizedStatus.includes('EM TRÃƒâ€šNSITO') ||
@@ -98,6 +100,36 @@ const mapIntelipostStatusToEnum = (status: string): OrderStatus => {
   return OrderStatus.PENDING;
 };
 
+const resolveTrackingStatus = (
+  trackingData: any,
+  events: Array<{
+    status: string;
+    description: string;
+    eventDate: Date;
+  }>,
+) => {
+  const latestEvent =
+    events.length > 0
+      ? events.reduce((currentLatest, event) => {
+          if (!currentLatest || event.eventDate > currentLatest.eventDate) {
+            return event;
+          }
+          return currentLatest;
+        })
+      : null;
+
+  return mapIntelipostStatusToEnum(
+    [
+      trackingData?.tracking?.status,
+      trackingData?.tracking?.status_label,
+      latestEvent?.status,
+      latestEvent?.description,
+    ]
+      .filter(Boolean)
+      .join(' '),
+  );
+};
+
 const isRouteStatus = (status: OrderStatus) => ROUTE_STATUSES.includes(status);
 
 const toIsoString = (value: Date | null | undefined) =>
@@ -110,27 +142,6 @@ const buildEmptySnapshot = (): SyncReportSnapshot => ({
   delayed: 0,
   failure: 0,
 });
-
-const normalizeChannelManagedFreight = (freightType: string | null | undefined) => {
-  const normalized = String(freightType || '').trim().toLowerCase();
-
-  if (!normalized) return null;
-
-  if (
-    ['coletasme2', 'encomenda normal', 'normal ao endereço', 'normal ao endereco'].includes(
-      normalized,
-    ) ||
-    normalized.includes('priorit')
-  ) {
-    return 'ColetasME2';
-  }
-
-  if (['shopee xpress', 'retirada pelo comprador'].includes(normalized)) {
-    return 'Shopee Xpress';
-  }
-
-  return null;
-};
 
 export class TrackingService {
   private async fetchFromIntelipost(orderNumber: string) {
@@ -339,10 +350,20 @@ export class TrackingService {
         };
       }
 
-      const newStatus = mapIntelipostStatusToEnum(trackingData.tracking.status);
-      const estimatedDate = trackingData.tracking.estimated_delivery_date_lp
+      const events = (trackingData.tracking.history || []).map((historyItem: any) => ({
+        orderId,
+        status: historyItem.macro_state?.code || 'UNKNOWN',
+        description: historyItem.provider_message || historyItem.status_label,
+        city: trackingData.end_customer?.address?.city || null,
+        state: trackingData.end_customer?.address?.state || null,
+        eventDate: new Date(historyItem.event_date),
+      }));
+
+      const newStatus = resolveTrackingStatus(trackingData, events);
+      const carrierEstimatedDate = trackingData.tracking.estimated_delivery_date_lp
         ? new Date(trackingData.tracking.estimated_delivery_date_lp)
-        : order.estimatedDeliveryDate;
+        : order.carrierEstimatedDeliveryDate;
+      const estimatedDate = order.estimatedDeliveryDate;
 
       const isDelayed =
         Boolean(estimatedDate) &&
@@ -356,6 +377,7 @@ export class TrackingService {
           status: newStatus,
           freightType: trackingData.logistic_provider?.name || order.freightType,
           estimatedDeliveryDate: estimatedDate,
+          carrierEstimatedDeliveryDate: carrierEstimatedDate,
           isDelayed: isDelayed || false,
           lastApiSync: syncedAt,
           lastApiError: null,
@@ -366,15 +388,6 @@ export class TrackingService {
       await prisma.trackingEvent.deleteMany({
         where: { orderId },
       });
-
-      const events = (trackingData.tracking.history || []).map((historyItem: any) => ({
-        orderId,
-        status: historyItem.macro_state?.code || 'UNKNOWN',
-        description: historyItem.provider_message || historyItem.status_label,
-        city: trackingData.end_customer?.address?.city || null,
-        state: trackingData.end_customer?.address?.state || null,
-        eventDate: new Date(historyItem.event_date),
-      }));
 
       if (events.length > 0) {
         await prisma.trackingEvent.createMany({
@@ -398,6 +411,8 @@ export class TrackingService {
         order.status !== newStatus ||
         order.isDelayed !== Boolean(isDelayed) ||
         toIsoString(order.estimatedDeliveryDate) !== toIsoString(estimatedDate) ||
+        toIsoString(order.carrierEstimatedDeliveryDate) !==
+          toIsoString(carrierEstimatedDate) ||
         (order.freightType || null) !== currentFreightType;
 
       return {

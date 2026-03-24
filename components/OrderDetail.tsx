@@ -174,6 +174,12 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({ order, onClose }) => {
                     </span>{" "}
                     {formatDateOrDash(order.estimatedDeliveryDate)}
                   </p>
+                  <p className="text-sm text-slate-700 dark:text-slate-200">
+                    <span className="text-slate-500 dark:text-slate-400">
+                      Previsão transportadora:
+                    </span>{" "}
+                    {formatDateOrDash(order.carrierEstimatedDeliveryDate)}
+                  </p>
                 </div>
               </div>
 
