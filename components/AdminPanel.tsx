@@ -182,7 +182,7 @@ export const AdminPanel: React.FC = () => {
       const method = editingUser ? "PUT" : "POST";
 
       const body: any = { ...formData };
-      if (!body.password && editingUser) delete body.password; // Don't send empty password on update
+      if (!editingUser || !body.password) delete body.password;
 
       const response = await fetchWithAuth(url, {
         method,
@@ -195,7 +195,11 @@ export const AdminPanel: React.FC = () => {
         throw new Error(error.error || "Failed to save user");
       }
 
+      const result = await response.json();
       setIsModalOpen(false);
+      if (!editingUser && result?.message) {
+        alert(result.message);
+      }
       fetchData();
     } catch (err: any) {
       alert(err.message);
@@ -591,23 +595,29 @@ export const AdminPanel: React.FC = () => {
                   </select>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
-                    {editingUser ? "Nova Senha (opcional)" : "Senha"}
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="password"
-                      required={!editingUser}
-                      value={formData.password}
-                      onChange={(e) =>
-                        setFormData({ ...formData, password: e.target.value })
-                      }
-                      placeholder={editingUser ? "Manter atual" : "******"}
-                      className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-lg pl-3 pr-3 py-2 text-sm text-slate-900 dark:text-white focus:border-blue-500 outline-none"
-                    />
+                {editingUser ? (
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                      Nova Senha (opcional)
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="password"
+                        value={formData.password}
+                        onChange={(e) =>
+                          setFormData({ ...formData, password: e.target.value })
+                        }
+                        placeholder="Manter atual"
+                        className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-lg pl-3 pr-3 py-2 text-sm text-slate-900 dark:text-white focus:border-blue-500 outline-none"
+                      />
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700 dark:border-blue-900/30 dark:bg-blue-900/10 dark:text-blue-300">
+                    Ao salvar, o usuario sera criado e recebera um convite por
+                    e-mail para cadastrar a propria senha.
+                  </div>
+                )}
               </div>
 
               <div className="pt-4 flex gap-3">
@@ -622,7 +632,7 @@ export const AdminPanel: React.FC = () => {
                   type="submit"
                   className="flex-1 px-4 py-2 rounded-lg font-medium text-white bg-blue-600 hover:bg-blue-700 transition-colors"
                 >
-                  Salvar Usuário
+                  {editingUser ? "Salvar Usuario" : "Criar e Enviar Convite"}
                 </button>
               </div>
             </form>
