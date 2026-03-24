@@ -4,7 +4,9 @@ import type {
   SyncJobStatus,
   SyncScheduleStatus,
 } from '../types/syncJob';
+import type { SyncTrigger } from '../types/syncReport';
 import { TrackingService } from './trackingService';
+import { syncReportService } from './syncReportService';
 
 const trackingService = new TrackingService();
 const MAX_LOGS = 1000;
@@ -49,7 +51,7 @@ class SyncJobService {
     };
   }
 
-  startJob(companyId: string, userId: string) {
+  startJob(companyId: string, userId: string, trigger: SyncTrigger = 'manual') {
     const existing = this.jobs.get(companyId);
 
     if (existing && existing.status === 'running') {
@@ -78,14 +80,14 @@ class SyncJobService {
     this.pushLog(job, 'info', 'Sincronização iniciada.');
     this.jobs.set(companyId, job);
 
-    void this.run(job);
+    void this.run(job, trigger);
 
     return job;
   }
 
-  private async run(job: SyncJobStatus) {
+  private async run(job: SyncJobStatus, trigger: SyncTrigger) {
     try {
-      await trackingService.syncAllActive(job.companyId, {
+      const results = await trackingService.syncAllActive(job.companyId, {
         onStart: ({ total }) => {
           job.total = total;
           this.touch(job);
@@ -130,6 +132,29 @@ class SyncJobService {
         'success',
         `Sincronização finalizada. ${job.success} sucesso(s), ${job.failed} falha(s).`,
       );
+
+      try {
+        const report = await syncReportService.sendTrackingSyncReport({
+          companyId: job.companyId,
+          userId: job.userId,
+          trigger,
+          payload: results.report,
+          startedAt: job.startedAt,
+          finishedAt: job.finishedAt || new Date().toISOString(),
+        });
+        this.pushLog(
+          job,
+          'info',
+          `Relatorio enviado para ${report.recipients} destinatario(s). CSV: ${report.csvUrl}`,
+        );
+      } catch (reportError) {
+        const reportMessage =
+          reportError instanceof Error
+            ? reportError.message
+            : 'Erro desconhecido ao enviar relatorio';
+        this.pushLog(job, 'error', `Falha ao enviar relatorio: ${reportMessage}`);
+      }
+
       this.scheduleNext(job.companyId, job.userId);
     } catch (error) {
       job.status = 'failed';
@@ -190,7 +215,7 @@ class SyncJobService {
       return;
     }
 
-    const job = this.startJob(companyId, schedule.userId);
+    const job = this.startJob(companyId, schedule.userId, 'automatic');
     this.pushLog(job, 'info', 'Execução automática disparada.');
   }
 

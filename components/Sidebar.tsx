@@ -186,12 +186,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <NavItem view="no-movement" icon={Timer} label="Sem Movimentação" />
         <NavItem view="upload" icon={UploadCloud} label="Importar CSV" />
 
-        {user?.role === "ADMIN" && (
-          <>
-            <div className="my-4 border-t border-slate-800 dark:border-white/10 mx-2"></div>
-            <NavItem view="admin" icon={Shield} label="Administração" />
-          </>
-        )}
+        <>
+          <div className="my-4 border-t border-slate-800 dark:border-white/10 mx-2"></div>
+          <NavItem
+            view="admin"
+            icon={Shield}
+            label={user?.role === "ADMIN" ? "Administração" : "Integração"}
+          />
+        </>
 
         <div className="flex-1"></div>
 

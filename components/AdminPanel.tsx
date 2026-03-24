@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "../contexts/AuthContext";
+import { TrayIntegrationStatus } from "../types";
 import {
   Shield,
   Users,
@@ -38,17 +39,44 @@ interface UserData {
   company?: Company;
 }
 
+const getInitialTab = (
+  canManageAdminPanel: boolean,
+): "users" | "companies" | "integration" => {
+  const params = new URLSearchParams(window.location.search);
+  const requestedTab = params.get("tab");
+
+  if (requestedTab === "integration") {
+    return "integration";
+  }
+
+  if (canManageAdminPanel && requestedTab === "companies") {
+    return "companies";
+  }
+
+  return canManageAdminPanel ? "users" : "integration";
+};
+
 export const AdminPanel: React.FC = () => {
   const { user } = useAuth();
+  const canManageAdminPanel = user?.email === "admin@avantracking.com.br";
 
   const [activeTab, setActiveTab] = useState<
     "users" | "companies" | "integration"
-  >("users");
+  >(() => getInitialTab(canManageAdminPanel));
   const [users, setUsers] = useState<UserData[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [trayStoreUrl, setTrayStoreUrl] = useState("");
+  const [trayStatus, setTrayStatus] = useState<TrayIntegrationStatus>({
+    authorized: false,
+    status: "offline",
+    storeId: null,
+    storeName: null,
+    updatedAt: null,
+    message: "Nenhuma integracao Tray autorizada.",
+  });
+  const [isCheckingTrayStatus, setIsCheckingTrayStatus] = useState(false);
 
   // User Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -120,11 +148,73 @@ export const AdminPanel: React.FC = () => {
     }
   };
 
-  useEffect(() => {
-    if (user?.email === "admin@avantracking.com.br") {
-      fetchData();
+  const fetchTrayStatus = async () => {
+    setIsCheckingTrayStatus(true);
+
+    try {
+      const response = await fetchWithAuth("/api/tray/status");
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.error || "Nao foi possivel consultar a integracao Tray.");
+      }
+
+      setTrayStatus({
+        authorized: Boolean(data.authorized),
+        status: data.status === "online" ? "online" : "offline",
+        storeId: data.storeId || null,
+        storeName: data.storeName || null,
+        updatedAt: data.updatedAt || null,
+        message:
+          data.message ||
+          (data.authorized
+            ? "Integracao Tray online."
+            : "Nenhuma integracao Tray autorizada."),
+      });
+    } catch (err: any) {
+      setTrayStatus({
+        authorized: false,
+        status: "offline",
+        storeId: null,
+        storeName: null,
+        updatedAt: null,
+        message: err.message || "Nao foi possivel consultar a integracao Tray.",
+      });
+    } finally {
+      setIsCheckingTrayStatus(false);
     }
-  }, [user]);
+  };
+
+  useEffect(() => {
+    if (canManageAdminPanel) {
+      const params = new URLSearchParams(window.location.search);
+      const requestedTab = params.get("tab");
+
+      if (requestedTab !== "integration" && requestedTab !== "companies") {
+        setActiveTab((currentTab) =>
+          currentTab === "integration" ? "users" : currentTab,
+        );
+      }
+
+      fetchData();
+      return;
+    }
+
+    setLoading(false);
+    setUsers([]);
+    setCompanies([]);
+    setError("");
+    setActiveTab("integration");
+  }, [canManageAdminPanel]);
+
+  useEffect(() => {
+    if (activeTab !== "integration") return;
+
+    fetchTrayStatus();
+    const interval = window.setInterval(fetchTrayStatus, 30000);
+
+    return () => window.clearInterval(interval);
+  }, [activeTab]);
 
   // Actions
   const handleOpenModal = (userToEdit?: UserData) => {
@@ -249,7 +339,7 @@ export const AdminPanel: React.FC = () => {
         throw new Error("A URL de autorizacao da Tray nao foi retornada.");
       }
 
-      window.open(data.authUrl, "_blank", "noopener,noreferrer");
+      window.open(data.authUrl, "_blank");
     } catch (err: any) {
       alert(err.message || "Erro ao iniciar a integracao Tray.");
     }
@@ -286,18 +376,6 @@ export const AdminPanel: React.FC = () => {
     }
   };
 
-  // Access Control: Only specific admin email
-  if (user?.email !== "admin@avantracking.com.br") {
-    return (
-      <div className="h-full flex flex-col items-center justify-center text-slate-500 dark:text-slate-400">
-        <Shield className="w-16 h-16 mb-4 text-red-500 opacity-50" />
-        <h2 className="text-2xl font-bold">Acesso Negado</h2>
-        <p>Apenas o administrador principal pode gerenciar usuários.</p>
-        <p className="text-sm mt-2">Logado como: {user?.email}</p>
-      </div>
-    );
-  }
-
   if (loading)
     return (
       <div className="flex justify-center items-center p-12">
@@ -311,32 +389,36 @@ export const AdminPanel: React.FC = () => {
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
           <Shield className="w-6 h-6 text-blue-600 dark:text-blue-400" />
-          Painel Administrativo
+          {canManageAdminPanel ? "Painel Administrativo" : "Integração"}
         </h2>
 
         <div className="flex gap-2 bg-slate-100 dark:bg-white/5 p-1 rounded-lg">
-          <button
-            onClick={() => setActiveTab("users")}
-            className={clsx(
-              "px-4 py-2 rounded-md text-sm font-medium transition-all",
-              activeTab === "users"
-                ? "bg-white dark:bg-slate-700 shadow text-blue-600 dark:text-white"
-                : "text-slate-500 hover:text-slate-700 dark:text-slate-400",
-            )}
-          >
-            Usuários
-          </button>
-          <button
-            onClick={() => setActiveTab("companies")}
-            className={clsx(
-              "px-4 py-2 rounded-md text-sm font-medium transition-all",
-              activeTab === "companies"
-                ? "bg-white dark:bg-slate-700 shadow text-blue-600 dark:text-white"
-                : "text-slate-500 hover:text-slate-700 dark:text-slate-400",
-            )}
-          >
-            Empresas
-          </button>
+          {canManageAdminPanel && (
+            <>
+              <button
+                onClick={() => setActiveTab("users")}
+                className={clsx(
+                  "px-4 py-2 rounded-md text-sm font-medium transition-all",
+                  activeTab === "users"
+                    ? "bg-white dark:bg-slate-700 shadow text-blue-600 dark:text-white"
+                    : "text-slate-500 hover:text-slate-700 dark:text-slate-400",
+                )}
+              >
+                Usuários
+              </button>
+              <button
+                onClick={() => setActiveTab("companies")}
+                className={clsx(
+                  "px-4 py-2 rounded-md text-sm font-medium transition-all",
+                  activeTab === "companies"
+                    ? "bg-white dark:bg-slate-700 shadow text-blue-600 dark:text-white"
+                    : "text-slate-500 hover:text-slate-700 dark:text-slate-400",
+                )}
+              >
+                Empresas
+              </button>
+            </>
+          )}
           <button
             onClick={() => setActiveTab("integration")}
             className={clsx(
@@ -351,7 +433,7 @@ export const AdminPanel: React.FC = () => {
         </div>
       </div>
 
-      {activeTab === "users" && (
+      {canManageAdminPanel && activeTab === "users" && (
         <div className="glass-card rounded-xl overflow-hidden border border-slate-200 dark:border-white/10">
           <div className="p-4 border-b border-slate-200 dark:border-white/10 bg-slate-50/50 dark:bg-white/5 flex justify-between items-center">
             <h3 className="font-semibold text-slate-800 dark:text-white">
@@ -458,7 +540,7 @@ export const AdminPanel: React.FC = () => {
         </div>
       )}
 
-      {activeTab === "companies" && (
+      {canManageAdminPanel && activeTab === "companies" && (
         <div className="glass-card rounded-xl overflow-hidden border border-slate-200 dark:border-white/10">
           <div className="p-4 border-b border-slate-200 dark:border-white/10 bg-slate-50/50 dark:bg-white/5 flex justify-between items-center">
             <h3 className="font-semibold text-slate-800 dark:text-white">
@@ -522,15 +604,50 @@ export const AdminPanel: React.FC = () => {
 
       {activeTab === "integration" && (
         <div className="glass-card rounded-xl overflow-hidden border border-slate-200 dark:border-white/10">
-          <div className="p-4 border-b border-slate-200 dark:border-white/10 bg-slate-50/50 dark:bg-white/5">
-            <h3 className="font-semibold text-slate-800 dark:text-white">
-              Integração Tray
-            </h3>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-              Inicie a autorização da loja Tray em uma nova aba. Se a Tray já
-              estiver logada no navegador, o id e o usuário serão reconhecidos
-              automaticamente no fluxo de autorização.
-            </p>
+          <div className="p-4 border-b border-slate-200 dark:border-white/10 bg-slate-50/50 dark:bg-white/5 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <h3 className="font-semibold text-slate-800 dark:text-white">
+                Integração Tray
+              </h3>
+              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                Inicie a autorização da loja Tray em uma nova aba. Se a Tray já
+                estiver logada no navegador, o id e o usuário serão reconhecidos
+                automaticamente no fluxo de autorização.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3 self-start">
+              <div
+                className={clsx(
+                  "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide",
+                  trayStatus.status === "online"
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-900/10 dark:text-emerald-300"
+                    : "border-slate-200 bg-slate-100 text-slate-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300",
+                )}
+              >
+                <span
+                  className={clsx(
+                    "h-2 w-2 rounded-full",
+                    trayStatus.status === "online"
+                      ? "bg-emerald-500"
+                      : "bg-slate-400",
+                  )}
+                />
+                {isCheckingTrayStatus
+                  ? "Verificando"
+                  : trayStatus.status === "online"
+                    ? "Online"
+                    : "Offline"}
+              </div>
+
+              <button
+                type="button"
+                onClick={fetchTrayStatus}
+                className="text-xs font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-white transition-colors"
+              >
+                Atualizar status
+              </button>
+            </div>
           </div>
 
           <div className="p-6 space-y-5">
@@ -548,12 +665,26 @@ export const AdminPanel: React.FC = () => {
                 type="text"
                 value={trayStoreUrl}
                 onChange={(e) => setTrayStoreUrl(e.target.value)}
-                placeholder="https://www.drossiinteriores.com.br/web_api"
+                placeholder="https://www.sualoja.com.br/web_api"
                 className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white focus:border-blue-500 outline-none"
               />
               <p className="text-[11px] text-slate-400 mt-2">
-                Exemplo aceito: https://www.drossiinteriores.com.br/web_api
+                Exemplo aceito: https://www.sualoja.com.br/web_api
               </p>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
+              <p className="font-semibold text-slate-700 dark:text-white">
+                {trayStatus.storeName || trayStatus.storeId || "Nenhuma loja conectada"}
+              </p>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                {trayStatus.message}
+              </p>
+              {trayStatus.updatedAt && (
+                <p className="mt-1 text-[11px] text-slate-400">
+                  Última validação: {new Date(trayStatus.updatedAt).toLocaleString()}
+                </p>
+              )}
             </div>
 
             <div className="flex flex-wrap gap-3">
@@ -570,6 +701,7 @@ export const AdminPanel: React.FC = () => {
       )}
 
       {/* DB Management */}
+      {canManageAdminPanel && (
       <div className="glass-card rounded-xl overflow-hidden border border-slate-200 dark:border-white/10 mt-6">
         <div className="p-4 border-b border-slate-200 dark:border-white/10 bg-slate-50/50 dark:bg-white/5">
           <h3 className="font-semibold text-slate-800 dark:text-white flex items-center gap-2">
@@ -601,6 +733,7 @@ export const AdminPanel: React.FC = () => {
           </button>
         </div>
       </div>
+      )}
 
       {/* Add/Edit User Modal */}
       {isModalOpen && (

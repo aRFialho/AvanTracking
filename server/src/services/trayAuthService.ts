@@ -111,9 +111,11 @@ export class TrayAuthService {
         expiresAt: authData.expiresAt,
       },
       update: {
+        storeName: authData.storeName,
         apiAddress: authData.apiAddress,
         accessToken: authData.accessToken,
         refreshToken: authData.refreshToken,
+        code: authData.code,
         expiresAt: authData.expiresAt,
       },
     });
@@ -159,6 +161,20 @@ export class TrayAuthService {
     return await prisma.trayAuth.findUnique({
       where: { storeId },
     });
+  }
+
+  async getLatestAuth() {
+    return await prisma.trayAuth.findFirst({
+      orderBy: [{ updatedAt: 'desc' }],
+    });
+  }
+
+  async getCurrentAuth(storeId?: string) {
+    if (storeId) {
+      return this.getAuthData(storeId);
+    }
+
+    return this.getLatestAuth();
   }
 
   parseExpirationDate(dateStr: string): Date {

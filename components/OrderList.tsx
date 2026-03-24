@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { Order, OrderStatus, SyncJobStatus } from "../types";
+import { Order, OrderStatus, SyncJobStatus, TraySyncFilters } from "../types";
 import { OrderDetail } from "./OrderDetail";
 import {
   Download,
@@ -33,12 +33,24 @@ const STATUS_LABELS: Record<string, string> = {
   [OrderStatus.CHANNEL_LOGISTICS]: "Logística do Canal",
 };
 
+const TRAY_DAY_OPTIONS: TraySyncFilters["days"][] = [90, 60, 30, 15, 7];
+const TRAY_STATUS_OPTIONS = [
+  "a enviar",
+  "5- aguardando faturamento",
+  "enviado",
+  "finalizado",
+  "entregue",
+  "cancelado",
+  "aguardando envio",
+];
+
 interface OrderListProps {
   orders: Order[];
   initialFilters?: any;
   onFetchSingle?: (orderId: string) => Promise<void>;
   isNoMovementView?: boolean;
   onStartSync?: () => Promise<void> | void;
+  onStartTraySync?: (filters: TraySyncFilters) => Promise<void>;
   syncJob?: SyncJobStatus | null;
 }
 
@@ -48,11 +60,18 @@ export const OrderList: React.FC<OrderListProps> = ({
   onFetchSingle,
   isNoMovementView = false,
   onStartSync,
+  onStartTraySync,
   syncJob,
 }) => {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [isFetchingSingle, setIsFetchingSingle] = useState(false);
   const [showFilters, setShowFilters] = useState(true);
+  const [isTraySyncModalOpen, setIsTraySyncModalOpen] = useState(false);
+  const [isTraySyncing, setIsTraySyncing] = useState(false);
+  const [traySyncDays, setTraySyncDays] = useState<TraySyncFilters["days"]>(90);
+  const [trayStatusMode, setTrayStatusMode] =
+    useState<TraySyncFilters["statusMode"]>("all_except_canceled");
+  const [selectedTrayStatuses, setSelectedTrayStatuses] = useState<string[]>([]);
   const [isSyncing, setIsSyncing] = useState(false); // ✅ Novo state
 
   // No Movement View State
@@ -289,6 +308,35 @@ export const OrderList: React.FC<OrderListProps> = ({
       alert("❌ Erro ao sincronizar pedidos");
     } finally {
       setIsSyncing(false);
+    }
+  };
+
+  const toggleTrayStatus = (status: string) => {
+    setSelectedTrayStatuses((current) =>
+      current.includes(status)
+        ? current.filter((item) => item !== status)
+        : [...current, status],
+    );
+  };
+
+  const handleTraySync = async () => {
+    if (!onStartTraySync) return;
+
+    if (trayStatusMode === "selected" && selectedTrayStatuses.length === 0) {
+      alert("Selecione ao menos um status da Tray para buscar os pedidos.");
+      return;
+    }
+
+    setIsTraySyncing(true);
+    try {
+      await onStartTraySync({
+        days: traySyncDays,
+        statusMode: trayStatusMode,
+        statuses: selectedTrayStatuses,
+      });
+      setIsTraySyncModalOpen(false);
+    } finally {
+      setIsTraySyncing(false);
     }
   };
 
@@ -569,9 +617,28 @@ export const OrderList: React.FC<OrderListProps> = ({
         )}
       </div>
 
-      {/* ✅ Botão Sincronizar Todos */}
       <div className="flex justify-end">
-        <div className="w-full max-w-md">
+        <div className="w-full flex flex-col gap-3 sm:max-w-xl sm:flex-row sm:justify-end">
+          {onStartTraySync && !isNoMovementView && (
+            <button
+              onClick={() => setIsTraySyncModalOpen(true)}
+              disabled={isTraySyncing}
+              className="flex items-center justify-center gap-2 px-4 py-2 bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-700 dark:text-white rounded-lg hover:bg-slate-50 dark:hover:bg-white/10 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isTraySyncing ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Sincronizando Tray...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="w-4 h-4" />
+                  Sincronizar Pedidos da Tray
+                </>
+              )}
+            </button>
+          )}
+
           <button
             onClick={handleSyncAll}
             disabled={isSyncRunning}
@@ -589,7 +656,6 @@ export const OrderList: React.FC<OrderListProps> = ({
               </>
             )}
           </button>
-
         </div>
       </div>
 
@@ -713,6 +779,138 @@ export const OrderList: React.FC<OrderListProps> = ({
           order={selectedOrder}
           onClose={() => setSelectedOrder(null)}
         />
+      )}
+
+      {isTraySyncModalOpen && onStartTraySync && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="glass-card w-full max-w-xl rounded-xl p-6 shadow-2xl animate-in zoom-in-95 border border-slate-200 dark:border-white/10 bg-white dark:bg-dark-card">
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h3 className="text-lg font-bold text-slate-800 dark:text-white">
+                  Sincronizar Pedidos da Tray
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  Defina o período e os status dos pedidos que serão buscados.
+                </p>
+              </div>
+              <button
+                onClick={() => !isTraySyncing && setIsTraySyncModalOpen(false)}
+                className="text-slate-500 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-5">
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase mb-2">
+                  Buscar pedidos
+                </label>
+                <select
+                  value={traySyncDays}
+                  onChange={(e) =>
+                    setTraySyncDays(Number(e.target.value) as TraySyncFilters["days"])
+                  }
+                  className="w-full p-3 border border-slate-200 dark:border-white/10 rounded-lg text-sm bg-white dark:bg-dark-card dark:text-white focus:border-accent outline-none"
+                >
+                  {TRAY_DAY_OPTIONS.map((days) => (
+                    <option key={days} value={days}>
+                      {days} dias
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase mb-2">
+                  Status dos pedidos a serem buscados
+                </label>
+
+                <div className="grid gap-2">
+                  <label className="flex items-start gap-3 rounded-lg border border-slate-200 dark:border-white/10 px-3 py-3 cursor-pointer hover:bg-slate-50 dark:hover:bg-white/5">
+                    <input
+                      type="radio"
+                      name="tray-status-mode"
+                      checked={trayStatusMode === "all_except_canceled"}
+                      onChange={() => setTrayStatusMode("all_except_canceled")}
+                      className="mt-1"
+                    />
+                    <div>
+                      <p className="text-sm font-medium text-slate-700 dark:text-white">
+                        Todos exceto cancelados
+                      </p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                        Busca os pedidos da Tray ignorando apenas o status cancelado.
+                      </p>
+                    </div>
+                  </label>
+
+                  <label className="flex items-start gap-3 rounded-lg border border-slate-200 dark:border-white/10 px-3 py-3 cursor-pointer hover:bg-slate-50 dark:hover:bg-white/5">
+                    <input
+                      type="radio"
+                      name="tray-status-mode"
+                      checked={trayStatusMode === "selected"}
+                      onChange={() => setTrayStatusMode("selected")}
+                      className="mt-1"
+                    />
+                    <div className="w-full">
+                      <p className="text-sm font-medium text-slate-700 dark:text-white">
+                        Selecionar status manualmente
+                      </p>
+                      <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {TRAY_STATUS_OPTIONS.map((status) => (
+                          <label
+                            key={status}
+                            className={clsx(
+                              "flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors",
+                              trayStatusMode === "selected"
+                                ? "border-slate-200 dark:border-white/10 cursor-pointer hover:bg-slate-50 dark:hover:bg-white/5"
+                                : "border-slate-100 dark:border-white/5 opacity-60 cursor-not-allowed",
+                            )}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedTrayStatuses.includes(status)}
+                              onChange={() => toggleTrayStatus(status)}
+                              disabled={trayStatusMode !== "selected"}
+                            />
+                            <span className="capitalize">{status}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              <div className="pt-2 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsTraySyncModalOpen(false)}
+                  disabled={isTraySyncing}
+                  className="flex-1 px-4 py-3 border border-slate-200 dark:border-white/10 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/5 disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleTraySync}
+                  disabled={isTraySyncing}
+                  className="flex-1 px-4 py-3 bg-accent dark:bg-neon-blue hover:bg-blue-600 dark:hover:bg-cyan-400 text-white dark:text-black rounded-lg font-bold shadow-lg shadow-blue-500/20 dark:shadow-neon-blue/20 flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {isTraySyncing ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      Buscar pedidos...
+                    </>
+                  ) : (
+                    "Buscar pedidos"
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* API Search Modal */}

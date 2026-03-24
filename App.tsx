@@ -14,6 +14,7 @@ import {
   PageView,
   OrderStatus,
   SyncJobStatus,
+  TraySyncFilters,
 } from "./types";
 import { fetchSingleOrder } from "./services/trackingApi";
 import { Loader2 } from "lucide-react";
@@ -210,6 +211,15 @@ const MainApp: React.FC = () => {
   }, [isAuthenticated, isLoading, loadOrdersFromDatabase, loadSyncStatus]);
 
   useEffect(() => {
+    if (!isAuthenticated || isLoading) return;
+
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("view") === "admin") {
+      setCurrentView("admin");
+    }
+  }, [isAuthenticated, isLoading]);
+
+  useEffect(() => {
     setIsSyncing(syncJob?.status === "running");
   }, [syncJob?.status]);
 
@@ -278,6 +288,32 @@ const MainApp: React.FC = () => {
       alert("Erro ao sincronizar com a Intelipost.");
     }
   }, []);
+
+  const handleTraySync = useCallback(
+    async (filters: TraySyncFilters) => {
+      try {
+        const response = await fetchWithAuth("/api/tray/sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(filters),
+        });
+
+        const data = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+          throw new Error(data.error || `HTTP ${response.status}`);
+        }
+
+        await loadOrdersFromDatabase();
+        setLastSyncTime(new Date());
+        alert(data.message || "Pedidos da Tray sincronizados com sucesso.");
+      } catch (error: any) {
+        console.error("Tray sync failed:", error);
+        alert(error.message || "Erro ao sincronizar pedidos da Tray.");
+      }
+    },
+    [loadOrdersFromDatabase],
+  );
 
   const handleFetchSingleOrder = useCallback(
     async (orderNumber: string) => {
@@ -424,6 +460,7 @@ const MainApp: React.FC = () => {
             initialFilters={activeFilters}
             onFetchSingle={handleFetchSingleOrder}
             onStartSync={handleSync}
+            onStartTraySync={handleTraySync}
             syncJob={syncJob}
           />
         );
@@ -494,7 +531,8 @@ const MainApp: React.FC = () => {
             {currentView === "upload" && "Importação de Dados"}
             {currentView === "alerts" && "Monitoramento de Riscos"}
             {currentView === "delivery-failures" && "Falhas na Entrega"}
-            {currentView === "admin" && "Painel Administrativo"}
+            {currentView === "admin" &&
+              (user?.role === "ADMIN" ? "Painel Administrativo" : "Integração")}
           </h1>
 
           <div className="flex items-center gap-4 text-sm text-slate-500 dark:text-slate-400">

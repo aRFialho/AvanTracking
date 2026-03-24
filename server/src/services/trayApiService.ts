@@ -181,11 +181,15 @@ export class TrayApiService {
     // Mapear status da Tray para OrderStatus
     const statusMap: Record<string, string> = {
       'A ENVIAR': 'PENDING',
+      '5- AGUARDANDO FATURAMENTO': 'PENDING',
+      'AGUARDANDO ENVIO': 'CREATED',
       'ENVIADO': 'SHIPPED',
+      'FINALIZADO': 'DELIVERED',
       'ENTREGUE': 'DELIVERED',
       'CANCELADO': 'CANCELED',
       'DEVOLVIDO': 'RETURNED',
       'EM SEPARAÇÃO': 'CREATED',
+      'EM SEPARACAO': 'CREATED',
     };
 
     const trayStatus = (trayOrder.status || 'A ENVIAR').toUpperCase();

@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { PrismaClient, OrderStatus } from '@prisma/client';
 import { syncJobService } from '../services/syncJobService';
 import { TrackingService } from '../services/trackingService';
+import { syncReportService } from '../services/syncReportService';
 
 const prisma = new PrismaClient();
 const trackingService = new TrackingService();
@@ -379,13 +380,31 @@ export const syncAllOrders = async (req: Request, res: Response) => {
       return res.status(403).json({ error: 'Acesso negado. Usuário sem empresa.' });
     }
 
+    const startedAt = new Date().toISOString();
     const results = await trackingService.syncAllActive(user.companyId);
     syncJobService.ensureSchedule(user.companyId, user.id);
+
+    let report: { reportUrl?: string; csvUrl?: string; recipients?: number } | null =
+      null;
+
+    try {
+      report = await syncReportService.sendTrackingSyncReport({
+        companyId: user.companyId,
+        userId: user.id,
+        trigger: 'manual',
+        payload: results.report,
+        startedAt,
+        finishedAt: new Date().toISOString(),
+      });
+    } catch (reportError) {
+      console.error('Erro ao enviar relatorio de sincronizacao:', reportError);
+    }
 
     return res.json({
       success: true,
       message: `Sincronização concluída: ${results.success} sucessos, ${results.failed} falhas`,
       results,
+      report,
       schedule: syncJobService.getSchedule(user.companyId),
     });
   } catch (error) {

@@ -1,4 +1,5 @@
-const BREVO_API_URL = 'https://api.brevo.com/v3/smtp/email';
+import { sendBrevoEmail } from './emailTransportService';
+
 const APP_LOGO_URL =
   'https://res.cloudinary.com/dhqxp3tuo/image/upload/v1771249579/ChatGPT_Image_13_de_fev._de_2026_16_40_14_kldj3k.png';
 
@@ -116,16 +117,6 @@ const buildAccessEmailHtml = ({
 };
 
 export const sendAccessEmail = async (input: SendAccessEmailInput) => {
-  const apiKey = process.env.BREVO_API_KEY;
-  const senderEmail = process.env.BREVO_SENDER_EMAIL;
-  const senderName = process.env.BREVO_SENDER_NAME || 'Avantracking';
-
-  if (!apiKey || !senderEmail) {
-    throw new Error(
-      'Configuracao de e-mail incompleta. Defina BREVO_API_KEY e BREVO_SENDER_EMAIL.',
-    );
-  }
-
   const copy = getEmailCopy(input.accessType);
   const htmlContent = buildAccessEmailHtml(input);
   const textContent = [
@@ -136,34 +127,15 @@ export const sendAccessEmail = async (input: SendAccessEmailInput) => {
     copy.footer,
   ].join('\n\n');
 
-  const response = await fetch(BREVO_API_URL, {
-    method: 'POST',
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-      'api-key': apiKey,
-    },
-    body: JSON.stringify({
-      sender: {
-        email: senderEmail,
-        name: senderName,
+  await sendBrevoEmail({
+    to: [
+      {
+        email: input.toEmail,
+        name: input.toName,
       },
-      to: [
-        {
-          email: input.toEmail,
-          name: input.toName,
-        },
-      ],
-      subject: copy.subject,
-      htmlContent,
-      textContent,
-    }),
+    ],
+    subject: copy.subject,
+    htmlContent,
+    textContent,
   });
-
-  if (!response.ok) {
-    const errorBody = await response.text().catch(() => '');
-    throw new Error(
-      `Brevo respondeu com erro ${response.status}${errorBody ? `: ${errorBody}` : ''}`,
-    );
-  }
 };

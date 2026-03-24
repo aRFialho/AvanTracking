@@ -1,11 +1,33 @@
 import { Request, Response } from 'express';
 import { trayAuthService } from '../services/trayAuthService';
 
+const getAppBaseUrl = (req: Request) => {
+  const configuredBaseUrl = String(
+    process.env.APP_BASE_URL || process.env.FRONTEND_URL || '',
+  ).trim();
+
+  if (configuredBaseUrl) {
+    return configuredBaseUrl.replace(/\/+$/, '');
+  }
+
+  return `${req.protocol}://${req.get('host')}`;
+};
+
+const getIntegrationReturnUrl = (req: Request, status: 'connected' | 'error') => {
+  const params = new URLSearchParams({
+    view: 'admin',
+    tab: 'integration',
+    tray: status,
+  });
+
+  return `${getAppBaseUrl(req)}/?${params.toString()}`;
+};
+
 export const startTrayAuthorization = (req: Request, res: Response) => {
   const { url } = req.query;
 
-  if (!req.user || req.user.role !== 'ADMIN') {
-    return res.status(403).json({ error: 'Apenas administradores podem iniciar a integracao Tray' });
+  if (!req.user) {
+    return res.status(401).json({ error: 'Usuario nao autenticado' });
   }
 
   if (!url) {
@@ -17,7 +39,10 @@ export const startTrayAuthorization = (req: Request, res: Response) => {
     return res.json({ authUrl });
   } catch (error) {
     return res.status(500).json({
-      error: error instanceof Error ? error.message : 'Erro ao iniciar autorizacao da Tray',
+      error:
+        error instanceof Error
+          ? error.message
+          : 'Erro ao iniciar autorizacao da Tray',
     });
   }
 };
@@ -112,18 +137,10 @@ export const showInstallPage = (req: Request, res: Response) => {
  */
 export const handleAuthCallback = async (req: Request, res: Response) => {
   try {
-    const { code, api_address, store, store_host, adm_user } = req.query;
-
-    console.log('Callback de autorizacao Tray:', {
-      code,
-      api_address,
-      store,
-      store_host,
-      adm_user,
-    });
+    const { code, api_address, store, store_host } = req.query;
 
     if (!code || !api_address || !store) {
-      return res.status(400).json({ error: 'Parametros faltando' });
+      return res.redirect(getIntegrationReturnUrl(req, 'error'));
     }
 
     const authData = await trayAuthService.generateAccessToken(
@@ -142,96 +159,118 @@ export const handleAuthCallback = async (req: Request, res: Response) => {
       refreshToken: authData.refresh_token,
       expiresAt: trayAuthService.parseExpirationDate(expirationDate),
       code: String(code),
-      storeName: String(store_host || ''),
+      storeName: String(store_host || store),
     });
 
+    const redirectUrl = getIntegrationReturnUrl(req, 'connected');
     const html = `
       <!DOCTYPE html>
       <html>
       <head>
-        <title>Autorizacao Concluida</title>
+        <title>Conectando ao app</title>
+        <meta charset="utf-8" />
         <style>
           body {
-            font-family: Arial, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
             margin: 0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #0f172a;
+            color: #e2e8f0;
+            font-family: Arial, sans-serif;
           }
-          .container {
-            background: white;
-            border-radius: 16px;
-            padding: 40px;
-            max-width: 500px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+          .card {
+            width: min(420px, calc(100vw - 32px));
+            background: #111827;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            border-radius: 18px;
+            padding: 32px;
             text-align: center;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.35);
           }
           h1 {
-            color: #10b981;
+            margin: 0 0 12px;
+            font-size: 22px;
           }
-          .checkmark {
-            font-size: 64px;
-            color: #10b981;
-          }
-          .meta {
-            margin-top: 16px;
-            color: #64748b;
-            font-size: 14px;
+          p {
+            margin: 0;
+            color: #94a3b8;
+            line-height: 1.5;
           }
         </style>
       </head>
       <body>
-        <div class="container">
-          <div class="checkmark">✓</div>
-          <h1>Autorizacao concluida</h1>
-          <p>Sua loja Tray foi conectada com sucesso.</p>
-          <p>Voce ja pode sincronizar os pedidos.</p>
-          <div class="meta">
-            <div><strong>Store:</strong> ${String(store)}</div>
-            ${store_host ? `<div><strong>Host:</strong> ${String(store_host)}</div>` : ''}
-            ${adm_user ? `<div><strong>Usuario:</strong> ${String(adm_user)}</div>` : ''}
-          </div>
+        <div class="card">
+          <h1>Integracao Tray conectada</h1>
+          <p>Redirecionando para a area de Integracao do app...</p>
         </div>
+        <script>
+          const target = ${JSON.stringify(redirectUrl)};
+          if (window.opener && !window.opener.closed) {
+            window.opener.location.href = target;
+            window.close();
+          } else {
+            window.location.href = target;
+          }
+        </script>
       </body>
       </html>
     `;
 
-    res.send(html);
+    return res.send(html);
   } catch (error) {
     console.error('Erro no callback da Tray:', error);
-    res.status(500).json({
-      error: 'Erro ao processar autorizacao',
-      details: error instanceof Error ? error.message : 'Erro desconhecido',
-    });
+    return res.redirect(getIntegrationReturnUrl(req, 'error'));
   }
 };
 
 /**
  * GET /api/tray/status
- * Verificar status da autenticacao
+ * Verificar status da autenticacao atual
  */
 export const checkAuthStatus = async (req: Request, res: Response) => {
   try {
-    const { storeId } = req.query;
-
-    if (!storeId) {
-      return res.status(400).json({ error: 'storeId e obrigatorio' });
+    if (!req.user) {
+      return res.status(401).json({ error: 'Usuario nao autenticado' });
     }
 
-    const token = await trayAuthService.getValidAuth(String(storeId));
+    const storeId =
+      typeof req.query.storeId === 'string' && req.query.storeId.trim()
+        ? req.query.storeId.trim()
+        : undefined;
 
-    if (!token) {
+    const auth = await trayAuthService.getCurrentAuth(storeId);
+
+    if (!auth) {
       return res.json({
         authorized: false,
-        message: 'Loja nao autorizada ou token expirado',
+        status: 'offline',
+        storeId: null,
+        storeName: null,
+        updatedAt: null,
+        message: 'Nenhuma integracao Tray autorizada.',
       });
     }
 
+    let isAuthorized = false;
+
+    try {
+      isAuthorized = Boolean(await trayAuthService.getValidAuth(auth.storeId));
+    } catch (error) {
+      console.error('Erro ao validar token atual da Tray:', error);
+      isAuthorized = false;
+    }
+
     return res.json({
-      authorized: true,
-      message: 'Loja autorizada e token valido',
+      authorized: isAuthorized,
+      status: isAuthorized ? 'online' : 'offline',
+      storeId: auth.storeId,
+      storeName: auth.storeName || null,
+      updatedAt: auth.updatedAt,
+      message: isAuthorized
+        ? 'Integracao Tray online.'
+        : 'Integracao Tray offline ou com token expirado.',
     });
   } catch (error) {
     return res.status(500).json({

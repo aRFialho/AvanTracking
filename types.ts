@@ -50,6 +50,21 @@ export interface SyncScheduleStatus {
   nextScheduledAt: string | null;
 }
 
+export interface TrayIntegrationStatus {
+  authorized: boolean;
+  status: "online" | "offline";
+  storeId: string | null;
+  storeName: string | null;
+  updatedAt: string | null;
+  message: string;
+}
+
+export interface TraySyncFilters {
+  days: 7 | 15 | 30 | 60 | 90;
+  statusMode: "all_except_canceled" | "selected";
+  statuses: string[];
+}
+
 export interface Order {
   // Identification
   id: string; // Internal ID or mapped from 'Pedido'

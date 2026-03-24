@@ -169,8 +169,8 @@ app.use("/api/orders", authenticateToken, orderRoutes);
 app.get('/api/tray/connect', authenticateToken, startTrayAuthorization);
 app.get('/api/tray/callback', showInstallPage);
 app.get('/api/tray/callback/auth', handleAuthCallback);
-app.get('/api/tray/status', checkAuthStatus);
-app.post('/api/tray/sync', syncTrayOrders);
+app.get('/api/tray/status', authenticateToken, checkAuthStatus);
+app.post('/api/tray/sync', authenticateToken, syncTrayOrders);
 
 // ✅ ROTAS DE COTAÇÃO DE FRETE (protegidas)
 app.post('/api/freight/quote/:orderId', authenticateToken, quoteOrderFreight);
