@@ -1,14 +1,26 @@
-
 import { Router } from 'express';
-import { getUsers, createUser, updateUser, deleteUser, login, switchUserCompany } from '../controllers/userController';
+import {
+  completeAccessPassword,
+  createUser,
+  deleteUser,
+  getAccessLinkDetails,
+  getUsers,
+  login,
+  requestPasswordReset,
+  switchUserCompany,
+  updateUser,
+} from '../controllers/userController';
 import { authenticateToken } from '../middleware/auth';
 
 const router = Router();
 
-// ✅ Rota de login SEM autenticação
+// Rotas publicas
 router.post('/login', login);
+router.post('/forgot-password', requestPasswordReset);
+router.get('/access-link/:token', getAccessLinkDetails);
+router.post('/access-link/complete', completeAccessPassword);
 
-// ✅ Rotas COM autenticação
+// Rotas protegidas
 router.get('/', authenticateToken, getUsers);
 router.post('/', authenticateToken, createUser);
 router.put('/:id', authenticateToken, updateUser);

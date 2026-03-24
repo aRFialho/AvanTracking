@@ -37,7 +37,23 @@ model User {
     companyId String?
     company   Company? @relation(fields: [companyId], references: [id])
 
-    orders Order[] @relation("UserOrders")
+    orders       Order[]           @relation("UserOrders")
+    accessTokens UserAccessToken[]
+}
+
+model UserAccessToken {
+    id        String   @id @default(uuid())
+    tokenHash String   @unique
+    type      String
+    expiresAt DateTime
+    usedAt    DateTime?
+    createdAt DateTime @default(now())
+
+    userId String
+    user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    @@index([userId, type])
+    @@index([expiresAt])
 }
 
 model Company {
