@@ -41,6 +41,51 @@ const mapTrackingEventsToHistory = (trackingEvents: any[] | undefined) => {
   }));
 };
 
+const parseCarrierForecastFromTrackingText = (text: string | null | undefined) => {
+  const normalizedText = String(text || '').trim();
+  if (!normalizedText) return null;
+
+  const match = normalizedText.match(
+    /previs[aã]o\s+de\s+entrega\s*:\s*(\d{2})\/(\d{2})\/(\d{2,4})/i,
+  );
+
+  if (!match) {
+    return null;
+  }
+
+  const day = Number(match[1]);
+  const month = Number(match[2]) - 1;
+  const rawYear = Number(match[3]);
+  const year = rawYear < 100 ? 2000 + rawYear : rawYear;
+  const parsedDate = new Date(year, month, day);
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    return null;
+  }
+
+  parsedDate.setHours(23, 59, 59, 999);
+  return parsedDate;
+};
+
+const resolveCarrierEstimatedDateFromTrackingEvents = (trackingEvents: any[] | undefined) => {
+  if (!Array.isArray(trackingEvents)) return null;
+
+  const orderedEvents = [...trackingEvents].sort((left, right) => {
+    const leftDate = safeDate(left?.eventDate)?.getTime() || 0;
+    const rightDate = safeDate(right?.eventDate)?.getTime() || 0;
+    return rightDate - leftDate;
+  });
+
+  for (const event of orderedEvents) {
+    const parsedDate = parseCarrierForecastFromTrackingText(event?.description);
+    if (parsedDate) {
+      return parsedDate;
+    }
+  }
+
+  return null;
+};
+
 const getMovementDate = (order: any) => {
   const latestTrackingEvent = Array.isArray(order.trackingEvents)
     ? order.trackingEvents[0]
@@ -54,13 +99,21 @@ const getMovementDate = (order: any) => {
   );
 };
 
-const formatOrderForResponse = (order: any) => ({
-  ...order,
-  orderNumber: String(order.orderNumber),
-  status: order.status as OrderStatus,
-  trackingHistory: mapTrackingEventsToHistory(order.trackingEvents),
-  lastUpdate: getMovementDate(order),
-});
+const formatOrderForResponse = (order: any) => {
+  const carrierEstimatedDeliveryDate =
+    resolveCarrierEstimatedDateFromTrackingEvents(order.trackingEvents) ||
+    order.carrierEstimatedDeliveryDate ||
+    null;
+
+  return {
+    ...order,
+    orderNumber: String(order.orderNumber),
+    status: order.status as OrderStatus,
+    carrierEstimatedDeliveryDate,
+    trackingHistory: mapTrackingEventsToHistory(order.trackingEvents),
+    lastUpdate: getMovementDate(order),
+  };
+};
 
 const shouldExcludeOrderFromPlatform = (order: any) =>
   order.status === OrderStatus.CHANNEL_LOGISTICS ||

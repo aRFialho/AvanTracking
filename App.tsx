@@ -62,6 +62,47 @@ const parseDate = (value: unknown): Date | null => {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
 
+const parseCarrierForecastFromText = (text: unknown) => {
+  const normalizedText = String(text || "").trim();
+  if (!normalizedText) return null;
+
+  const match = normalizedText.match(
+    /previs[aã]o\s+de\s+entrega\s*:\s*(\d{2})\/(\d{2})\/(\d{2,4})/i,
+  );
+
+  if (!match) {
+    return null;
+  }
+
+  const day = Number(match[1]);
+  const month = Number(match[2]) - 1;
+  const rawYear = Number(match[3]);
+  const year = rawYear < 100 ? 2000 + rawYear : rawYear;
+  const parsed = new Date(year, month, day, 23, 59, 59, 999);
+
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const extractCarrierForecastFromTrackingHistory = (trackingHistory: Array<{
+  description?: string;
+  date?: Date | string | number;
+}>) => {
+  const orderedEvents = [...trackingHistory].sort((left, right) => {
+    const leftDate = parseDate(left.date)?.getTime() || 0;
+    const rightDate = parseDate(right.date)?.getTime() || 0;
+    return rightDate - leftDate;
+  });
+
+  for (const event of orderedEvents) {
+    const parsed = parseCarrierForecastFromText(event.description);
+    if (parsed) {
+      return parsed;
+    }
+  }
+
+  return null;
+};
+
 const formatCountdown = (target: Date | null, nowMs: number) => {
   if (!target) return "--:--:--";
 
@@ -99,6 +140,8 @@ const MainApp: React.FC = () => {
       ...event,
       date: parseDate(event.date) ?? new Date(),
     }));
+    const carrierForecastFromTracking =
+      extractCarrierForecastFromTrackingHistory(trackingHistory);
 
     const normalizedOrder = {
       ...order,
@@ -111,6 +154,7 @@ const MainApp: React.FC = () => {
         parseDate((order as any).estimatedDeliveryDate) ??
         (order as any).estimatedDeliveryDate,
       carrierEstimatedDeliveryDate:
+        carrierForecastFromTracking ??
         parseDate((order as any).carrierEstimatedDeliveryDate) ??
         (order as any).carrierEstimatedDeliveryDate,
       lastApiSync: parseDate((order as any).lastApiSync),
