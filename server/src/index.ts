@@ -19,6 +19,7 @@ import { trayRateLimiter } from './services/rateLimiter';
 import { quoteOrderFreight, quoteBatchFreight } from './controllers/freightController';
 import { authenticateToken } from './middleware/auth';
 import { traySyncJobService } from './services/traySyncJobService';
+import { weeklyMovementReportService } from './services/weeklyMovementReportService';
 
 const prisma = new PrismaClient();
 const app = express();
@@ -223,4 +224,8 @@ app.listen(port, () => {
 
 void traySyncJobService.initializeSchedules().catch((error) => {
   console.error('Erro ao inicializar agendas automaticas da Tray:', error);
+});
+
+void weeklyMovementReportService.initializeSchedule().catch((error) => {
+  console.error('Erro ao inicializar relatorio semanal:', error);
 });
