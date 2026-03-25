@@ -358,16 +358,35 @@ export const getSyncAllStatus = async (req: Request, res: Response) => {
 
 export const clearOrdersDatabase = async (req: Request, res: Response) => {
   try {
-    const { type, password } = req.body;
+    const { type, password, companyId } = req.body;
+
+    if (req.user?.email !== 'admin@avantracking.com.br') {
+      return res.status(403).json({ error: 'Acesso negado' });
+    }
 
     if (password !== '172839') {
       return res.status(403).json({ error: 'Senha incorreta' });
     }
 
+    if (!companyId || typeof companyId !== 'string') {
+      return res.status(400).json({ error: 'Empresa obrigatoria' });
+    }
+
+    const company = await prisma.company.findUnique({
+      where: { id: companyId },
+      select: { id: true, name: true },
+    });
+
+    if (!company) {
+      return res.status(404).json({ error: 'Empresa nao encontrada' });
+    }
+
     if (type === 'ALL') {
-      const result = await prisma.order.deleteMany({});
+      const result = await prisma.order.deleteMany({
+        where: { companyId: company.id },
+      });
       return res.json({
-        message: `Todos os ${result.count} pedidos e seus rastreios foram apagados.`,
+        message: `Todos os ${result.count} pedidos da empresa ${company.name} foram apagados.`,
       });
     }
 
@@ -377,6 +396,7 @@ export const clearOrdersDatabase = async (req: Request, res: Response) => {
 
       const result = await prisma.order.deleteMany({
         where: {
+          companyId: company.id,
           status: OrderStatus.DELIVERED,
           lastUpdate: {
             lt: sevenDaysAgo,
@@ -384,7 +404,7 @@ export const clearOrdersDatabase = async (req: Request, res: Response) => {
         },
       });
       return res.json({
-        message: `${result.count} pedidos entregues ha mais de 7 dias foram apagados.`,
+        message: `${result.count} pedidos entregues ha mais de 7 dias da empresa ${company.name} foram apagados.`,
       });
     }
 

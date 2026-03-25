@@ -28,7 +28,7 @@ export const syncTrayOrders = async (req: Request, res: Response) => {
       return res.status(context.status).json({ error: context.error });
     }
 
-    const auth = await trayAuthService.getCurrentAuth();
+    const auth = await trayAuthService.getCurrentAuth(context.companyId);
     if (!auth) {
       return res.status(400).json({
         error: 'Nenhuma integracao Tray autorizada para a empresa atual.',
@@ -90,7 +90,7 @@ export const startTraySyncJob = async (req: Request, res: Response) => {
       return res.status(context.status).json({ error: context.error });
     }
 
-    const auth = await trayAuthService.getCurrentAuth();
+    const auth = await trayAuthService.getCurrentAuth(context.companyId);
     if (!auth) {
       return res.status(400).json({
         error: 'Nenhuma integracao Tray autorizada para a empresa atual.',
@@ -136,7 +136,7 @@ export const getTraySyncStatus = async (req: Request, res: Response) => {
       return res.status(context.status).json({ error: context.error });
     }
 
-    const auth = await trayAuthService.getCurrentAuth();
+    const auth = await trayAuthService.getCurrentAuth(context.companyId);
     if (!auth) {
       return res.json({
         success: true,

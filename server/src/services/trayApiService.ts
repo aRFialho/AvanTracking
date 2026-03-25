@@ -24,11 +24,11 @@ const isTrayParticularSalesChannel = (salesChannel: string | null | undefined) =
   String(salesChannel || '').trim().toUpperCase() === 'TRAY - PARTICULAR';
 
 export class TrayApiService {
-  private storeId: string;
+  private companyId: string;
   private manualToken?: string;
 
-  constructor(storeId: string, manualToken?: string) {
-    this.storeId = storeId;
+  constructor(companyId: string, manualToken?: string) {
+    this.companyId = companyId;
     this.manualToken = manualToken;
   }
 
@@ -37,7 +37,7 @@ export class TrayApiService {
     apiAddress: string;
     accessToken: string;
   }> {
-    const auth = await trayAuthService.getValidAuthData(this.storeId);
+    const auth = await trayAuthService.getValidAuthData(this.companyId);
 
     if (!auth) {
       throw new Error('Loja nao autorizada. Execute o fluxo OAuth primeiro.');

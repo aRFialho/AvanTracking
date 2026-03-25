@@ -73,7 +73,7 @@ export class TraySyncService {
         ? filters.storeId.trim()
         : undefined;
 
-    const auth = await trayAuthService.getCurrentAuth(requestedStoreId);
+    const auth = await trayAuthService.getCurrentAuth(companyId, requestedStoreId);
 
     if (!auth) {
       throw new Error('Nenhuma integracao Tray autorizada foi encontrada.');
@@ -98,7 +98,7 @@ export class TraySyncService {
     }
 
     const modified = resolveModifiedDate(days);
-    const trayApi = new TrayApiService(auth.storeId);
+    const trayApi = new TrayApiService(companyId);
     const existingOrderNumbers = new Set(
       (
         await prisma.order.findMany({

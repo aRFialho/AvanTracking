@@ -64,6 +64,7 @@ model Company {
     createdAt   DateTime @default(now())
     users       User[]
     orders      Order[]
+    trayAuth    TrayAuth?
 }
 
 model Carrier {
@@ -174,7 +175,7 @@ model TrackingEvent {
 
 model TrayAuth {
     id           String   @id @default(uuid())
-    storeId      String   @unique
+    storeId      String
     storeName    String?
     apiAddress   String
     accessToken  String   @db.Text
@@ -183,6 +184,9 @@ model TrayAuth {
     expiresAt    DateTime
     createdAt    DateTime @default(now())
     updatedAt    DateTime @updatedAt
+
+    companyId String?  @unique
+    company   Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
     @@index([storeId])
 }

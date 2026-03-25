@@ -12,10 +12,9 @@ export const quoteOrderFreight = async (req: Request, res: Response) => {
   try {
     // ✅ CORREÇÃO: Garantir que orderId seja string
     const orderId = String(req.params.orderId);
-    const { storeId } = req.body;
 
-    if (!storeId) {
-      return res.status(400).json({ error: 'storeId é obrigatório' });
+    if (!req.user?.companyId) {
+      return res.status(403).json({ error: 'Usuario sem empresa vinculada' });
     }
 
     console.log(`💰 Cotando frete para pedido ${orderId}...`);
@@ -35,7 +34,7 @@ export const quoteOrderFreight = async (req: Request, res: Response) => {
     }
 
     // 3. Preparar dados para cotação
-    const freightService = new TrayFreightService(storeId);
+    const freightService = new TrayFreightService(req.user.companyId);
 
     const cotationParams = {
       zipcode: order.zipCode,
@@ -113,10 +112,10 @@ export const quoteOrderFreight = async (req: Request, res: Response) => {
  */
 export const quoteBatchFreight = async (req: Request, res: Response) => {
   try {
-    const { orderIds, storeId } = req.body;
+    const { orderIds } = req.body;
 
-    if (!storeId) {
-      return res.status(400).json({ error: 'storeId é obrigatório' });
+    if (!req.user?.companyId) {
+      return res.status(403).json({ error: 'Usuario sem empresa vinculada' });
     }
 
     if (!orderIds || !Array.isArray(orderIds) || orderIds.length === 0) {
@@ -126,7 +125,7 @@ export const quoteBatchFreight = async (req: Request, res: Response) => {
     console.log(`💰 Cotando frete para ${orderIds.length} pedidos...`);
 
     const results: any[] = [];
-    const freightService = new TrayFreightService(storeId);
+    const freightService = new TrayFreightService(req.user.companyId);
 
     for (const orderId of orderIds) {
       try {

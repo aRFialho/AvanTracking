@@ -1,4 +1,5 @@
 import axios from 'axios';
+import jwt from 'jsonwebtoken';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
@@ -16,9 +17,16 @@ interface TrayAuthResponse {
   store_id?: string | number;
 }
 
+interface TrayCompanyContextPayload {
+  type: 'tray-company-context';
+  companyId: string;
+  userId: string;
+}
+
 export class TrayAuthService {
   private consumerKey: string;
   private consumerSecret: string;
+  private jwtSecret: string;
   private authCache = new Map<
     string,
     { accessToken: string; apiAddress: string; expiresAt: Date }
@@ -31,6 +39,7 @@ export class TrayAuthService {
   constructor() {
     this.consumerKey = process.env.TRAY_CONSUMER_KEY || '';
     this.consumerSecret = process.env.TRAY_CONSUMER_SECRET || '';
+    this.jwtSecret = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
   }
 
   normalizeStoreUrl(storeUrl: string): string {
@@ -66,8 +75,59 @@ export class TrayAuthService {
     return normalized;
   }
 
-  getAuthorizationUrl(storeUrl: string): string {
-    const callbackUrl = encodeURIComponent(process.env.TRAY_CALLBACK_URL || '');
+  private buildCallbackUrl(companyToken?: string) {
+    const configuredCallbackUrl = String(process.env.TRAY_CALLBACK_URL || '').trim();
+    if (!configuredCallbackUrl) {
+      return '';
+    }
+
+    const callbackUrl = new URL(configuredCallbackUrl);
+    if (companyToken) {
+      callbackUrl.searchParams.set('company_token', companyToken);
+    }
+
+    return callbackUrl.toString();
+  }
+
+  signCompanyContext(companyId: string, userId: string) {
+    return jwt.sign(
+      {
+        type: 'tray-company-context',
+        companyId,
+        userId,
+      } satisfies TrayCompanyContextPayload,
+      this.jwtSecret,
+      { expiresIn: '2h' },
+    );
+  }
+
+  verifyCompanyContext(token: string): TrayCompanyContextPayload | null {
+    try {
+      const decoded = jwt.verify(token, this.jwtSecret);
+      if (
+        !decoded ||
+        typeof decoded !== 'object' ||
+        decoded.type !== 'tray-company-context' ||
+        typeof decoded.companyId !== 'string' ||
+        typeof decoded.userId !== 'string'
+      ) {
+        return null;
+      }
+
+      return {
+        type: 'tray-company-context',
+        companyId: decoded.companyId,
+        userId: decoded.userId,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  getAuthorizationUrl(storeUrl: string, options?: { companyToken?: string }): string {
+    const callbackUrl = encodeURIComponent(
+      this.buildCallbackUrl(options?.companyToken),
+    );
     const normalizedStoreUrl = this.normalizeStoreUrl(storeUrl);
 
     return `${normalizedStoreUrl}/auth.php?response_type=code&consumer_key=${this.consumerKey}&callback=${callbackUrl}`;
@@ -166,7 +226,8 @@ export class TrayAuthService {
     }
   }
 
-  async saveAuth(storeId: string, authData: {
+  async saveAuth(companyId: string, authData: {
+    storeId: string;
     apiAddress: string;
     accessToken: string;
     refreshToken?: string;
@@ -175,9 +236,10 @@ export class TrayAuthService {
     storeName?: string;
   }) {
     const saved = await prisma.trayAuth.upsert({
-      where: { storeId },
+      where: { companyId },
       create: {
-        storeId,
+        companyId,
+        storeId: authData.storeId,
         storeName: authData.storeName,
         apiAddress: authData.apiAddress,
         accessToken: authData.accessToken,
@@ -186,6 +248,7 @@ export class TrayAuthService {
         expiresAt: authData.expiresAt,
       },
       update: {
+        storeId: authData.storeId,
         storeName: authData.storeName,
         apiAddress: authData.apiAddress,
         accessToken: authData.accessToken,
@@ -195,7 +258,7 @@ export class TrayAuthService {
       },
     });
 
-    this.authCache.set(storeId, {
+    this.authCache.set(companyId, {
       accessToken: saved.accessToken,
       apiAddress: this.normalizeApiAddress(saved.apiAddress),
       expiresAt: saved.expiresAt,
@@ -204,50 +267,67 @@ export class TrayAuthService {
     return saved;
   }
 
-  async getValidAuth(storeId: string): Promise<string | null> {
-    const authData = await this.getValidAuthData(storeId);
+  async getValidAuth(companyId: string): Promise<string | null> {
+    const authData = await this.getValidAuthData(companyId);
     return authData?.accessToken || null;
   }
 
-  async getValidAuthData(storeId: string) {
-    const cached = this.authCache.get(storeId);
+  async getValidAuthData(companyId: string) {
+    const cached = this.authCache.get(companyId);
     if (cached && !this.isExpired(cached.expiresAt)) {
       return cached;
     }
 
-    const pendingRefresh = this.refreshLocks.get(storeId);
+    const pendingRefresh = this.refreshLocks.get(companyId);
     if (pendingRefresh) {
       return pendingRefresh;
     }
 
-    const refreshPromise = this.resolveValidAuthData(storeId);
-    this.refreshLocks.set(storeId, refreshPromise);
+    const refreshPromise = this.resolveValidAuthData(companyId);
+    this.refreshLocks.set(companyId, refreshPromise);
 
     try {
       return await refreshPromise;
     } finally {
-      this.refreshLocks.delete(storeId);
+      this.refreshLocks.delete(companyId);
     }
   }
 
-  async getAuthData(storeId: string) {
+  async getAuthData(companyId: string) {
     return await prisma.trayAuth.findUnique({
-      where: { storeId },
+      where: { companyId },
     });
   }
 
-  async getLatestAuth() {
-    return await prisma.trayAuth.findFirst({
-      orderBy: [{ updatedAt: 'desc' }],
+  async getCompaniesWithAuth() {
+    const authRows = await prisma.trayAuth.findMany({
+      where: {
+        companyId: {
+          not: null,
+        },
+      },
+      select: {
+        companyId: true,
+      },
     });
+
+    return authRows
+      .map((row) => row.companyId)
+      .filter((companyId): companyId is string => Boolean(companyId));
   }
 
-  async getCurrentAuth(storeId?: string) {
-    if (storeId) {
-      return this.getAuthData(storeId);
+  async getCurrentAuth(companyId: string, storeId?: string) {
+    const auth = await this.getAuthData(companyId);
+
+    if (!auth) {
+      return null;
     }
 
-    return this.getLatestAuth();
+    if (storeId && auth.storeId !== storeId) {
+      return null;
+    }
+
+    return auth;
   }
 
   parseExpirationDate(dateStr: string): Date {
@@ -268,9 +348,9 @@ export class TrayAuthService {
     return Date.now() >= expiresAt.getTime() - 60 * 1000;
   }
 
-  private async resolveValidAuthData(storeId: string) {
+  private async resolveValidAuthData(companyId: string) {
     const auth = await prisma.trayAuth.findUnique({
-      where: { storeId },
+      where: { companyId },
     });
 
     if (!auth) {
@@ -290,7 +370,7 @@ export class TrayAuthService {
         apiAddress: normalizedApiAddress,
         expiresAt: auth.expiresAt,
       };
-      this.authCache.set(storeId, current);
+      this.authCache.set(companyId, current);
       return current;
     }
 
@@ -316,11 +396,13 @@ export class TrayAuthService {
       ),
     };
 
-    await this.saveAuth(storeId, {
+    await this.saveAuth(companyId, {
+      storeId: String(renewed.store_id || auth.storeId),
       apiAddress: renewedData.apiAddress,
       accessToken: renewedData.accessToken,
       refreshToken: renewed.refresh_token || auth.refreshToken,
       expiresAt: renewedData.expiresAt,
+      storeName: auth.storeName || undefined,
     });
 
     return renewedData;

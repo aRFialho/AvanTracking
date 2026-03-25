@@ -74,16 +74,12 @@ class TraySyncJobService {
   }
 
   async initializeSchedules() {
-    const auth = await trayAuthService.getLatestAuth();
-    if (!auth) {
-      return;
-    }
+    const companyIdsWithAuth = new Set(await trayAuthService.getCompaniesWithAuth());
+    if (companyIdsWithAuth.size === 0) return;
 
     const users = await prisma.user.findMany({
       where: {
-        companyId: {
-          not: null,
-        },
+        companyId: { not: null },
       },
       select: {
         id: true,
@@ -95,7 +91,11 @@ class TraySyncJobService {
     const seenCompanies = new Set<string>();
 
     for (const user of users) {
-      if (!user.companyId || seenCompanies.has(user.companyId)) {
+      if (
+        !user.companyId ||
+        seenCompanies.has(user.companyId) ||
+        !companyIdsWithAuth.has(user.companyId)
+      ) {
         continue;
       }
 

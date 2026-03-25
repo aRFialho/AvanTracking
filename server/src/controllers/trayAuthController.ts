@@ -30,12 +30,24 @@ export const startTrayAuthorization = (req: Request, res: Response) => {
     return res.status(401).json({ error: 'Usuario nao autenticado' });
   }
 
+  if (!req.user.companyId) {
+    return res.status(403).json({
+      error: 'Usuario nao vinculado a uma empresa.',
+    });
+  }
+
   if (!url) {
     return res.status(400).json({ error: 'A URL da loja Tray e obrigatoria' });
   }
 
   try {
-    const authUrl = trayAuthService.getAuthorizationUrl(String(url));
+    const companyToken = trayAuthService.signCompanyContext(
+      req.user.companyId,
+      req.user.id,
+    );
+    const authUrl = trayAuthService.getAuthorizationUrl(String(url), {
+      companyToken,
+    });
     return res.json({ authUrl });
   } catch (error) {
     return res.status(500).json({
@@ -52,14 +64,19 @@ export const startTrayAuthorization = (req: Request, res: Response) => {
  * Landing page opcional de instalacao
  */
 export const showInstallPage = (req: Request, res: Response) => {
-  const { url, adm_user, store } = req.query;
+  const { url, adm_user, store, company_token } = req.query;
 
   if (!url) {
     return res.status(400).json({ error: 'A URL da loja Tray e obrigatoria' });
   }
 
   const normalizedStoreUrl = trayAuthService.normalizeStoreUrl(String(url));
-  const authUrl = trayAuthService.getAuthorizationUrl(normalizedStoreUrl);
+  const authUrl = trayAuthService.getAuthorizationUrl(normalizedStoreUrl, {
+    companyToken:
+      typeof company_token === 'string' && company_token.trim()
+        ? company_token.trim()
+        : undefined,
+  });
 
   const html = `
     <!DOCTYPE html>
@@ -137,9 +154,15 @@ export const showInstallPage = (req: Request, res: Response) => {
  */
 export const handleAuthCallback = async (req: Request, res: Response) => {
   try {
-    const { code, api_address, store, store_host, adm_user } = req.query;
+    const { code, api_address, store, store_host, adm_user, company_token } = req.query;
 
-    if (!code || !api_address || !store) {
+    const companyToken =
+      typeof company_token === 'string' && company_token.trim()
+        ? company_token.trim()
+        : '';
+    const context = trayAuthService.verifyCompanyContext(companyToken);
+
+    if (!code || !api_address || !store || !context?.companyId) {
       return res.redirect(getIntegrationReturnUrl(req, 'error'));
     }
 
@@ -156,7 +179,8 @@ export const handleAuthCallback = async (req: Request, res: Response) => {
     const resolvedStoreId = String((authData as any).store_id || store);
     const resolvedApiAddress = String((authData as any).api_host || api_address);
 
-    await trayAuthService.saveAuth(resolvedStoreId, {
+    await trayAuthService.saveAuth(context.companyId, {
+      storeId: resolvedStoreId,
       apiAddress: resolvedApiAddress,
       accessToken: authData.access_token,
       refreshToken: authData.refresh_token,
@@ -241,12 +265,18 @@ export const checkAuthStatus = async (req: Request, res: Response) => {
       return res.status(401).json({ error: 'Usuario nao autenticado' });
     }
 
+    if (!req.user.companyId) {
+      return res.status(403).json({
+        error: 'Usuario nao vinculado a uma empresa.',
+      });
+    }
+
     const storeId =
       typeof req.query.storeId === 'string' && req.query.storeId.trim()
         ? req.query.storeId.trim()
         : undefined;
 
-    const auth = await trayAuthService.getCurrentAuth(storeId);
+    const auth = await trayAuthService.getCurrentAuth(req.user.companyId, storeId);
 
     if (!auth) {
       return res.json({
@@ -262,7 +292,7 @@ export const checkAuthStatus = async (req: Request, res: Response) => {
     let isAuthorized = false;
 
     try {
-      isAuthorized = Boolean(await trayAuthService.getValidAuth(auth.storeId));
+      isAuthorized = Boolean(await trayAuthService.getValidAuth(req.user.companyId));
     } catch (error) {
       console.error('Erro ao validar token atual da Tray:', error);
       isAuthorized = false;

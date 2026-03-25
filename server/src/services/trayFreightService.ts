@@ -48,10 +48,10 @@ interface FreightCotationResponse {
 }
 
 export class TrayFreightService {
-  private storeId: string;
+  private companyId: string;
 
-  constructor(storeId: string) {
-    this.storeId = storeId;
+  constructor(companyId: string) {
+    this.companyId = companyId;
   }
 
   /**
@@ -63,12 +63,12 @@ export class TrayFreightService {
         console.log(`💰 Cotando frete para CEP ${params.zipcode}...`);
 
         // Buscar autenticação
-        const auth = await trayAuthService.getAuthData(this.storeId);
+        const auth = await trayAuthService.getAuthData(this.companyId);
         if (!auth) {
           throw new Error('Loja não autorizada');
         }
 
-        const accessToken = await trayAuthService.getValidAuth(this.storeId);
+        const accessToken = await trayAuthService.getValidAuth(this.companyId);
         if (!accessToken) {
           throw new Error('Token inválido');
         }

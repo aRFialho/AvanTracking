@@ -92,6 +92,7 @@ export const AdminPanel: React.FC = () => {
   // Limpeza de DB States
   const [isClearModalOpen, setIsClearModalOpen] = useState(false);
   const [clearType, setClearType] = useState<"ALL" | "DELIVERED_7_DAYS">("ALL");
+  const [clearCompanyId, setClearCompanyId] = useState("");
   const [clearPassword, setClearPassword] = useState("");
   const [isClearing, setIsClearing] = useState(false);
 
@@ -352,12 +353,21 @@ export const AdminPanel: React.FC = () => {
       return;
     }
 
+    if (!clearCompanyId) {
+      alert("Selecione a empresa que terá os pedidos excluídos.");
+      return;
+    }
+
     setIsClearing(true);
     try {
       const response = await fetchWithAuth("/api/orders/clear", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: clearType, password: clearPassword }),
+        body: JSON.stringify({
+          type: clearType,
+          password: clearPassword,
+          companyId: clearCompanyId,
+        }),
       });
 
       if (!response.ok) {
@@ -368,6 +378,7 @@ export const AdminPanel: React.FC = () => {
       const result = await response.json();
       alert(result.message || "Operação realizada com sucesso!");
       setIsClearModalOpen(false);
+      setClearCompanyId("");
       setClearPassword("");
     } catch (error: any) {
       alert(error.message);
@@ -713,6 +724,8 @@ export const AdminPanel: React.FC = () => {
           <button
             onClick={() => {
               setClearType("DELIVERED_7_DAYS");
+              setClearCompanyId(companies[0]?.id || "");
+              setClearPassword("");
               setIsClearModalOpen(true);
             }}
             className="flex-1 bg-yellow-500/10 text-yellow-600 border border-yellow-500/20 px-4 py-3 rounded-lg text-sm font-medium hover:bg-yellow-500/20 transition-colors flex items-center justify-center gap-2"
@@ -724,6 +737,8 @@ export const AdminPanel: React.FC = () => {
           <button
             onClick={() => {
               setClearType("ALL");
+              setClearCompanyId(companies[0]?.id || "");
+              setClearPassword("");
               setIsClearModalOpen(true);
             }}
             className="flex-1 bg-red-500/10 text-red-600 border border-red-500/20 px-4 py-3 rounded-lg text-sm font-medium hover:bg-red-500/20 transition-colors flex items-center justify-center gap-2"
@@ -950,6 +965,7 @@ export const AdminPanel: React.FC = () => {
               <button
                 onClick={() => {
                   setIsClearModalOpen(false);
+                  setClearCompanyId("");
                   setClearPassword("");
                 }}
                 className="text-slate-500 hover:text-white"
@@ -969,6 +985,25 @@ export const AdminPanel: React.FC = () => {
             </div>
 
             <form onSubmit={handleClearDatabase} className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                  Empresa
+                </label>
+                <select
+                  required
+                  value={clearCompanyId}
+                  onChange={(e) => setClearCompanyId(e.target.value)}
+                  className="w-full bg-slate-50 dark:bg-white/5 border border-red-200 dark:border-red-900/30 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white focus:border-red-500 outline-none"
+                >
+                  <option value="">Selecione a empresa...</option>
+                  {companies.map((company) => (
+                    <option key={company.id} value={company.id}>
+                      {company.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <div>
                 <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
                   Digite a senha de segurança para confirmar:
@@ -991,6 +1026,7 @@ export const AdminPanel: React.FC = () => {
                   type="button"
                   onClick={() => {
                     setIsClearModalOpen(false);
+                    setClearCompanyId("");
                     setClearPassword("");
                   }}
                   className="flex-1 px-4 py-2 rounded-lg font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 dark:text-slate-300 dark:bg-white/5 dark:hover:bg-white/10 transition-colors"
@@ -999,7 +1035,7 @@ export const AdminPanel: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  disabled={isClearing || !clearPassword}
+                  disabled={isClearing || !clearPassword || !clearCompanyId}
                   className="flex-1 px-4 py-2 rounded-lg font-medium text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
                 >
                   {isClearing ? "Apagando..." : "Confirmar Exclusão"}
