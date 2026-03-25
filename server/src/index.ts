@@ -21,6 +21,7 @@ import { quoteOrderFreight, quoteBatchFreight } from './controllers/freightContr
 import { authenticateToken } from './middleware/auth';
 import { traySyncJobService } from './services/traySyncJobService';
 import { weeklyMovementReportService } from './services/weeklyMovementReportService';
+import { monthlyMovementReportService } from './services/monthlyMovementReportService';
 
 const prisma = new PrismaClient();
 const app = express();
@@ -232,4 +233,8 @@ void traySyncJobService.initializeSchedules().catch((error) => {
 
 void weeklyMovementReportService.initializeSchedule().catch((error) => {
   console.error('Erro ao inicializar relatorio semanal:', error);
+});
+
+void monthlyMovementReportService.initializeSchedule().catch((error) => {
+  console.error('Erro ao inicializar relatorio mensal:', error);
 });
