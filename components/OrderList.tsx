@@ -162,6 +162,9 @@ export const OrderList: React.FC<OrderListProps> = ({
       // 1. Text
       const matchText =
         toText(o.orderNumber).toLowerCase().includes(searchText.toLowerCase()) ||
+        toText((o as any).invoiceNumber)
+          .toLowerCase()
+          .includes(searchText.toLowerCase()) ||
         toText(o.customerName).toLowerCase().includes(searchText.toLowerCase()) ||
         toText(o.cpf).includes(searchText);
 
@@ -516,7 +519,7 @@ export const OrderList: React.FC<OrderListProps> = ({
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <input
                   type="text"
-                  placeholder="Buscar por Pedido, Chave NF ou Cliente..."
+                  placeholder="Buscar por Pedido, Numero da Nota ou Cliente..."
                   className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-dark-card border border-slate-200 dark:border-white/10 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent dark:focus:border-neon-blue dark:text-white transition-colors"
                   value={searchText}
                   onChange={(e) => setSearchText(e.target.value)}
@@ -716,6 +719,9 @@ export const OrderList: React.FC<OrderListProps> = ({
                   ID / Pedido
                 </th>
                 <th className="px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]">
+                  Nota Fiscal
+                </th>
+                <th className="px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]">
                   Emissão
                 </th>
                 <th className="px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]">
@@ -757,6 +763,9 @@ export const OrderList: React.FC<OrderListProps> = ({
                           {order.customerName}
                         </span>
                       </div>
+                    </td>
+                    <td className="px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                      {(order as any).invoiceNumber || "-"}
                     </td>
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">
                       {order.shippingDate
@@ -812,7 +821,7 @@ export const OrderList: React.FC<OrderListProps> = ({
               ) : (
                 <tr>
                   <td
-                    colSpan={9}
+                    colSpan={10}
                     className="px-6 py-12 text-center text-slate-400 dark:text-slate-500"
                   >
                     <Search className="w-12 h-12 mx-auto mb-3 opacity-20" />

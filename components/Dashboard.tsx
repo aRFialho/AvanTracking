@@ -157,6 +157,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
       const textMatch =
         !searchText ||
         toText(o.orderNumber).toLowerCase().includes(searchText.toLowerCase()) ||
+        toText((o as any).invoiceNumber)
+          .toLowerCase()
+          .includes(searchText.toLowerCase()) ||
         toText(o.customerName).toLowerCase().includes(searchText.toLowerCase());
 
       // Dropdowns

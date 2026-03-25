@@ -150,6 +150,12 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({ order, onClose }) => {
                     </span>{" "}
                     {order.salesChannel}
                   </p>
+                  <p className="text-sm text-slate-700 dark:text-slate-200">
+                    <span className="text-slate-500 dark:text-slate-400">
+                      NF:
+                    </span>{" "}
+                    {(order as any).invoiceNumber || "-"}
+                  </p>
                 </div>
 
                 <div className="p-4 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50/30 dark:bg-white/5">

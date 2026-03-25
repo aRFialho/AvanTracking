@@ -33,6 +33,7 @@ export const DeliveryFailures: React.FC<DeliveryFailuresProps> = ({
           const lower = searchText.toLowerCase();
           return (
             toText(o.orderNumber).toLowerCase().includes(lower) ||
+            toText((o as any).invoiceNumber).toLowerCase().includes(lower) ||
             toText(o.customerName).toLowerCase().includes(lower) ||
             toText(o.trackingCode).toLowerCase().includes(lower)
           );

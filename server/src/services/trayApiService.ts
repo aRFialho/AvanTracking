@@ -210,6 +210,10 @@ export class TrayApiService {
     const mappedStatus =
       normalizedChannelFreight ? 'CHANNEL_LOGISTICS' : statusMap[trayStatus] || 'PENDING';
     const salesChannel = 'Tray - ' + (trayOrder.point_sale || 'LOJA VIRTUAL');
+    const orderInvoice =
+      trayOrder.OrderInvoice?.[0]?.OrderInvoice ||
+      trayOrder.OrderInvoice?.[0] ||
+      null;
     const trayEstimatedDeliveryDate =
       trayOrder.estimated_delivery_date &&
       trayOrder.estimated_delivery_date !== '0000-00-00'
@@ -218,7 +222,7 @@ export class TrayApiService {
 
     return {
       orderNumber: String(trayOrder.id),
-      invoiceNumber: trayOrder.OrderInvoice?.[0]?.OrderInvoice?.number || null,
+      invoiceNumber: orderInvoice?.number || orderInvoice?.id || null,
       trackingCode: trayOrder.sending_code || null,
       customerName: customer.name || 'Desconhecido',
       corporateName: customer.company_name || null,
