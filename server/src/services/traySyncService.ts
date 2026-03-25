@@ -7,6 +7,7 @@ import type { TraySyncOrderReport } from '../types/syncReport';
 const prisma = new PrismaClient();
 
 const TRAY_STATUS_OPTIONS = [
+  'pedido cadastrado',
   'a enviar',
   '5- aguardando faturamento',
   'enviado',

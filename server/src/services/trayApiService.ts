@@ -193,6 +193,7 @@ export class TrayApiService {
     );
 
     const statusMap: Record<string, string> = {
+      'PEDIDO CADASTRADO': 'PENDING',
       'A ENVIAR': 'PENDING',
       '5- AGUARDANDO FATURAMENTO': 'PENDING',
       'AGUARDANDO ENVIO': 'CREATED',

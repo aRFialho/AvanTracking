@@ -48,6 +48,7 @@ const STATUS_LABELS: Record<string, string> = {
 
 const TRAY_DAY_OPTIONS: TraySyncFilters["days"][] = [90, 60, 30, 15, 7];
 const TRAY_STATUS_OPTIONS = [
+  "pedido cadastrado",
   "a enviar",
   "5- aguardando faturamento",
   "enviado",
