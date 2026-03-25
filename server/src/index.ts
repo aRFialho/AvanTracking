@@ -4,6 +4,7 @@ import { PrismaClient } from '@prisma/client';
 import orderRoutes from "./routes/orders";
 import userRoutes from "./routes/users";
 import companyRoutes from "./routes/companies";
+import releaseNotesRoutes from "./routes/releaseNotes";
 import {
   startTrayAuthorization,
   showInstallPage,
@@ -167,6 +168,9 @@ app.use("/api/users", userRoutes);
 
 // Companies API (protegida)
 app.use("/api/companies", authenticateToken, companyRoutes);
+
+// Release Notes API (protegida)
+app.use("/api/release-notes", authenticateToken, releaseNotesRoutes);
 
 // Orders API (protegida)
 app.use("/api/orders", authenticateToken, orderRoutes);

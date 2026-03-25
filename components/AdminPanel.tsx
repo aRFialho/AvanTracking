@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { TrayIntegrationStatus } from "../types";
+import { LOGO_URL } from "../constants";
 import {
   Shield,
   Users,
@@ -16,6 +17,9 @@ import {
   Link2,
   Lock,
   AlertTriangle,
+  Mail,
+  Send,
+  Sparkles,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { fetchWithAuth } from "../utils/authFetch";
@@ -42,12 +46,16 @@ interface UserData {
 
 const getInitialTab = (
   canManageAdminPanel: boolean,
-): "users" | "companies" | "integration" => {
+): "users" | "companies" | "integration" | "patch-notes" => {
   const params = new URLSearchParams(window.location.search);
   const requestedTab = params.get("tab");
 
   if (requestedTab === "integration") {
     return "integration";
+  }
+
+  if (canManageAdminPanel && requestedTab === "patch-notes") {
+    return "patch-notes";
   }
 
   if (canManageAdminPanel && requestedTab === "companies") {
@@ -57,12 +65,107 @@ const getInitialTab = (
   return canManageAdminPanel ? "users" : "integration";
 };
 
+interface PatchNotesFormData {
+  version: string;
+  title: string;
+  summary: string;
+  newFeatures: string;
+  adjustments: string;
+}
+
+const escapeHtml = (value: string) =>
+  value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
+const splitLines = (value: string) =>
+  value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+const renderParagraph = (value: string, fallback: string) =>
+  escapeHtml(value.trim() || fallback).replace(/\n/g, "<br />");
+
+const buildPatchNotesList = (items: string[], emptyLabel: string) => {
+  if (items.length === 0) {
+    return `<p style="margin:0;color:#64748b;font-size:14px;">${escapeHtml(emptyLabel)}</p>`;
+  }
+
+  return `
+    <ul style="margin:0;padding-left:20px;color:#0f172a;font-size:14px;line-height:1.7;">
+      ${items
+        .map((item) => `<li style="margin-bottom:8px;">${escapeHtml(item)}</li>`)
+        .join("")}
+    </ul>
+  `;
+};
+
+const buildPatchNotesPreviewHtml = (input: PatchNotesFormData) => {
+  const newFeatures = splitLines(input.newFeatures);
+  const adjustments = splitLines(input.adjustments);
+
+  return `
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+      <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>${escapeHtml(input.title || "Release Notes Avantracking")}</title>
+      </head>
+      <body style="margin:0;padding:32px 16px;background:#e2e8f0;font-family:Arial,sans-serif;color:#0f172a;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:760px;margin:0 auto;">
+          <tr>
+            <td>
+              <div style="border-radius:28px;overflow:hidden;background:#0f172a;box-shadow:0 24px 80px rgba(15,23,42,0.28);">
+                <div style="padding:28px 32px;background:linear-gradient(135deg,#0f172a 0%,#1d4ed8 100%);text-align:center;">
+                  <img src="${LOGO_URL}" alt="Avantracking" style="max-width:240px;width:100%;height:auto;display:block;margin:0 auto 20px;" />
+                  <div style="display:inline-block;padding:8px 16px;border-radius:999px;background:rgba(255,255,255,0.14);color:#dbeafe;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;">
+                    Release Notes ${escapeHtml(input.version || "Nova versao")}
+                  </div>
+                  <h1 style="margin:18px 0 0;font-size:30px;line-height:1.2;color:#ffffff;">${escapeHtml(input.title || "Nova atualizacao da plataforma")}</h1>
+                </div>
+                <div style="padding:32px;background:#ffffff;">
+                  <div style="padding:22px;border-radius:22px;background:#f8fafc;border:1px solid #e2e8f0;">
+                    <div style="font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#2563eb;">Resumo da versao</div>
+                    <p style="margin:12px 0 0;font-size:15px;line-height:1.7;color:#0f172a;">${renderParagraph(input.summary, "Descreva aqui o resumo principal da versao.")}</p>
+                  </div>
+                  <div style="display:grid;gap:18px;margin-top:24px;">
+                    <div style="padding:22px;border-radius:22px;background:#eff6ff;border:1px solid #bfdbfe;">
+                      <div style="font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#1d4ed8;">Novas funcionalidades</div>
+                      <div style="margin-top:14px;">
+                        ${buildPatchNotesList(newFeatures, "Nenhuma funcionalidade nova informada nesta versao.")}
+                      </div>
+                    </div>
+                    <div style="padding:22px;border-radius:22px;background:#f8fafc;border:1px solid #e2e8f0;">
+                      <div style="font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#0f172a;">Ajustes e melhorias</div>
+                      <div style="margin-top:14px;">
+                        ${buildPatchNotesList(adjustments, "Nenhum ajuste adicional informado nesta versao.")}
+                      </div>
+                    </div>
+                  </div>
+                  <div style="margin-top:28px;padding:18px 20px;border-radius:18px;background:#0f172a;color:#cbd5e1;font-size:13px;line-height:1.7;">
+                    Este comunicado foi enviado pelo time Avantracking para informar a nova versao da plataforma.
+                  </div>
+                </div>
+              </div>
+            </td>
+          </tr>
+        </table>
+      </body>
+    </html>
+  `;
+};
+
 export const AdminPanel: React.FC = () => {
   const { user } = useAuth();
   const canManageAdminPanel = user?.email === "admin@avantracking.com.br";
 
   const [activeTab, setActiveTab] = useState<
-    "users" | "companies" | "integration"
+    "users" | "companies" | "integration" | "patch-notes"
   >(() => getInitialTab(canManageAdminPanel));
   const [users, setUsers] = useState<UserData[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
@@ -81,6 +184,17 @@ export const AdminPanel: React.FC = () => {
   const [currentCompany, setCurrentCompany] = useState<Company | null>(null);
   const [intelipostClientId, setIntelipostClientId] = useState("");
   const [isSavingIntelipost, setIsSavingIntelipost] = useState(false);
+  const [patchNotesForm, setPatchNotesForm] = useState<PatchNotesFormData>({
+    version: "",
+    title: "",
+    summary: "",
+    newFeatures: "",
+    adjustments: "",
+  });
+  const [selectedRecipientIds, setSelectedRecipientIds] = useState<string[]>([]);
+  const [recipientSearch, setRecipientSearch] = useState("");
+  const [recipientCompanyFilter, setRecipientCompanyFilter] = useState("all");
+  const [isSendingReleaseNotes, setIsSendingReleaseNotes] = useState(false);
 
   // User Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -214,7 +328,11 @@ export const AdminPanel: React.FC = () => {
       const params = new URLSearchParams(window.location.search);
       const requestedTab = params.get("tab");
 
-      if (requestedTab !== "integration" && requestedTab !== "companies") {
+      if (
+        requestedTab !== "integration" &&
+        requestedTab !== "companies" &&
+        requestedTab !== "patch-notes"
+      ) {
         setActiveTab((currentTab) =>
           currentTab === "integration" ? "users" : currentTab,
         );
@@ -240,6 +358,20 @@ export const AdminPanel: React.FC = () => {
 
     return () => window.clearInterval(interval);
   }, [activeTab, user?.companyId]);
+
+  useEffect(() => {
+    if (!canManageAdminPanel || users.length === 0) return;
+
+    setSelectedRecipientIds((currentIds) => {
+      if (currentIds.length === 0) {
+        return users.map((userItem) => userItem.id);
+      }
+
+      return currentIds.filter((id) =>
+        users.some((userItem) => userItem.id === id),
+      );
+    });
+  }, [canManageAdminPanel, users]);
 
   // Actions
   const handleOpenModal = (userToEdit?: UserData) => {
@@ -404,6 +536,85 @@ export const AdminPanel: React.FC = () => {
     }
   };
 
+  const handlePatchNotesFieldChange = (
+    field: keyof PatchNotesFormData,
+    value: string,
+  ) => {
+    setPatchNotesForm((currentForm) => ({
+      ...currentForm,
+      [field]: value,
+    }));
+  };
+
+  const handleToggleRecipient = (userId: string) => {
+    setSelectedRecipientIds((currentIds) =>
+      currentIds.includes(userId)
+        ? currentIds.filter((id) => id !== userId)
+        : [...currentIds, userId],
+    );
+  };
+
+  const handleSelectVisibleRecipients = (visibleUserIds: string[]) => {
+    setSelectedRecipientIds((currentIds) => {
+      const nextIds = new Set(currentIds);
+      visibleUserIds.forEach((id) => nextIds.add(id));
+      return Array.from(nextIds);
+    });
+  };
+
+  const handleClearVisibleRecipients = (visibleUserIds: string[]) => {
+    const visibleIds = new Set(visibleUserIds);
+    setSelectedRecipientIds((currentIds) =>
+      currentIds.filter((id) => !visibleIds.has(id)),
+    );
+  };
+
+  const handleSendReleaseNotes = async () => {
+    if (!patchNotesForm.version.trim()) {
+      alert("Informe a versao do release notes.");
+      return;
+    }
+
+    if (!patchNotesForm.title.trim()) {
+      alert("Informe o titulo do release notes.");
+      return;
+    }
+
+    if (!patchNotesForm.summary.trim()) {
+      alert("Informe o texto principal do release notes.");
+      return;
+    }
+
+    if (selectedRecipientIds.length === 0) {
+      alert("Selecione pelo menos um destinatario.");
+      return;
+    }
+
+    setIsSendingReleaseNotes(true);
+    try {
+      const response = await fetchWithAuth("/api/release-notes/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...patchNotesForm,
+          recipientUserIds: selectedRecipientIds,
+        }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.error || "Nao foi possivel enviar o release notes.");
+      }
+
+      alert(data.message || "Release notes enviado com sucesso.");
+    } catch (err: any) {
+      alert(err.message || "Erro ao enviar release notes.");
+    } finally {
+      setIsSendingReleaseNotes(false);
+    }
+  };
+
   const handleClearDatabase = async (e: React.FormEvent) => {
     e.preventDefault();
     if (clearPassword !== "172839") {
@@ -452,6 +663,24 @@ export const AdminPanel: React.FC = () => {
       </div>
     );
 
+  const filteredRecipientUsers = users.filter((userItem) => {
+    const normalizedSearch = recipientSearch.trim().toLowerCase();
+    const matchesSearch =
+      !normalizedSearch ||
+      userItem.name.toLowerCase().includes(normalizedSearch) ||
+      userItem.email.toLowerCase().includes(normalizedSearch);
+
+    const matchesCompany =
+      recipientCompanyFilter === "all" ||
+      userItem.companyId === recipientCompanyFilter;
+
+    return matchesSearch && matchesCompany;
+  });
+
+  const filteredRecipientIds = filteredRecipientUsers.map(
+    (userItem) => userItem.id,
+  );
+
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       {/* Header Tabs */}
@@ -485,6 +714,17 @@ export const AdminPanel: React.FC = () => {
                 )}
               >
                 Empresas
+              </button>
+              <button
+                onClick={() => setActiveTab("patch-notes")}
+                className={clsx(
+                  "px-4 py-2 rounded-md text-sm font-medium transition-all",
+                  activeTab === "patch-notes"
+                    ? "bg-white dark:bg-slate-700 shadow text-blue-600 dark:text-white"
+                    : "text-slate-500 hover:text-slate-700 dark:text-slate-400",
+                )}
+              >
+                Patch Notes
               </button>
             </>
           )}
@@ -667,6 +907,250 @@ export const AdminPanel: React.FC = () => {
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {canManageAdminPanel && activeTab === "patch-notes" && (
+        <div className="space-y-6">
+          <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+            <div className="glass-card rounded-xl overflow-hidden border border-slate-200 dark:border-white/10">
+              <div className="p-4 border-b border-slate-200 dark:border-white/10 bg-slate-50/50 dark:bg-white/5">
+                <h3 className="font-semibold text-slate-800 dark:text-white flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                  Release Notes
+                </h3>
+                <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                  Estruture a versao, monte o HTML e envie o comunicado de atualizacao por e-mail.
+                </p>
+              </div>
+
+              <div className="p-6 space-y-5">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                      Versao
+                    </label>
+                    <input
+                      type="text"
+                      value={patchNotesForm.version}
+                      onChange={(e) =>
+                        handlePatchNotesFieldChange("version", e.target.value)
+                      }
+                      placeholder="v2.4.0"
+                      className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white focus:border-blue-500 outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                      Titulo
+                    </label>
+                    <input
+                      type="text"
+                      value={patchNotesForm.title}
+                      onChange={(e) =>
+                        handlePatchNotesFieldChange("title", e.target.value)
+                      }
+                      placeholder="Nova atualizacao da plataforma"
+                      className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white focus:border-blue-500 outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                    Texto principal
+                  </label>
+                  <textarea
+                    rows={5}
+                    value={patchNotesForm.summary}
+                    onChange={(e) =>
+                      handlePatchNotesFieldChange("summary", e.target.value)
+                    }
+                    placeholder="Descreva aqui o resumo principal da nova versao."
+                    className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white focus:border-blue-500 outline-none resize-y"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                    Novas funcionalidades
+                  </label>
+                  <textarea
+                    rows={6}
+                    value={patchNotesForm.newFeatures}
+                    onChange={(e) =>
+                      handlePatchNotesFieldChange("newFeatures", e.target.value)
+                    }
+                    placeholder={"Uma funcionalidade por linha\nNova aba de integracao\nSync automatico por empresa"}
+                    className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white focus:border-blue-500 outline-none resize-y"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                    Ajustes e melhorias
+                  </label>
+                  <textarea
+                    rows={6}
+                    value={patchNotesForm.adjustments}
+                    onChange={(e) =>
+                      handlePatchNotesFieldChange("adjustments", e.target.value)
+                    }
+                    placeholder={"Um ajuste por linha\nMelhoria no sync da Tray\nCorrecao de filtros do dashboard"}
+                    className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white focus:border-blue-500 outline-none resize-y"
+                  />
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
+                  <div>
+                    <p className="font-semibold text-slate-700 dark:text-white">
+                      Destinatarios selecionados: {selectedRecipientIds.length}
+                    </p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                      O envio usara o sender configurado no Brevo.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleSendReleaseNotes}
+                    disabled={isSendingReleaseNotes}
+                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                  >
+                    <Send className="w-4 h-4" />
+                    {isSendingReleaseNotes ? "Enviando..." : "Enviar Release Notes"}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="glass-card rounded-xl overflow-hidden border border-slate-200 dark:border-white/10">
+              <div className="p-4 border-b border-slate-200 dark:border-white/10 bg-slate-50/50 dark:bg-white/5">
+                <h3 className="font-semibold text-slate-800 dark:text-white flex items-center gap-2">
+                  <Mail className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                  Destinatarios
+                </h3>
+                <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                  Selecione quais usuarios receberao o release notes.
+                </p>
+              </div>
+
+              <div className="p-6 space-y-4">
+                <div className="grid gap-3 md:grid-cols-2">
+                  <input
+                    type="text"
+                    value={recipientSearch}
+                    onChange={(e) => setRecipientSearch(e.target.value)}
+                    placeholder="Buscar por nome ou e-mail"
+                    className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white focus:border-blue-500 outline-none"
+                  />
+
+                  <select
+                    value={recipientCompanyFilter}
+                    onChange={(e) => setRecipientCompanyFilter(e.target.value)}
+                    className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white focus:border-blue-500 outline-none"
+                  >
+                    <option value="all">Todas as empresas</option>
+                    {companies.map((company) => (
+                      <option key={company.id} value={company.id}>
+                        {company.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleSelectVisibleRecipients(filteredRecipientIds)
+                    }
+                    className="px-3 py-2 rounded-lg text-sm font-medium border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 hover:border-blue-500 hover:text-blue-600 dark:hover:text-blue-300 transition-colors"
+                  >
+                    Selecionar visiveis
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleClearVisibleRecipients(filteredRecipientIds)
+                    }
+                    className="px-3 py-2 rounded-lg text-sm font-medium border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 hover:border-red-500 hover:text-red-600 dark:hover:text-red-300 transition-colors"
+                  >
+                    Limpar visiveis
+                  </button>
+                </div>
+
+                <div className="max-h-[420px] overflow-y-auto space-y-2 pr-1">
+                  {filteredRecipientUsers.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-slate-200 dark:border-white/10 px-4 py-8 text-center text-sm text-slate-400">
+                      Nenhum usuario encontrado com os filtros atuais.
+                    </div>
+                  ) : (
+                    filteredRecipientUsers.map((userItem) => {
+                      const isSelected = selectedRecipientIds.includes(
+                        userItem.id,
+                      );
+
+                      return (
+                        <label
+                          key={userItem.id}
+                          className={clsx(
+                            "flex items-start gap-3 rounded-xl border px-4 py-3 cursor-pointer transition-colors",
+                            isSelected
+                              ? "border-blue-300 bg-blue-50 dark:border-blue-500/40 dark:bg-blue-500/10"
+                              : "border-slate-200 bg-slate-50 dark:border-white/10 dark:bg-white/5",
+                          )}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => handleToggleRecipient(userItem.id)}
+                            className="mt-1 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                          />
+                          <div className="min-w-0">
+                            <p className="font-medium text-slate-800 dark:text-white truncate">
+                              {userItem.name}
+                            </p>
+                            <p className="text-sm text-slate-500 dark:text-slate-400 truncate">
+                              {userItem.email}
+                            </p>
+                            <p className="text-xs text-slate-400 mt-1">
+                              {userItem.company?.name || "Sem empresa"}
+                            </p>
+                          </div>
+                        </label>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="glass-card rounded-xl overflow-hidden border border-slate-200 dark:border-white/10">
+            <div className="p-4 border-b border-slate-200 dark:border-white/10 bg-slate-50/50 dark:bg-white/5 flex items-center justify-between gap-3">
+              <div>
+                <h3 className="font-semibold text-slate-800 dark:text-white">
+                  Previa do e-mail HTML
+                </h3>
+                <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                  A previa acompanha os campos de versao, texto, funcionalidades e ajustes.
+                </p>
+              </div>
+              <span className="inline-flex items-center rounded-full bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300 px-3 py-1 text-xs font-semibold border border-blue-200 dark:border-blue-500/20">
+                Logo no topo
+              </span>
+            </div>
+
+            <div className="bg-slate-200 dark:bg-slate-900 p-4">
+              <iframe
+                title="Previa do e-mail de patch notes"
+                srcDoc={buildPatchNotesPreviewHtml(patchNotesForm)}
+                className="w-full h-[820px] rounded-xl bg-white"
+              />
+            </div>
           </div>
         </div>
       )}
