@@ -10,6 +10,8 @@ import {
   type TraySyncFiltersInput,
 } from './traySyncService';
 import { trayAuthService } from './trayAuthService';
+import { syncReportService } from './syncReportService';
+import type { SyncTrigger } from '../types/syncReport';
 
 const prisma = new PrismaClient();
 const MAX_LOGS = 1000;
@@ -191,6 +193,51 @@ class TraySyncJobService {
       job.failed = Number(result?.results?.skipped || 0);
       this.touch(job);
       this.pushLog(job, 'success', result.message);
+
+      try {
+        const report = await syncReportService.sendTraySyncReport({
+          companyId: job.companyId,
+          userId: job.userId,
+          trigger: mode as SyncTrigger,
+          payload: {
+            companyId: job.companyId,
+            storeId: result.storeId,
+            modified: result.modified,
+            statuses: result.statuses,
+            created: Number(result?.results?.created || 0),
+            updated: Number(result?.results?.updated || 0),
+            skipped: Number(result?.results?.skipped || 0),
+            totalTrackingEvents: Number(result?.results?.totalTrackingEvents || 0),
+            errors: Array.isArray(result?.results?.errors)
+              ? result.results.errors
+              : [],
+            createdOrders: Array.isArray(result?.results?.createdOrders)
+              ? result.results.createdOrders
+              : [],
+            updatedOrders: Array.isArray(result?.results?.updatedOrders)
+              ? result.results.updatedOrders
+              : [],
+          },
+          startedAt: job.startedAt,
+          finishedAt: job.finishedAt || new Date().toISOString(),
+        });
+        this.pushLog(
+          job,
+          'info',
+          `Relatorio da Tray enviado para ${report.recipients} destinatario(s). CSV: ${report.csvUrl}`,
+        );
+      } catch (reportError) {
+        const reportMessage =
+          reportError instanceof Error
+            ? reportError.message
+            : 'Erro desconhecido ao enviar relatorio da Tray';
+        this.pushLog(
+          job,
+          'error',
+          `Falha ao enviar relatorio da Tray: ${reportMessage}`,
+        );
+      }
+
       this.scheduleNext(job.companyId, job.userId);
     } catch (error) {
       job.status = 'failed';

@@ -1,5 +1,6 @@
 import { PrismaClient, OrderStatus } from '@prisma/client';
 import { isExcludedPlatformFreight } from '../utils/orderExclusion';
+import type { TraySyncOrderReport } from '../types/syncReport';
 
 const prisma = new PrismaClient();
 
@@ -118,6 +119,25 @@ const buildOrderData = (orderData: any, status: OrderStatus) => ({
   isDelayed: Boolean(orderData.isDelayed),
 });
 
+const buildTraySyncOrderReport = (
+  orderId: string | null,
+  orderPayload: ReturnType<typeof buildOrderData>,
+): TraySyncOrderReport => ({
+  orderId,
+  orderNumber: orderPayload.orderNumber,
+  customerName: orderPayload.customerName,
+  trackingCode: orderPayload.trackingCode,
+  salesChannel: orderPayload.salesChannel,
+  freightType: orderPayload.freightType,
+  status: orderPayload.status,
+  shippingDate: orderPayload.shippingDate?.toISOString() || null,
+  estimatedDeliveryDate: orderPayload.estimatedDeliveryDate?.toISOString() || null,
+  carrierEstimatedDeliveryDate:
+    orderPayload.carrierEstimatedDeliveryDate?.toISOString() || null,
+  totalValue: orderPayload.totalValue,
+  isDelayed: orderPayload.isDelayed,
+});
+
 export const importOrdersForCompany = async (companyId: string, orders: any[]) => {
   if (!Array.isArray(orders) || orders.length === 0) {
     throw new Error('Nenhum pedido valido para importar');
@@ -151,6 +171,8 @@ export const importOrdersForCompany = async (companyId: string, orders: any[]) =
   let updated = 0;
   let skipped = 0;
   let totalTrackingEvents = 0;
+  const createdOrders: TraySyncOrderReport[] = [];
+  const updatedOrders: TraySyncOrderReport[] = [];
 
   for (const orderData of orders) {
     const orderNumber = safeString(orderData?.orderNumber);
@@ -186,10 +208,11 @@ export const importOrdersForCompany = async (companyId: string, orders: any[]) =
       }
 
       updated += 1;
+      updatedOrders.push(buildTraySyncOrderReport(existing.id, orderPayload));
       continue;
     }
 
-    await prisma.order.create({
+    const createdOrder = await prisma.order.create({
       data: {
         companyId,
         ...orderPayload,
@@ -197,10 +220,14 @@ export const importOrdersForCompany = async (companyId: string, orders: any[]) =
           create: trackingEventsData,
         },
       },
+      select: {
+        id: true,
+      },
     });
 
     created += 1;
     totalTrackingEvents += trackingEventsData.length;
+    createdOrders.push(buildTraySyncOrderReport(createdOrder.id, orderPayload));
   }
 
   const message =
@@ -215,6 +242,8 @@ export const importOrdersForCompany = async (companyId: string, orders: any[]) =
       skipped,
       totalTrackingEvents,
       errors: [] as string[],
+      createdOrders,
+      updatedOrders,
     },
   };
 };

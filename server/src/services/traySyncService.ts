@@ -2,6 +2,7 @@ import { PrismaClient } from '@prisma/client';
 import { TrayApiService } from './trayApiService';
 import { trayAuthService } from './trayAuthService';
 import { importOrdersForCompany } from './orderImportService';
+import type { TraySyncOrderReport } from '../types/syncReport';
 
 const prisma = new PrismaClient();
 
@@ -112,6 +113,8 @@ export class TraySyncService {
       skipped: 0,
       totalTrackingEvents: 0,
       errors: [] as string[],
+      createdOrders: [] as TraySyncOrderReport[],
+      updatedOrders: [] as TraySyncOrderReport[],
     };
     let importedOrdersCount = 0;
 
@@ -158,6 +161,12 @@ export class TraySyncService {
             aggregateResults.totalTrackingEvents +=
               importResult.results.totalTrackingEvents;
             aggregateResults.errors.push(...importResult.results.errors);
+            aggregateResults.createdOrders.push(
+              ...importResult.results.createdOrders,
+            );
+            aggregateResults.updatedOrders.push(
+              ...importResult.results.updatedOrders,
+            );
             importedOrdersCount += freshOrders.length;
 
             for (const order of freshOrders) {
@@ -190,7 +199,15 @@ export class TraySyncService {
         storeId: auth.storeId,
         statuses: statusesToSync,
         modified,
-        results: { created: 0, updated: 0, skipped: 0, totalTrackingEvents: 0, errors: [] },
+        results: {
+          created: 0,
+          updated: 0,
+          skipped: 0,
+          totalTrackingEvents: 0,
+          errors: [],
+          createdOrders: [],
+          updatedOrders: [],
+        },
       };
     }
     const importMessage =

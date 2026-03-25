@@ -52,3 +52,32 @@ export interface TrackingSyncReportPayload {
   after: SyncReportSnapshot;
   changes: SyncOrderChangeReport[];
 }
+
+export interface TraySyncOrderReport {
+  orderId: string | null;
+  orderNumber: string;
+  customerName: string;
+  trackingCode: string | null;
+  salesChannel: string;
+  freightType: string | null;
+  status: OrderStatus;
+  shippingDate: string | null;
+  estimatedDeliveryDate: string | null;
+  carrierEstimatedDeliveryDate: string | null;
+  totalValue: number;
+  isDelayed: boolean;
+}
+
+export interface TraySyncReportPayload {
+  companyId: string;
+  storeId: string;
+  modified: string;
+  statuses: string[];
+  created: number;
+  updated: number;
+  skipped: number;
+  totalTrackingEvents: number;
+  errors: string[];
+  createdOrders: TraySyncOrderReport[];
+  updatedOrders: TraySyncOrderReport[];
+}

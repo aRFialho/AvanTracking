@@ -6,6 +6,8 @@ import type {
   SyncOrderChangeReport,
   SyncTrigger,
   TrackingSyncReportPayload,
+  TraySyncOrderReport,
+  TraySyncReportPayload,
 } from '../types/syncReport';
 import { sendBrevoEmail } from './emailTransportService';
 
@@ -62,7 +64,8 @@ const getPublicBaseUrl = () => {
   return `http://localhost:${process.env.PORT || '3000'}`;
 };
 
-const getReportsDir = () => path.join(__dirname, '../../public/reports/sync');
+const getReportsDir = (scope = 'sync') =>
+  path.join(__dirname, `../../public/reports/${scope}`);
 
 const buildMetricBars = (
   metrics: Array<{ label: string; value: number; color: string }>,
@@ -576,6 +579,368 @@ const buildEmailText = (
   ].join('\n');
 };
 
+const formatCurrency = (value: number) =>
+  new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+  }).format(Number(value || 0));
+
+const buildTrayOrderRowsHtml = (orders: TraySyncOrderReport[], title: string) => {
+  if (orders.length === 0) {
+    return `
+      <section style="margin-top:24px;border:1px dashed #cbd5e1;border-radius:18px;padding:20px;background:#ffffff;">
+        <h3 style="margin:0 0 8px;font-size:18px;color:#0f172a;">${escapeHtml(title)}</h3>
+        <p style="margin:0;color:#64748b;">Nenhum pedido nesta categoria nesta sincronizacao.</p>
+      </section>
+    `;
+  }
+
+  return `
+    <section style="margin-top:24px;border:1px solid #dbeafe;border-radius:18px;padding:20px;background:#ffffff;">
+      <h3 style="margin:0 0 14px;font-size:18px;color:#0f172a;">${escapeHtml(title)}</h3>
+      <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse;font-size:13px;color:#334155;">
+        <thead>
+          <tr style="background:#f8fafc;color:#475569;">
+            <th align="left" style="padding:10px;border-bottom:1px solid #e2e8f0;">Pedido</th>
+            <th align="left" style="padding:10px;border-bottom:1px solid #e2e8f0;">Cliente</th>
+            <th align="left" style="padding:10px;border-bottom:1px solid #e2e8f0;">Status</th>
+            <th align="left" style="padding:10px;border-bottom:1px solid #e2e8f0;">Canal</th>
+            <th align="left" style="padding:10px;border-bottom:1px solid #e2e8f0;">Frete</th>
+            <th align="left" style="padding:10px;border-bottom:1px solid #e2e8f0;">Rastreio</th>
+            <th align="right" style="padding:10px;border-bottom:1px solid #e2e8f0;">Valor</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${orders
+            .map(
+              (order) => `
+                <tr>
+                  <td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;">#${escapeHtml(order.orderNumber)}</td>
+                  <td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;">${escapeHtml(order.customerName)}</td>
+                  <td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;">${escapeHtml(STATUS_LABELS[order.status])}</td>
+                  <td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;">${escapeHtml(order.salesChannel)}</td>
+                  <td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;">${escapeHtml(order.freightType || '-')}</td>
+                  <td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;">${escapeHtml(order.trackingCode || '-')}</td>
+                  <td align="right" style="padding:8px 10px;border-bottom:1px solid #e2e8f0;">${escapeHtml(formatCurrency(order.totalValue))}</td>
+                </tr>
+              `,
+            )
+            .join('')}
+        </tbody>
+      </table>
+    </section>
+  `;
+};
+
+const buildTraySyncCsvContent = (
+  payload: TraySyncReportPayload,
+  metadata: {
+    companyName: string;
+    trigger: SyncTrigger;
+    reportUrl: string;
+    csvUrl: string;
+    startedAt: string;
+    finishedAt: string;
+  },
+) => {
+  const lines: unknown[][] = [
+    ['Empresa', metadata.companyName],
+    ['Loja Tray', payload.storeId],
+    [
+      'Tipo de sincronizacao',
+      metadata.trigger === 'automatic' ? 'Automatica' : 'Manual',
+    ],
+    ['Inicio', metadata.startedAt],
+    ['Fim', metadata.finishedAt],
+    ['Janela modificada desde', payload.modified],
+    ['Status consultados', payload.statuses.join(', ')],
+    ['Relatorio web', metadata.reportUrl],
+    ['CSV', metadata.csvUrl],
+    [],
+    ['Indicador', 'Valor'],
+    ['Pedidos incluidos', payload.created],
+    ['Pedidos atualizados', payload.updated],
+    ['Pedidos ignorados', payload.skipped],
+    ['Eventos iniciais de rastreio', payload.totalTrackingEvents],
+    ['Erros', payload.errors.length],
+    [],
+    [
+      'Tipo',
+      'Pedido',
+      'Cliente',
+      'Status',
+      'Canal',
+      'Frete',
+      'Rastreio',
+      'Envio',
+      'Prev. entrega',
+      'Prev. transportadora',
+      'Valor',
+      'Atrasado',
+    ],
+  ];
+
+  for (const [label, orders] of [
+    ['Incluido', payload.createdOrders],
+    ['Atualizado', payload.updatedOrders],
+  ] as const) {
+    for (const order of orders) {
+      lines.push([
+        label,
+        order.orderNumber,
+        order.customerName,
+        STATUS_LABELS[order.status],
+        order.salesChannel,
+        order.freightType || '',
+        order.trackingCode || '',
+        formatDateOnly(order.shippingDate),
+        formatDateOnly(order.estimatedDeliveryDate),
+        formatDateOnly(order.carrierEstimatedDeliveryDate),
+        order.totalValue,
+        order.isDelayed ? 'Sim' : 'Nao',
+      ]);
+    }
+  }
+
+  if (payload.errors.length > 0) {
+    lines.push([]);
+    lines.push(['Erros']);
+    for (const error of payload.errors) {
+      lines.push([error]);
+    }
+  }
+
+  return lines
+    .map((line) => line.map((value) => escapeCsv(value)).join(';'))
+    .join('\n');
+};
+
+const buildTraySyncReportHtml = (
+  payload: TraySyncReportPayload,
+  metadata: {
+    companyName: string;
+    trigger: SyncTrigger;
+    reportUrl: string;
+    csvUrl: string;
+    startedAt: string;
+    finishedAt: string;
+  },
+) => {
+  const bars = buildMetricBars([
+    { label: 'Pedidos incluidos', value: payload.created, color: '#10b981' },
+    { label: 'Pedidos atualizados', value: payload.updated, color: '#2563eb' },
+    { label: 'Pedidos ignorados', value: payload.skipped, color: '#f59e0b' },
+    {
+      label: 'Eventos iniciais de rastreio',
+      value: payload.totalTrackingEvents,
+      color: '#7c3aed',
+    },
+    { label: 'Erros', value: payload.errors.length, color: '#ef4444' },
+  ]);
+
+  const errorsSection =
+    payload.errors.length > 0
+      ? `
+        <section style="margin-top:24px;border:1px solid #fecaca;background:#fef2f2;border-radius:18px;padding:20px;">
+          <h3 style="margin:0 0 12px;color:#b91c1c;">Erros encontrados</h3>
+          <ul style="margin:0;padding-left:18px;color:#7f1d1d;line-height:1.7;">
+            ${payload.errors.map((error) => `<li>${escapeHtml(error)}</li>`).join('')}
+          </ul>
+        </section>
+      `
+      : '';
+
+  return `
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Relatorio de pedidos Tray - ${escapeHtml(metadata.companyName)}</title>
+  </head>
+  <body style="margin:0;background:#eff6ff;font-family:Arial,Helvetica,sans-serif;color:#0f172a;">
+    <div style="padding:32px 16px;background:radial-gradient(circle at top,#1d4ed8 0%,#0f172a 55%);">
+      <div style="max-width:1120px;margin:0 auto;">
+        <div style="background:#ffffff;border-radius:28px;padding:30px 32px;box-shadow:0 30px 90px rgba(15,23,42,0.28);">
+          <div style="display:flex;justify-content:space-between;gap:20px;align-items:flex-start;flex-wrap:wrap;">
+            <div>
+              <img src="${APP_LOGO_URL}" alt="Avantracking" style="height:56px;max-width:240px;" />
+              <p style="margin:16px 0 0;font-size:12px;letter-spacing:2px;text-transform:uppercase;color:#2563eb;font-weight:700;">
+                Relatorio de pedidos Tray ${metadata.trigger === 'automatic' ? 'automatico' : 'manual'}
+              </p>
+              <h1 style="margin:10px 0 0;font-size:34px;line-height:1.15;color:#0f172a;">
+                ${escapeHtml(metadata.companyName)}
+              </h1>
+              <p style="margin:10px 0 0;color:#475569;line-height:1.7;max-width:760px;">
+                Sincronizacao da Tray finalizada com detalhamento dos pedidos incluidos e atualizados na plataforma.
+              </p>
+            </div>
+            <div style="display:flex;gap:12px;flex-wrap:wrap;">
+              <a href="${metadata.reportUrl}" style="display:inline-block;padding:14px 20px;border-radius:999px;background:#0f172a;color:#ffffff;text-decoration:none;font-weight:700;">
+                Abrir relatorio
+              </a>
+              <a href="${metadata.csvUrl}" style="display:inline-block;padding:14px 20px;border-radius:999px;background:#2563eb;color:#ffffff;text-decoration:none;font-weight:700;">
+                Baixar CSV
+              </a>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-top:28px;">
+            <div style="padding:18px;border-radius:18px;background:#eff6ff;border:1px solid #bfdbfe;"><div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#1d4ed8;font-weight:700;">Inicio</div><div style="margin-top:8px;font-size:15px;color:#0f172a;">${escapeHtml(metadata.startedAt)}</div></div>
+            <div style="padding:18px;border-radius:18px;background:#eff6ff;border:1px solid #bfdbfe;"><div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#1d4ed8;font-weight:700;">Fim</div><div style="margin-top:8px;font-size:15px;color:#0f172a;">${escapeHtml(metadata.finishedAt)}</div></div>
+            <div style="padding:18px;border-radius:18px;background:#eff6ff;border:1px solid #bfdbfe;"><div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#1d4ed8;font-weight:700;">Loja Tray</div><div style="margin-top:8px;font-size:15px;color:#0f172a;">${escapeHtml(payload.storeId)}</div></div>
+            <div style="padding:18px;border-radius:18px;background:#eff6ff;border:1px solid #bfdbfe;"><div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#1d4ed8;font-weight:700;">Janela</div><div style="margin-top:8px;font-size:15px;color:#0f172a;">Desde ${escapeHtml(payload.modified)}</div></div>
+          </div>
+          <section style="display:grid;grid-template-columns:minmax(0,1.1fr) minmax(320px,0.9fr);gap:20px;margin-top:26px;align-items:start;">
+            <div style="border:1px solid #dbeafe;border-radius:22px;padding:22px;background:#f8fbff;">
+              <h2 style="margin:0 0 18px;font-size:20px;color:#0f172a;">Grafico de indicadores</h2>
+              ${bars}
+            </div>
+            <div style="border:1px solid #dbeafe;border-radius:22px;padding:22px;background:#f8fbff;">
+              <h2 style="margin:0 0 18px;font-size:20px;color:#0f172a;">Resumo da sincronizacao</h2>
+              <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse;font-size:14px;">
+                <tbody>
+                  <tr><td style="padding:8px 0;border-top:1px solid #dbeafe;">Pedidos incluidos</td><td align="right" style="padding:8px 0;border-top:1px solid #dbeafe;">${payload.created}</td></tr>
+                  <tr><td style="padding:8px 0;border-top:1px solid #dbeafe;">Pedidos atualizados</td><td align="right" style="padding:8px 0;border-top:1px solid #dbeafe;">${payload.updated}</td></tr>
+                  <tr><td style="padding:8px 0;border-top:1px solid #dbeafe;">Pedidos ignorados</td><td align="right" style="padding:8px 0;border-top:1px solid #dbeafe;">${payload.skipped}</td></tr>
+                  <tr><td style="padding:8px 0;border-top:1px solid #dbeafe;">Eventos iniciais de rastreio</td><td align="right" style="padding:8px 0;border-top:1px solid #dbeafe;">${payload.totalTrackingEvents}</td></tr>
+                  <tr><td style="padding:8px 0;border-top:1px solid #dbeafe;">Status consultados</td><td align="right" style="padding:8px 0;border-top:1px solid #dbeafe;">${escapeHtml(payload.statuses.join(', '))}</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+          ${errorsSection}
+          ${buildTrayOrderRowsHtml(payload.createdOrders, 'Pedidos incluidos')}
+          ${buildTrayOrderRowsHtml(payload.updatedOrders, 'Pedidos atualizados')}
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
+  `;
+};
+
+const buildTraySyncEmailHtml = (
+  payload: TraySyncReportPayload,
+  metadata: {
+    companyName: string;
+    trigger: SyncTrigger;
+    reportUrl: string;
+    csvUrl: string;
+    startedAt: string;
+    finishedAt: string;
+  },
+) => `
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Relatorio de pedidos Tray</title>
+  </head>
+  <body style="margin:0;padding:0;background:#0b1220;font-family:Arial,Helvetica,sans-serif;color:#0f172a;">
+    <div style="padding:28px 16px;background:radial-gradient(circle at top,#1d4ed8 0%,#0b1220 58%);">
+      <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:760px;margin:0 auto;">
+        <tr>
+          <td>
+            <div style="background:#ffffff;border-radius:24px;overflow:hidden;border:1px solid #dbeafe;box-shadow:0 24px 70px rgba(15,23,42,0.35);">
+              <div style="padding:28px 32px 18px;background:linear-gradient(135deg,#0f172a 0%,#1d4ed8 100%);">
+                <img src="${APP_LOGO_URL}" alt="Avantracking" style="height:52px;display:block;max-width:220px;" />
+                <p style="margin:18px 0 0;font-size:12px;letter-spacing:2px;text-transform:uppercase;color:#bfdbfe;">
+                  Relatorio ${metadata.trigger === 'automatic' ? 'automatico' : 'manual'} de pedidos Tray
+                </p>
+                <h1 style="margin:10px 0 0;font-size:30px;line-height:1.15;color:#ffffff;">
+                  ${escapeHtml(metadata.companyName)}
+                </h1>
+                <p style="margin:12px 0 0;font-size:14px;line-height:1.7;color:#dbeafe;">
+                  Janela desde ${escapeHtml(payload.modified)}. Incluidos: ${payload.created}. Atualizados: ${payload.updated}. Ignorados: ${payload.skipped}.
+                </p>
+              </div>
+              <div style="padding:28px 32px;">
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;">
+                  <div style="border:1px solid #e2e8f0;border-radius:18px;padding:16px;background:#f8fafc;"><div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#64748b;">Incluidos</div><div style="margin-top:8px;font-size:26px;font-weight:700;color:#10b981;">${payload.created}</div></div>
+                  <div style="border:1px solid #e2e8f0;border-radius:18px;padding:16px;background:#f8fafc;"><div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#64748b;">Atualizados</div><div style="margin-top:8px;font-size:26px;font-weight:700;color:#2563eb;">${payload.updated}</div></div>
+                  <div style="border:1px solid #e2e8f0;border-radius:18px;padding:16px;background:#f8fafc;"><div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#64748b;">Ignorados</div><div style="margin-top:8px;font-size:26px;font-weight:700;color:#f59e0b;">${payload.skipped}</div></div>
+                  <div style="border:1px solid #e2e8f0;border-radius:18px;padding:16px;background:#f8fafc;"><div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#64748b;">Erros</div><div style="margin-top:8px;font-size:26px;font-weight:700;color:#ef4444;">${payload.errors.length}</div></div>
+                </div>
+                <div style="margin-top:24px;padding:20px;border:1px solid #dbeafe;border-radius:18px;background:#f8fbff;">
+                  <h2 style="margin:0 0 14px;font-size:18px;color:#0f172a;">Resumo</h2>
+                  ${buildMetricBars([
+                    { label: 'Pedidos incluidos', value: payload.created, color: '#10b981' },
+                    { label: 'Pedidos atualizados', value: payload.updated, color: '#2563eb' },
+                    { label: 'Pedidos ignorados', value: payload.skipped, color: '#f59e0b' },
+                    { label: 'Erros', value: payload.errors.length, color: '#ef4444' },
+                  ])}
+                </div>
+                <div style="margin-top:24px;">
+                  <h2 style="margin:0 0 12px;font-size:18px;color:#0f172a;">Ultimos pedidos incluidos</h2>
+                  ${
+                    payload.createdOrders.length > 0
+                      ? payload.createdOrders
+                          .slice(0, 8)
+                          .map(
+                            (order) => `
+                              <div style="border:1px solid #e2e8f0;border-radius:16px;padding:16px;margin-bottom:12px;background:#ffffff;">
+                                <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+                                  <strong style="color:#0f172a;">Pedido #${escapeHtml(order.orderNumber)}</strong>
+                                  <span style="color:#475569;">${escapeHtml(STATUS_LABELS[order.status])}</span>
+                                </div>
+                                <p style="margin:8px 0 0;font-size:13px;line-height:1.6;color:#475569;">
+                                  ${escapeHtml(order.customerName)} â€¢ ${escapeHtml(order.salesChannel)} â€¢ ${escapeHtml(order.freightType || '-')}
+                                </p>
+                              </div>
+                            `,
+                          )
+                          .join('')
+                      : '<p style="margin:0;color:#64748b;">Nenhum pedido novo foi incluido nesta sincronizacao.</p>'
+                  }
+                </div>
+                <div style="margin-top:28px;text-align:center;">
+                  <a href="${metadata.reportUrl}" style="display:inline-block;padding:15px 24px;border-radius:999px;background:linear-gradient(135deg,#2563eb 0%,#0f172a 100%);color:#ffffff;text-decoration:none;font-weight:700;margin-right:8px;">
+                    Abrir relatorio completo
+                  </a>
+                  <a href="${metadata.csvUrl}" style="display:inline-block;padding:15px 24px;border-radius:999px;background:#eff6ff;color:#1d4ed8;text-decoration:none;font-weight:700;border:1px solid #bfdbfe;">
+                    Baixar CSV detalhado
+                  </a>
+                </div>
+              </div>
+            </div>
+          </td>
+        </tr>
+      </table>
+    </div>
+  </body>
+</html>
+`;
+
+const buildTraySyncEmailText = (
+  payload: TraySyncReportPayload,
+  metadata: {
+    companyName: string;
+    trigger: SyncTrigger;
+    reportUrl: string;
+    csvUrl: string;
+    startedAt: string;
+    finishedAt: string;
+  },
+) =>
+  [
+    `Relatorio ${metadata.trigger === 'automatic' ? 'automatico' : 'manual'} de pedidos Tray - ${metadata.companyName}`,
+    `Loja Tray: ${payload.storeId}`,
+    `Inicio: ${metadata.startedAt}`,
+    `Fim: ${metadata.finishedAt}`,
+    `Janela modificada desde: ${payload.modified}`,
+    `Status consultados: ${payload.statuses.join(', ')}`,
+    '',
+    `Pedidos incluidos: ${payload.created}`,
+    `Pedidos atualizados: ${payload.updated}`,
+    `Pedidos ignorados: ${payload.skipped}`,
+    `Eventos iniciais de rastreio: ${payload.totalTrackingEvents}`,
+    `Erros: ${payload.errors.length}`,
+    '',
+    `Relatorio completo: ${metadata.reportUrl}`,
+    `CSV detalhado: ${metadata.csvUrl}`,
+  ].join('\n');
+
 class SyncReportService {
   private async resolveRecipients(companyId: string) {
     const users = await prisma.user.findMany({
@@ -658,6 +1023,71 @@ class SyncReportService {
     await sendBrevoEmail({
       to: recipients,
       subject: `Relatorio de sincronizacao - ${companyName}`,
+      htmlContent: emailHtml,
+      textContent: emailText,
+    });
+
+    return {
+      reportId,
+      reportUrl,
+      csvUrl,
+      recipients: recipients.length,
+    };
+  }
+
+  async sendTraySyncReport(input: {
+    companyId: string;
+    userId: string;
+    trigger: SyncTrigger;
+    payload: TraySyncReportPayload;
+    startedAt: string;
+    finishedAt: string;
+  }) {
+    const company = await prisma.company.findUnique({
+      where: { id: input.companyId },
+      select: { name: true },
+    });
+
+    const companyName = company?.name || 'Empresa';
+    const reportId = crypto.randomUUID();
+    const baseUrl = getPublicBaseUrl();
+    const reportUrl = `${baseUrl}/reports/tray-sync/${reportId}.html`;
+    const csvUrl = `${baseUrl}/reports/tray-sync/${reportId}.csv`;
+    const metadata = {
+      companyName,
+      trigger: input.trigger,
+      reportUrl,
+      csvUrl,
+      startedAt: formatDateTime(input.startedAt),
+      finishedAt: formatDateTime(input.finishedAt),
+    };
+
+    const reportHtml = buildTraySyncReportHtml(input.payload, metadata);
+    const reportCsv = buildTraySyncCsvContent(input.payload, metadata);
+    const emailHtml = buildTraySyncEmailHtml(input.payload, metadata);
+    const emailText = buildTraySyncEmailText(input.payload, metadata);
+    const reportsDir = getReportsDir('tray-sync');
+
+    await fs.mkdir(reportsDir, { recursive: true });
+    await Promise.all([
+      fs.writeFile(path.join(reportsDir, `${reportId}.html`), reportHtml, 'utf8'),
+      fs.writeFile(path.join(reportsDir, `${reportId}.csv`), reportCsv, 'utf8'),
+    ]);
+
+    const recipients = await this.resolveRecipients(input.companyId);
+
+    if (recipients.length === 0) {
+      return {
+        reportId,
+        reportUrl,
+        csvUrl,
+        recipients: 0,
+      };
+    }
+
+    await sendBrevoEmail({
+      to: recipients,
+      subject: `Relatorio de pedidos Tray - ${companyName}`,
       htmlContent: emailHtml,
       textContent: emailText,
     });
