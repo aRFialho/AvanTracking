@@ -30,6 +30,8 @@ export const normalizeExcludedPlatformFreight = (
       "encomenda normal",
       "normal ao endereço",
       "normal ao endereco",
+      "padrÃ£o ao endereÃ§o",
+      "padrao ao endereco",
     ].includes(normalized) ||
     normalized.includes("priorit")
   ) {

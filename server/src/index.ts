@@ -20,6 +20,7 @@ import { trayRateLimiter } from './services/rateLimiter';
 import { quoteOrderFreight, quoteBatchFreight } from './controllers/freightController';
 import { authenticateToken } from './middleware/auth';
 import { traySyncJobService } from './services/traySyncJobService';
+import { syncJobService } from './services/syncJobService';
 import { weeklyMovementReportService } from './services/weeklyMovementReportService';
 import { monthlyMovementReportService } from './services/monthlyMovementReportService';
 
@@ -225,6 +226,10 @@ app.get(/.*/, (req, res) => {
 
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
+});
+
+void syncJobService.initializeSchedules().catch((error) => {
+  console.error('Erro ao inicializar agendas automaticas da Intelipost:', error);
 });
 
 void traySyncJobService.initializeSchedules().catch((error) => {

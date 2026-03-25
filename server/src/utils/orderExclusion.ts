@@ -9,9 +9,14 @@ export const normalizeExcludedPlatformFreight = (
   if (!normalized) return null;
 
   if (
-    ['coletasme2', 'encomenda normal', 'normal ao endereço', 'normal ao endereco'].includes(
-      normalized,
-    ) ||
+    [
+      'coletasme2',
+      'encomenda normal',
+      'normal ao endereço',
+      'normal ao endereco',
+      'padrão ao endereço',
+      'padrao ao endereco',
+    ].includes(normalized) ||
     normalized.includes('priorit')
   ) {
     return 'ColetasME2';

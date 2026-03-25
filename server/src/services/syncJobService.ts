@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { PrismaClient } from '@prisma/client';
 import type {
   SyncLogEntry,
   SyncJobStatus,
@@ -9,8 +10,18 @@ import { TrackingService } from './trackingService';
 import { syncReportService } from './syncReportService';
 
 const trackingService = new TrackingService();
+const prisma = new PrismaClient();
 const MAX_LOGS = 1000;
-const AUTO_SYNC_INTERVAL_MS = 4 * 60 * 60 * 1000;
+const AUTO_SYNC_INTERVAL_MS = 0;
+const AUTO_SYNC_SCHEDULE_TIMES = [
+  { hour: 6, minute: 0 },
+  { hour: 10, minute: 0 },
+  { hour: 14, minute: 0 },
+  { hour: 18, minute: 0 },
+  { hour: 22, minute: 0 },
+];
+const SAO_PAULO_TIMEZONE = 'America/Sao_Paulo';
+const SAO_PAULO_UTC_OFFSET_HOURS = 3;
 
 type CompanyJobMap = Map<string, SyncJobStatus>;
 type ScheduleEntry = {
@@ -39,6 +50,30 @@ class SyncJobService {
     }
 
     this.scheduleNext(companyId, userId);
+  }
+
+  async initializeSchedules() {
+    const users = await prisma.user.findMany({
+      where: {
+        companyId: { not: null },
+      },
+      select: {
+        id: true,
+        companyId: true,
+      },
+      orderBy: [{ createdAt: 'asc' }],
+    });
+
+    const seenCompanies = new Set<string>();
+
+    for (const user of users) {
+      if (!user.companyId || seenCompanies.has(user.companyId)) {
+        continue;
+      }
+
+      seenCompanies.add(user.companyId);
+      this.ensureSchedule(user.companyId, user.id);
+    }
   }
 
   getSchedule(companyId: string): SyncScheduleStatus {
@@ -187,13 +222,88 @@ class SyncJobService {
     this.touch(job);
   }
 
+  private getSaoPauloDateParts(date: Date) {
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: SAO_PAULO_TIMEZONE,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    });
+
+    const parts = formatter.formatToParts(date);
+    const read = (type: Intl.DateTimeFormatPartTypes) =>
+      Number(parts.find((part) => part.type === type)?.value || 0);
+
+    return {
+      year: read('year'),
+      month: read('month'),
+      day: read('day'),
+    };
+  }
+
+  private createSaoPauloDate(
+    year: number,
+    month: number,
+    day: number,
+    hour: number,
+    minute: number,
+  ) {
+    return new Date(
+      Date.UTC(
+        year,
+        month - 1,
+        day,
+        hour + SAO_PAULO_UTC_OFFSET_HOURS,
+        minute,
+        0,
+        0,
+      ),
+    );
+  }
+
+  private resolveNextRunDate(now = new Date()) {
+    const base = this.getSaoPauloDateParts(now);
+
+    for (const slot of AUTO_SYNC_SCHEDULE_TIMES) {
+      const candidate = this.createSaoPauloDate(
+        base.year,
+        base.month,
+        base.day,
+        slot.hour,
+        slot.minute,
+      );
+
+      if (candidate.getTime() > now.getTime()) {
+        return candidate;
+      }
+    }
+
+    const nextDayBase = new Date(Date.UTC(base.year, base.month - 1, base.day + 1));
+    const nextDayParts = this.getSaoPauloDateParts(nextDayBase);
+    const firstSlot = AUTO_SYNC_SCHEDULE_TIMES[0];
+
+    return this.createSaoPauloDate(
+      nextDayParts.year,
+      nextDayParts.month,
+      nextDayParts.day,
+      firstSlot.hour,
+      firstSlot.minute,
+    );
+  }
+
   private scheduleNext(companyId: string, userId: string) {
     this.clearScheduledTimeout(companyId);
 
-    const nextRunAt = new Date(Date.now() + AUTO_SYNC_INTERVAL_MS).toISOString();
+    const nextRun = this.resolveNextRunDate();
+    const delayMs = Math.max(1000, nextRun.getTime() - Date.now());
+    const nextRunAt = nextRun.toISOString();
     const timeout = setTimeout(() => {
       this.triggerAutomaticSync(companyId);
-    }, AUTO_SYNC_INTERVAL_MS);
+    }, delayMs);
 
     this.schedules.set(companyId, {
       userId,

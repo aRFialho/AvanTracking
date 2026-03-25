@@ -15,7 +15,13 @@ import type { SyncTrigger } from '../types/syncReport';
 
 const prisma = new PrismaClient();
 const MAX_LOGS = 1000;
-const AUTO_TRAY_SYNC_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const AUTO_TRAY_SYNC_INTERVAL_MS = 0;
+const AUTO_TRAY_SYNC_SCHEDULE_TIMES = [
+  { hour: 7, minute: 42 },
+  { hour: 17, minute: 0 },
+];
+const SAO_PAULO_TIMEZONE = 'America/Sao_Paulo';
+const SAO_PAULO_UTC_OFFSET_HOURS = 3;
 const AUTO_TRAY_SYNC_FILTERS: TraySyncFiltersInput = {
   days: 2,
   statusMode: 'selected',
@@ -270,15 +276,88 @@ class TraySyncJobService {
     this.touch(job);
   }
 
+  private getSaoPauloDateParts(date: Date) {
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: SAO_PAULO_TIMEZONE,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    });
+
+    const parts = formatter.formatToParts(date);
+    const read = (type: Intl.DateTimeFormatPartTypes) =>
+      Number(parts.find((part) => part.type === type)?.value || 0);
+
+    return {
+      year: read('year'),
+      month: read('month'),
+      day: read('day'),
+    };
+  }
+
+  private createSaoPauloDate(
+    year: number,
+    month: number,
+    day: number,
+    hour: number,
+    minute: number,
+  ) {
+    return new Date(
+      Date.UTC(
+        year,
+        month - 1,
+        day,
+        hour + SAO_PAULO_UTC_OFFSET_HOURS,
+        minute,
+        0,
+        0,
+      ),
+    );
+  }
+
+  private resolveNextRunDate(now = new Date()) {
+    const base = this.getSaoPauloDateParts(now);
+
+    for (const slot of AUTO_TRAY_SYNC_SCHEDULE_TIMES) {
+      const candidate = this.createSaoPauloDate(
+        base.year,
+        base.month,
+        base.day,
+        slot.hour,
+        slot.minute,
+      );
+
+      if (candidate.getTime() > now.getTime()) {
+        return candidate;
+      }
+    }
+
+    const nextDayBase = new Date(Date.UTC(base.year, base.month - 1, base.day + 1));
+    const nextDayParts = this.getSaoPauloDateParts(nextDayBase);
+    const firstSlot = AUTO_TRAY_SYNC_SCHEDULE_TIMES[0];
+
+    return this.createSaoPauloDate(
+      nextDayParts.year,
+      nextDayParts.month,
+      nextDayParts.day,
+      firstSlot.hour,
+      firstSlot.minute,
+    );
+  }
+
   private scheduleNext(companyId: string, userId: string) {
     this.clearScheduledTimeout(companyId);
 
-    const nextRunAt = new Date(
-      Date.now() + AUTO_TRAY_SYNC_INTERVAL_MS,
-    ).toISOString();
+    const nextRun = this.resolveNextRunDate();
+    const delayMs = Math.max(1000, nextRun.getTime() - Date.now());
+    const nextRunAt = nextRun.toISOString();
     const timeout = setTimeout(() => {
       this.triggerAutomaticSync(companyId);
-    }, AUTO_TRAY_SYNC_INTERVAL_MS);
+    }, delayMs);
 
     this.schedules.set(companyId, {
       userId,

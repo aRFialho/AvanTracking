@@ -57,7 +57,12 @@ export const UploadModal: React.FC<UploadModalProps> = ({ onUpload }) => {
       "retirada prioritária na agência"
     ];
 
-    if (mlTypes.some(t => type === t) || type.includes('priorit')) {
+    if (
+      mlTypes.some(t => type === t) ||
+      type.includes('priorit') ||
+      type === 'padrao ao endereco' ||
+      type === 'padrão ao endereço'
+    ) {
       return "ColetasME2"; 
     }
 
