@@ -123,8 +123,12 @@ const toCleanString = (value: unknown): string => {
 /**
  * Fetches a single order directly from Intelipost using the GraphQL Query.
  */
-export const fetchSingleOrder = async (orderNumber: string): Promise<Partial<Order> | null> => {
+export const fetchSingleOrder = async (
+  orderNumber: string,
+  intelipostClientId = DEFAULT_CLIENT_ID,
+): Promise<Partial<Order> | null> => {
   const cleanOrderNumber = toCleanString(orderNumber);
+  const resolvedClientId = toCleanString(intelipostClientId) || DEFAULT_CLIENT_ID;
 
   if (!cleanOrderNumber) {
     return null;
@@ -135,8 +139,8 @@ export const fetchSingleOrder = async (orderNumber: string): Promise<Partial<Ord
       operationName: null,
       query: INTELIPOST_QUERY,
       variables: {
-        clientId: DEFAULT_CLIENT_ID,
-        orderHash: DEFAULT_CLIENT_ID, 
+        clientId: resolvedClientId,
+        orderHash: resolvedClientId,
         orderNumber: cleanOrderNumber
       }
     };
@@ -202,7 +206,10 @@ export const fetchSingleOrder = async (orderNumber: string): Promise<Partial<Ord
  * 3. For others, fetches REAL data from Intelipost.
  * 4. Updates 'Transportadora' (freightType) ONLY from API sync for non-marketplace orders.
  */
-export const syncOrdersWithIntelipost = async (orders: Order[]): Promise<Order[]> => {
+export const syncOrdersWithIntelipost = async (
+  orders: Order[],
+  intelipostClientId = DEFAULT_CLIENT_ID,
+): Promise<Order[]> => {
   
   const updatedOrders = await Promise.all(orders.map(async (order) => {
     
@@ -244,12 +251,20 @@ export const syncOrdersWithIntelipost = async (orders: Order[]): Promise<Order[]
 
     // 3. Actionable Order: Fetch Real Data from Intelipost
     try {
-        const fetchedData = await fetchSingleOrder(toCleanString(order.orderNumber));
+        const fetchedData = await fetchSingleOrder(
+          toCleanString(order.orderNumber),
+          intelipostClientId,
+        );
         
         if (fetchedData) {
             const newStatus = fetchedData.status || order.status;
-            const newEstimatedDate = fetchedData.estimatedDeliveryDate || order.estimatedDeliveryDate;
-            const isDelayed = (new Date() > new Date(newEstimatedDate) && newStatus !== OrderStatus.DELIVERED);
+            const newEstimatedDate =
+              fetchedData.estimatedDeliveryDate || order.estimatedDeliveryDate;
+            const hasEstimatedDate = Boolean(newEstimatedDate);
+            const isDelayed =
+              hasEstimatedDate &&
+              newStatus !== OrderStatus.DELIVERED &&
+              new Date() > new Date(newEstimatedDate as Date);
 
             return {
                 ...order,

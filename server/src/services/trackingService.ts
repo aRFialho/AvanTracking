@@ -188,14 +188,30 @@ const buildEmptySnapshot = (): SyncReportSnapshot => ({
 });
 
 export class TrackingService {
-  private async fetchFromIntelipost(orderNumber: string) {
+  private async resolveIntelipostClientId(companyId?: string | null) {
+    if (!companyId) {
+      return DEFAULT_CLIENT_ID;
+    }
+
+    const company = await prisma.company.findUnique({
+      where: { id: companyId },
+    });
+
+    return String((company as any)?.intelipostClientId || DEFAULT_CLIENT_ID).trim();
+  }
+
+  private async fetchFromIntelipost(
+    orderNumber: string,
+    companyId?: string | null,
+  ) {
     try {
+      const intelipostClientId = await this.resolveIntelipostClientId(companyId);
       const payload = {
         operationName: null,
         query: INTELIPOST_QUERY,
         variables: {
-          clientId: DEFAULT_CLIENT_ID,
-          orderHash: DEFAULT_CLIENT_ID,
+          clientId: intelipostClientId,
+          orderHash: intelipostClientId,
           orderNumber: orderNumber.trim(),
         },
       };
@@ -371,7 +387,10 @@ export class TrackingService {
         };
       }
 
-      const trackingData = await this.fetchFromIntelipost(order.orderNumber);
+      const trackingData = await this.fetchFromIntelipost(
+        order.orderNumber,
+        order.companyId || companyId,
+      );
 
       if (!trackingData) {
         const syncedAt = new Date();
@@ -453,7 +472,7 @@ export class TrackingService {
         order.status !== newStatus ||
         order.isDelayed !== Boolean(isDelayed) ||
         toIsoString(order.estimatedDeliveryDate) !== toIsoString(estimatedDate) ||
-        toIsoString(order.carrierEstimatedDeliveryDate) !==
+        toIsoString((order as any).carrierEstimatedDeliveryDate) !==
           toIsoString(carrierEstimatedDate) ||
         (order.freightType || null) !== currentFreightType;
 

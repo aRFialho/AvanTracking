@@ -25,6 +25,7 @@ interface Company {
   id: string;
   name: string;
   cnpj?: string;
+  intelipostClientId?: string | null;
   createdAt: string;
 }
 
@@ -77,6 +78,9 @@ export const AdminPanel: React.FC = () => {
     message: "Nenhuma integracao Tray autorizada.",
   });
   const [isCheckingTrayStatus, setIsCheckingTrayStatus] = useState(false);
+  const [currentCompany, setCurrentCompany] = useState<Company | null>(null);
+  const [intelipostClientId, setIntelipostClientId] = useState("");
+  const [isSavingIntelipost, setIsSavingIntelipost] = useState(false);
 
   // User Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -186,6 +190,25 @@ export const AdminPanel: React.FC = () => {
     }
   };
 
+  const fetchCurrentCompany = async () => {
+    try {
+      const response = await fetchWithAuth("/api/companies/current");
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(
+          data.error || "Nao foi possivel carregar a empresa atual.",
+        );
+      }
+
+      setCurrentCompany(data);
+      setIntelipostClientId(data.intelipostClientId || "");
+    } catch {
+      setCurrentCompany(null);
+      setIntelipostClientId("");
+    }
+  };
+
   useEffect(() => {
     if (canManageAdminPanel) {
       const params = new URLSearchParams(window.location.search);
@@ -212,10 +235,11 @@ export const AdminPanel: React.FC = () => {
     if (activeTab !== "integration") return;
 
     fetchTrayStatus();
+    fetchCurrentCompany();
     const interval = window.setInterval(fetchTrayStatus, 30000);
 
     return () => window.clearInterval(interval);
-  }, [activeTab]);
+  }, [activeTab, user?.companyId]);
 
   // Actions
   const handleOpenModal = (userToEdit?: UserData) => {
@@ -343,6 +367,40 @@ export const AdminPanel: React.FC = () => {
       window.open(data.authUrl, "_blank");
     } catch (err: any) {
       alert(err.message || "Erro ao iniciar a integracao Tray.");
+    }
+  };
+
+  const handleSaveIntelipost = async () => {
+    const normalizedId = intelipostClientId.trim();
+
+    if (!normalizedId) {
+      alert("Informe o ID padrao da Intelipost para a empresa.");
+      return;
+    }
+
+    setIsSavingIntelipost(true);
+    try {
+      const response = await fetchWithAuth("/api/companies/current/integration", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ intelipostClientId: normalizedId }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(
+          data.error || "Nao foi possivel salvar o ID da Intelipost.",
+        );
+      }
+
+      setCurrentCompany(data.company || null);
+      setIntelipostClientId(data.company?.intelipostClientId || normalizedId);
+      alert(data.message || "ID da Intelipost atualizado com sucesso.");
+    } catch (err: any) {
+      alert(err.message || "Erro ao salvar ID da Intelipost.");
+    } finally {
+      setIsSavingIntelipost(false);
     }
   };
 
@@ -662,10 +720,45 @@ export const AdminPanel: React.FC = () => {
           </div>
 
           <div className="p-6 space-y-5">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
+              <p className="font-semibold text-slate-700 dark:text-white">
+                Empresa atual: {currentCompany?.name || "Nao vinculada"}
+              </p>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                O ID da Intelipost desta empresa sera usado no rastreio manual e na sincronizacao com a Intelipost.
+              </p>
+            </div>
+
             <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700 dark:border-blue-900/30 dark:bg-blue-900/10 dark:text-blue-300">
               Você pode informar a URL da loja ou a URL completa com{" "}
               <span className="font-semibold">/web_api</span>. O sistema
               normaliza a URL antes de redirecionar para a Tray.
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                INTELIPOST
+              </label>
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <input
+                  type="text"
+                  value={intelipostClientId}
+                  onChange={(e) => setIntelipostClientId(e.target.value)}
+                  placeholder="40115"
+                  className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white focus:border-blue-500 outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={handleSaveIntelipost}
+                  disabled={isSavingIntelipost || !currentCompany}
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-medium text-white bg-slate-700 hover:bg-slate-800 disabled:opacity-50 transition-colors"
+                >
+                  {isSavingIntelipost ? "Salvando..." : "Salvar Intelipost"}
+                </button>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-2">
+                Exemplo: a Drossi Interiores permanece com o ID padrao 40115.
+              </p>
             </div>
 
             <div>

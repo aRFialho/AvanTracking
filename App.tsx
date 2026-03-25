@@ -167,10 +167,10 @@ const MainApp: React.FC = () => {
 
     const effectiveStatus = getEffectiveOrderStatus(normalizedOrder);
     const estimatedDeliveryDate = parseDate(normalizedOrder.estimatedDeliveryDate);
-    const isDelayed =
-      Boolean(estimatedDeliveryDate) &&
-      effectiveStatus !== OrderStatus.DELIVERED &&
-      new Date() > estimatedDeliveryDate;
+    const isDelayed = estimatedDeliveryDate
+      ? effectiveStatus !== OrderStatus.DELIVERED &&
+        new Date() > estimatedDeliveryDate
+      : false;
 
     return {
       ...normalizedOrder,
@@ -506,7 +506,17 @@ const MainApp: React.FC = () => {
           return;
         }
 
-        const fetchedData = await fetchSingleOrder(orderNumber);
+        const companyResponse = await fetchWithAuth("/api/companies/current");
+        const companyData = await companyResponse.json().catch(() => ({}));
+        const intelipostClientId =
+          companyResponse.ok && companyData?.intelipostClientId
+            ? String(companyData.intelipostClientId)
+            : "40115";
+
+        const fetchedData = await fetchSingleOrder(
+          orderNumber,
+          intelipostClientId,
+        );
         if (!fetchedData) {
           alert(`Pedido ${orderNumber} não encontrado na Intelipost.`);
           return;

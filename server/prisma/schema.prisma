@@ -61,6 +61,7 @@ model Company {
     name        String
     cnpj        String?
     databaseUrl String? // URL do banco de dados específico da empresa
+    intelipostClientId String?
     createdAt   DateTime @default(now())
     users       User[]
     orders      Order[]
