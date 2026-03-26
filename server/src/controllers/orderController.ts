@@ -4,6 +4,7 @@ import { syncJobService } from '../services/syncJobService';
 import { TrackingService } from '../services/trackingService';
 import { importOrdersForCompany } from '../services/orderImportService';
 import { isExcludedPlatformFreight } from '../utils/orderExclusion';
+import { sswTrackingService } from '../services/sswTrackingService';
 
 const prisma = new PrismaClient();
 const trackingService = new TrackingService();
@@ -125,6 +126,18 @@ const buildSswTrackingUrl = (identifier: string, cnpj?: string | null) =>
     ? `https://ssw.inf.br/app/tracking/${cnpj}/${identifier}`
     : `https://ssw.inf.br/app/tracking/${identifier}`;
 
+const getStoredTrackingUrl = (
+  order: {
+    invoiceNumber?: string | null;
+    trackingCode?: string | null;
+    apiRawPayload?: any;
+  },
+) =>
+  safeString(order.apiRawPayload?.trackingUrl) ||
+  safeString(order.apiRawPayload?.logistic_provider?.live_tracking_url) ||
+  safeString(order.apiRawPayload?.tracking_url) ||
+  null;
+
 const resolveOrderTrackingUrl = (
   order: {
     invoiceNumber?: string | null;
@@ -133,6 +146,11 @@ const resolveOrderTrackingUrl = (
   },
   sswRequireCnpjs: string[] = [],
 ) => {
+  const storedTrackingUrl = getStoredTrackingUrl(order);
+  if (storedTrackingUrl) {
+    return storedTrackingUrl;
+  }
+
   const invoiceIdentifier = normalizeDigits(order.invoiceNumber);
   const trackingDigits = normalizeDigits(order.trackingCode);
   const trackingKey = normalizeAlphaNumeric(order.trackingCode);
@@ -147,6 +165,47 @@ const resolveOrderTrackingUrl = (
 
   if (!invoiceIdentifier && trackingKey && isXmlTrackingKey(trackingKey)) {
     return buildSswTrackingUrl(trackingKey);
+  }
+
+  return null;
+};
+
+const resolveVerifiedOrderTrackingUrl = async (
+  order: {
+    invoiceNumber?: string | null;
+    trackingCode?: string | null;
+    apiRawPayload?: any;
+  },
+  sswRequireCnpjs: string[] = [],
+) => {
+  const storedTrackingUrl = getStoredTrackingUrl(order);
+  if (storedTrackingUrl) {
+    return storedTrackingUrl;
+  }
+
+  const invoiceIdentifier = normalizeDigits(order.invoiceNumber);
+  const trackingDigits = normalizeDigits(order.trackingCode);
+  const trackingKey = normalizeAlphaNumeric(order.trackingCode);
+  const standardIdentifier = invoiceIdentifier || trackingDigits;
+
+  if (standardIdentifier && sswRequireCnpjs.length > 0) {
+    for (const cnpj of sswRequireCnpjs) {
+      const result = await sswTrackingService.fetchTrackingByInvoice(
+        cnpj,
+        standardIdentifier,
+      );
+
+      if (result) {
+        return buildSswTrackingUrl(standardIdentifier, cnpj);
+      }
+    }
+  }
+
+  if (!invoiceIdentifier && trackingKey && isXmlTrackingKey(trackingKey)) {
+    const xmlResult = await sswTrackingService.fetchTrackingByKey(trackingKey);
+    if (xmlResult) {
+      return buildSswTrackingUrl(trackingKey);
+    }
   }
 
   return (
@@ -333,7 +392,10 @@ export const openOrderTracking = async (req: Request, res: Response) => {
     }
 
     const sswRequireCnpjs = await getCompanySswRequireCnpjs(user.companyId);
-    const trackingUrl = resolveOrderTrackingUrl(order, sswRequireCnpjs);
+    const trackingUrl = await resolveVerifiedOrderTrackingUrl(
+      order,
+      sswRequireCnpjs,
+    );
 
     if (!trackingUrl) {
       return res.status(404).json({

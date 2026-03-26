@@ -800,29 +800,23 @@ export const OrderList: React.FC<OrderListProps> = ({
 
   const openTrackingLink = async (order: Order) => {
     try {
-      let trackingUrl = order.trackingUrl || null;
-
-      if (!trackingUrl) {
-        const response = await fetchWithAuth(
-          `/api/orders/${order.id}/open-tracking?resolve=1`,
-          {
-            headers: {
-              Accept: "application/json",
-            },
+      const response = await fetchWithAuth(
+        `/api/orders/${order.id}/open-tracking?resolve=1`,
+        {
+          headers: {
+            Accept: "application/json",
           },
+        },
+      );
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok || !data?.trackingUrl) {
+        throw new Error(
+          data?.error || "Nenhum link de rastreio disponivel para este pedido.",
         );
-        const data = await response.json().catch(() => null);
-
-        if (!response.ok || !data?.trackingUrl) {
-          throw new Error(
-            data?.error || "Nenhum link de rastreio disponivel para este pedido.",
-          );
-        }
-
-        trackingUrl = data.trackingUrl;
       }
 
-      window.open(trackingUrl, "_blank", "noopener,noreferrer");
+      window.open(data.trackingUrl, "_blank", "noopener,noreferrer");
     } catch (error) {
       alert(
         error instanceof Error
