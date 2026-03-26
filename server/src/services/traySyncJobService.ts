@@ -337,7 +337,7 @@ class TraySyncJobService {
       }
     }
 
-    const nextDayBase = new Date(Date.UTC(base.year, base.month - 1, base.day + 1));
+    const nextDayBase = new Date(now.getTime() + 24 * 60 * 60 * 1000);
     const nextDayParts = this.getSaoPauloDateParts(nextDayBase);
     const firstSlot = AUTO_TRAY_SYNC_SCHEDULE_TIMES[0];
 

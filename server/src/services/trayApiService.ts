@@ -113,7 +113,8 @@ export class TrayApiService {
     onLog?: (message: string) => void;
     onOrdersBatch?: (orders: any[]) => Promise<void> | void;
   }): Promise<any[]> {
-    console.log('Iniciando sincronizacao com API Tray...');
+    const statusLabel = String(params.status || 'todos');
+    console.log(`Iniciando etapa da Tray para status "${statusLabel}"...`);
     console.log('Rate limit ativo: 180 requisicoes/minuto');
 
     const allOrders: any[] = [];
@@ -121,8 +122,8 @@ export class TrayApiService {
     let hasMorePages = true;
 
     while (hasMorePages) {
-      console.log(`Buscando pagina ${currentPage}...`);
-      hooks?.onLog?.(`Buscando pagina ${currentPage} da Tray.`);
+      console.log(`Buscando pagina ${currentPage} para status "${statusLabel}"...`);
+      hooks?.onLog?.(`Buscando pagina ${currentPage} da Tray para status "${statusLabel}".`);
 
       const stats = trayRateLimiter.getStats();
       console.log(
@@ -139,8 +140,12 @@ export class TrayApiService {
       });
 
       const orders = response.Orders || [];
-      console.log(`${orders.length} pedidos encontrados na pagina ${currentPage}`);
-      hooks?.onLog?.(`${orders.length} pedido(s) encontrados na pagina ${currentPage}.`);
+      console.log(
+        `${orders.length} pedidos encontrados na pagina ${currentPage} para status "${statusLabel}"`,
+      );
+      hooks?.onLog?.(
+        `${orders.length} pedido(s) encontrados na pagina ${currentPage} para status "${statusLabel}".`,
+      );
 
       const pageOrders: any[] = [];
       const completeOrderTasks = orders.map(async (orderWrapper) => {
@@ -174,8 +179,12 @@ export class TrayApiService {
       currentPage += 1;
     }
 
-    console.log(`Total de ${allOrders.length} pedidos sincronizados`);
-    hooks?.onLog?.(`Total de ${allOrders.length} pedido(s) novo(s) retornados pela Tray.`);
+    console.log(
+      `Total de ${allOrders.length} pedidos retornados pela Tray para o status "${statusLabel}"`,
+    );
+    hooks?.onLog?.(
+      `Total de ${allOrders.length} pedido(s) novo(s) retornados pela Tray para o status "${statusLabel}".`,
+    );
 
     const finalStats = trayRateLimiter.getStats();
     console.log(
