@@ -2,7 +2,6 @@ import { Request, Response } from 'express';
 import { PrismaClient, OrderStatus } from '@prisma/client';
 import { syncJobService } from '../services/syncJobService';
 import { TrackingService } from '../services/trackingService';
-import { syncReportService } from '../services/syncReportService';
 import { importOrdersForCompany } from '../services/orderImportService';
 import { isExcludedPlatformFreight } from '../utils/orderExclusion';
 
@@ -99,7 +98,84 @@ const getMovementDate = (order: any) => {
   );
 };
 
-const formatOrderForResponse = (order: any) => {
+const normalizeDigits = (value: unknown) =>
+  String(value || '')
+    .replace(/\D/g, '')
+    .trim();
+
+const normalizeAlphaNumeric = (value: unknown) =>
+  String(value || '')
+    .replace(/[^A-Za-z0-9]/g, '')
+    .toUpperCase()
+    .trim();
+
+const isXmlTrackingKey = (value: unknown) => {
+  const normalized = normalizeAlphaNumeric(value);
+  if (!normalized) return false;
+  if (/^\d{44}$/.test(normalized)) return true;
+  return normalized.length >= 20 && /[A-Z]/.test(normalized) && /\d/.test(normalized);
+};
+
+const shouldExcludeOrderFromPlatform = (order: any) =>
+  order.status === OrderStatus.CHANNEL_LOGISTICS ||
+  isExcludedPlatformFreight(order.freightType);
+
+const buildSswTrackingUrl = (identifier: string, cnpj?: string | null) =>
+  cnpj
+    ? `https://ssw.inf.br/app/tracking/${cnpj}/${identifier}`
+    : `https://ssw.inf.br/app/tracking/${identifier}`;
+
+const resolveOrderTrackingUrl = (
+  order: {
+    invoiceNumber?: string | null;
+    trackingCode?: string | null;
+    apiRawPayload?: any;
+  },
+  sswRequireCnpjs: string[] = [],
+) => {
+  const invoiceIdentifier = normalizeDigits(order.invoiceNumber);
+  const trackingDigits = normalizeDigits(order.trackingCode);
+  const trackingKey = normalizeAlphaNumeric(order.trackingCode);
+
+  if (invoiceIdentifier && sswRequireCnpjs.length > 0) {
+    return buildSswTrackingUrl(invoiceIdentifier, sswRequireCnpjs[0]);
+  }
+
+  if (!invoiceIdentifier && trackingDigits && sswRequireCnpjs.length > 0) {
+    return buildSswTrackingUrl(trackingDigits, sswRequireCnpjs[0]);
+  }
+
+  if (!invoiceIdentifier && trackingKey && isXmlTrackingKey(trackingKey)) {
+    return buildSswTrackingUrl(trackingKey);
+  }
+
+  return (
+    safeString(order.apiRawPayload?.logistic_provider?.live_tracking_url) ||
+    safeString(order.apiRawPayload?.tracking_url) ||
+    null
+  );
+};
+
+const getCompanySswRequireCnpjs = async (companyId: string | null | undefined) => {
+  if (!companyId) {
+    return [];
+  }
+
+  const company = await ((prisma.company as any).findUnique({
+    where: { id: companyId },
+    select: {
+      sswRequireCnpjs: true,
+    },
+  }) as Promise<any>);
+
+  return Array.isArray(company?.sswRequireCnpjs)
+    ? company.sswRequireCnpjs
+        .map((cnpj: unknown) => normalizeDigits(cnpj))
+        .filter(Boolean)
+    : [];
+};
+
+const formatOrderForResponse = (order: any, sswRequireCnpjs: string[] = []) => {
   const carrierEstimatedDeliveryDate =
     resolveCarrierEstimatedDateFromTrackingEvents(order.trackingEvents) ||
     order.carrierEstimatedDeliveryDate ||
@@ -112,15 +188,9 @@ const formatOrderForResponse = (order: any) => {
     carrierEstimatedDeliveryDate,
     trackingHistory: mapTrackingEventsToHistory(order.trackingEvents),
     lastUpdate: getMovementDate(order),
+    trackingUrl: resolveOrderTrackingUrl(order, sswRequireCnpjs),
   };
 };
-
-const shouldExcludeOrderFromPlatform = (order: any) =>
-  order.status === OrderStatus.CHANNEL_LOGISTICS ||
-  isExcludedPlatformFreight(order.freightType);
-
-const buildSswTrackingUrl = (cnpj: string, identifier: string) =>
-  `https://ssw.inf.br/app/tracking/${cnpj}/${identifier}`;
 
 export const importOrders = async (req: Request, res: Response) => {
   console.log('Importando pedidos em lote...');
@@ -177,10 +247,12 @@ export const getOrders = async (req: Request, res: Response) => {
       orderBy: { createdAt: 'desc' },
     });
 
+    const sswRequireCnpjs = await getCompanySswRequireCnpjs(user.companyId);
+
     return res.json(
       orders
         .filter((order) => !shouldExcludeOrderFromPlatform(order))
-        .map(formatOrderForResponse),
+        .map((order) => formatOrderForResponse(order, sswRequireCnpjs)),
     );
   } catch (error) {
     console.error('Erro ao buscar pedidos:', error);
@@ -191,6 +263,8 @@ export const getOrders = async (req: Request, res: Response) => {
 export const getOrderById = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+    // @ts-ignore
+    const user = req.user;
 
     if (typeof id !== 'string') {
       return res.status(400).json({ error: 'ID invalido' });
@@ -210,11 +284,17 @@ export const getOrderById = async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Pedido nao encontrado' });
     }
 
+    if (user?.companyId && order.companyId !== user.companyId) {
+      return res.status(404).json({ error: 'Pedido nao encontrado' });
+    }
+
     if (shouldExcludeOrderFromPlatform(order)) {
       return res.status(404).json({ error: 'Pedido nao encontrado' });
     }
 
-    return res.json(formatOrderForResponse(order));
+    const sswRequireCnpjs = await getCompanySswRequireCnpjs(order.companyId);
+
+    return res.json(formatOrderForResponse(order, sswRequireCnpjs));
   } catch (error) {
     console.error('Erro ao buscar pedido:', error);
     return res.status(500).json({ error: 'Erro ao buscar pedido' });
@@ -252,41 +332,23 @@ export const openOrderTracking = async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Pedido nao encontrado' });
     }
 
-    const identifier = String(order.invoiceNumber || order.trackingCode || '')
-      .replace(/\D/g, '')
-      .trim();
+    const sswRequireCnpjs = await getCompanySswRequireCnpjs(user.companyId);
+    const trackingUrl = resolveOrderTrackingUrl(order, sswRequireCnpjs);
 
-    const company = await ((prisma.company as any).findUnique({
-      where: { id: user.companyId },
-      select: {
-        sswRequireCnpjs: true,
-      },
-    }) as Promise<any>);
-
-    const sswRequireCnpjs = Array.isArray(company?.sswRequireCnpjs)
-      ? company.sswRequireCnpjs
-          .map((cnpj: unknown) => String(cnpj || '').replace(/\D/g, '').trim())
-          .filter(Boolean)
-      : [];
-
-    if (identifier && sswRequireCnpjs.length > 0) {
-      for (const cnpj of sswRequireCnpjs) {
-        const trackingUrl = buildSswTrackingUrl(cnpj, identifier);
-        return res.redirect(trackingUrl);
-      }
+    if (!trackingUrl) {
+      return res.status(404).json({
+        error: 'Nenhum link direto de rastreio disponivel para este pedido.',
+      });
     }
 
-    const liveTrackingUrl =
-      safeString((order.apiRawPayload as any)?.logistic_provider?.live_tracking_url) ||
-      safeString((order.apiRawPayload as any)?.tracking_url);
-
-    if (liveTrackingUrl) {
-      return res.redirect(liveTrackingUrl);
+    if (
+      req.query.resolve === '1' ||
+      String(req.headers.accept || '').includes('application/json')
+    ) {
+      return res.json({ trackingUrl });
     }
 
-    return res.status(404).json({
-      error: 'Nenhum link direto de rastreio disponivel para este pedido.',
-    });
+    return res.redirect(trackingUrl);
   } catch (error) {
     console.error('Erro ao abrir link de rastreio:', error);
     return res.status(500).json({ error: 'Erro ao abrir rastreio do pedido' });
@@ -333,10 +395,12 @@ export const syncSingleOrder = async (req: Request, res: Response) => {
       });
     }
 
+    const sswRequireCnpjs = await getCompanySswRequireCnpjs(user.companyId);
+
     return res.json({
       success: true,
       message: result.message,
-      order: order ? formatOrderForResponse(order) : null,
+      order: order ? formatOrderForResponse(order, sswRequireCnpjs) : null,
     });
   } catch (error) {
     console.error('Erro ao sincronizar pedido:', error);
@@ -353,31 +417,14 @@ export const syncAllOrders = async (req: Request, res: Response) => {
       return res.status(403).json({ error: 'Acesso negado. Usuario sem empresa.' });
     }
 
-    const startedAt = new Date().toISOString();
     const results = await trackingService.syncAllActive(user.companyId);
     syncJobService.ensureSchedule(user.companyId, user.id);
-
-    let report: { reportUrl?: string; csvUrl?: string; recipients?: number } | null =
-      null;
-
-    try {
-      report = await syncReportService.sendTrackingSyncReport({
-        companyId: user.companyId,
-        userId: user.id,
-        trigger: 'manual',
-        payload: results.report,
-        startedAt,
-        finishedAt: new Date().toISOString(),
-      });
-    } catch (reportError) {
-      console.error('Erro ao enviar relatorio de sincronizacao:', reportError);
-    }
 
     return res.json({
       success: true,
       message: `Sincronizacao concluida: ${results.success} sucessos, ${results.failed} falhas`,
       results,
-      report,
+      report: null,
       schedule: syncJobService.getSchedule(user.companyId),
     });
   } catch (error) {

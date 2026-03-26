@@ -70,6 +70,7 @@ export interface Order {
   id: string; // Internal ID or mapped from 'Pedido'
   orderNumber: string; // 'Pedido'
   trackingCode?: string; // 'Código de rastreio'
+  trackingUrl?: string | null;
   
   // Customer
   customerName: string; // 'Nome do Cliente'

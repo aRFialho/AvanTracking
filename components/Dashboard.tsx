@@ -34,7 +34,6 @@ import {
 } from "recharts";
 import {
   normalizeCarrierName,
-  isOrderOnTime,
   isOrderOnRoute,
   toText,
   parseOptionalDate,
@@ -82,6 +81,78 @@ const isActiveDelayedOrder = (order: Order) =>
 const isQualityMeasurableOrder = (order: Order) =>
   order.status === OrderStatus.DELIVERED || isActiveDelayedOrder(order);
 
+const isOrderDeliveredOnTrayTime = (order: Order) => {
+  if (order.status !== OrderStatus.DELIVERED) return false;
+
+  const estimated = parseOptionalDate(order.estimatedDeliveryDate);
+  if (!estimated) return false;
+  estimated.setHours(23, 59, 59, 999);
+
+  return new Date(order.lastUpdate) <= estimated;
+};
+
+const isCarrierQualityMeasurableOrder = (order: Order) => {
+  const carrierDate = parseOptionalDate(order.carrierEstimatedDeliveryDate);
+  if (!carrierDate) return false;
+
+  if (order.status === OrderStatus.DELIVERED) return true;
+
+  if (
+    order.status === OrderStatus.FAILURE ||
+    order.status === OrderStatus.RETURNED ||
+    order.status === OrderStatus.CANCELED
+  ) {
+    return false;
+  }
+
+  carrierDate.setHours(23, 59, 59, 999);
+  return Date.now() > carrierDate.getTime();
+};
+
+const isOrderDeliveredOnCarrierTime = (order: Order) => {
+  if (order.status !== OrderStatus.DELIVERED) return false;
+
+  const carrierDate = parseOptionalDate(order.carrierEstimatedDeliveryDate);
+  if (!carrierDate) return false;
+  carrierDate.setHours(23, 59, 59, 999);
+
+  return new Date(order.lastUpdate) <= carrierDate;
+};
+
+const isOrderOutsideCarrierDeadline = (order: Order) => {
+  const carrierDate = parseOptionalDate(order.carrierEstimatedDeliveryDate);
+  if (!carrierDate) return false;
+  carrierDate.setHours(23, 59, 59, 999);
+
+  if (order.status === OrderStatus.DELIVERED) {
+    return new Date(order.lastUpdate) > carrierDate;
+  }
+
+  return (
+    order.status !== OrderStatus.FAILURE &&
+    order.status !== OrderStatus.RETURNED &&
+    order.status !== OrderStatus.CANCELED &&
+    Date.now() > carrierDate.getTime()
+  );
+};
+
+const isOrderOutsideTrayDeadline = (order: Order) => {
+  const trayDate = parseOptionalDate(order.estimatedDeliveryDate);
+  if (!trayDate) return false;
+  trayDate.setHours(23, 59, 59, 999);
+
+  if (order.status === OrderStatus.DELIVERED) {
+    return new Date(order.lastUpdate) > trayDate;
+  }
+
+  return (
+    order.status !== OrderStatus.FAILURE &&
+    order.status !== OrderStatus.RETURNED &&
+    order.status !== OrderStatus.CANCELED &&
+    Date.now() > trayDate.getTime()
+  );
+};
+
 const getOrderCycleStart = (order: Order) => {
   let start = new Date(order.shippingDate).getTime();
 
@@ -109,7 +180,9 @@ const isEarlyDelivery = (order: Order) => {
   if (order.status !== OrderStatus.DELIVERED) return false;
 
   const deliveryDate = new Date(order.lastUpdate);
-  const promisedDate = parseOptionalDate(order.estimatedDeliveryDate);
+  const promisedDate = parseOptionalDate(
+    order.carrierEstimatedDeliveryDate || order.estimatedDeliveryDate,
+  );
   if (!promisedDate) return false;
   promisedDate.setHours(23, 59, 59, 999);
 
@@ -259,7 +332,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       const diffTime = est.getTime() - today.getTime();
       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-      return diffDays >= 1 && diffDays <= 3;
+      return diffDays >= 1 && diffDays <= 2;
     }).length;
 
     // Delivery Failures (CLARIFY_DELIVERY_FAIL)
@@ -278,6 +351,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
     // On Time Calculation Logic
     let deliveredOnTime = 0;
+    let carrierMeasurableCount = 0;
     const now = Date.now();
 
     filteredOrders.forEach((o) => {
@@ -289,7 +363,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
         measurableCount++;
       }
 
-      if (o.status === OrderStatus.DELIVERED && isOrderOnTime(o)) {
+      if (isCarrierQualityMeasurableOrder(o)) {
+        carrierMeasurableCount++;
+      }
+
+      if (o.status === OrderStatus.DELIVERED && isOrderDeliveredOnCarrierTime(o)) {
         deliveredOnTime++;
       }
     });
@@ -300,8 +378,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
         : "0.0";
 
     const onTimePct =
-      measurableCount > 0
-        ? ((deliveredOnTime / measurableCount) * 100).toFixed(1)
+      carrierMeasurableCount > 0
+        ? ((deliveredOnTime / carrierMeasurableCount) * 100).toFixed(1)
         : "0.0";
 
     return {
@@ -355,7 +433,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       if (!isQualityMeasurableOrder(o)) return;
 
       currMeasurable++;
-      if (o.status === OrderStatus.DELIVERED && isOrderOnTime(o)) {
+      if (o.status === OrderStatus.DELIVERED && isOrderDeliveredOnCarrierTime(o)) {
         currDeliveredOnTime++;
       }
     });
@@ -367,7 +445,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       if (!isQualityMeasurableOrder(o)) return;
 
       prevMeasurable++;
-      if (o.status === OrderStatus.DELIVERED && isOrderOnTime(o)) {
+      if (o.status === OrderStatus.DELIVERED && isOrderDeliveredOnCarrierTime(o)) {
         prevDeliveredOnTime++;
       }
     });
@@ -400,7 +478,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
         name: string;
         volume: number;
         onTime: number;
-        late: number;
+        lateCarrier: number;
+        lateTray: number;
         early: number;
         totalTime: number;
         measurableCount: number;
@@ -416,25 +495,37 @@ export const Dashboard: React.FC<DashboardProps> = ({
         name,
         volume: 0,
         onTime: 0,
-        late: 0,
+        lateCarrier: 0,
+        lateTray: 0,
         early: 0,
         totalTime: 0,
         measurableCount: 0,
       };
 
+      if (!isCarrierQualityMeasurableOrder(o) && !isOrderOutsideTrayDeadline(o)) {
+        map.set(name, current);
+        return;
+      }
+
       current.volume++;
-      current.measurableCount++;
 
       const days = getMeasuredOrderElapsedDays(o, now);
-      if (days >= 0) current.totalTime += days;
+      if (isCarrierQualityMeasurableOrder(o)) {
+        current.measurableCount++;
+        if (days >= 0) current.totalTime += days;
+      }
 
-      if (o.status === OrderStatus.DELIVERED && isOrderOnTime(o)) {
+      if (o.status === OrderStatus.DELIVERED && isOrderDeliveredOnCarrierTime(o)) {
         current.onTime++;
         if (isEarlyDelivery(o)) {
           current.early++;
         }
-      } else {
-        current.late++;
+      } else if (isOrderOutsideCarrierDeadline(o)) {
+        current.lateCarrier++;
+      }
+
+      if (isOrderOutsideTrayDeadline(o)) {
+        current.lateTray++;
       }
 
       map.set(name, current);
@@ -523,6 +614,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
   // --- Navigation Handler ---
   const handleCardClick = (filterType: string, value?: string) => {
     if (filterType === "alerts") {
+      onFilterRequest?.({ alertTab: "critical" });
+      onChangeView("alerts");
+      return;
+    }
+
+    if (filterType === "risk_of_delay") {
+      onFilterRequest?.({ alertTab: "risk" });
       onChangeView("alerts");
       return;
     }
@@ -642,8 +740,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
           value={stats.riskOfDelay}
           icon={AlertTriangle}
           color="bg-orange-600"
-          subtext="1-3 dias"
-          onClick={() => handleCardClick("alerts")}
+          subtext="1-2 dias"
+          onClick={() => handleCardClick("risk_of_delay")}
         />
         <KpiCard
           title="Vence Hoje"
@@ -1013,7 +1111,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       {carrier.name}
                     </h4>
                   </div>
-                  <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                  <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
                     <div>
                       <p className="text-[10px] text-slate-400 uppercase">
                         Volume
@@ -1032,9 +1130,19 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     </div>
                     <div>
                       <p className="text-[10px] text-slate-400 uppercase">
-                        Fora Prazo
+                        Fora Prazo Transportadora
                       </p>
-                      <p className="font-bold text-red-500">{carrier.late}</p>
+                      <p className="font-bold text-red-500">
+                        {carrier.lateCarrier}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-slate-400 uppercase">
+                        Fora Prazo Tray
+                      </p>
+                      <p className="font-bold text-rose-500">
+                        {carrier.lateTray}
+                      </p>
                     </div>
                     <div>
                       <p className="text-[10px] text-slate-400 uppercase">
@@ -1060,23 +1168,23 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     <div
                       className="h-full bg-emerald-500"
                       style={{
-                        width: `${(carrier.onTime / (carrier.volume || 1)) * 100}%`,
+                        width: `${(carrier.onTime / (carrier.measurableCount || 1)) * 100}%`,
                       }}
                     ></div>
                   </div>
                   <div className="flex justify-between text-[10px] text-slate-400 mt-1">
                     <span>
                       qualidade:{" "}
-                      {((carrier.onTime / (carrier.volume || 1)) * 100).toFixed(
+                      {((carrier.onTime / (carrier.measurableCount || 1)) * 100).toFixed(
                         0,
                       )}
                       % bom
                     </span>
                     <span>
-                      {((carrier.late / (carrier.volume || 1)) * 100).toFixed(
+                      {((carrier.lateCarrier / (carrier.measurableCount || 1)) * 100).toFixed(
                         0,
                       )}
-                      % fora
+                      % fora transportadora
                     </span>
                   </div>
                 </div>

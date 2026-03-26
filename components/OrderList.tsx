@@ -318,7 +318,7 @@ export const OrderList: React.FC<OrderListProps> = ({
 
     setIsSyncing(true);
     try {
-      const response = await fetchWithAuth("/api/orders/sync-all", {
+      const response = await fetchWithAuth("/api/orders/sync-all/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       });
@@ -326,9 +326,9 @@ export const OrderList: React.FC<OrderListProps> = ({
       const result = await response.json();
 
       if (result.success) {
-        alert(`✅ ${result.message}`);
-        // Recarregar pedidos
-        window.location.reload();
+        alert(
+          result.message || "Sincronizacao iniciada. O relatorio sera enviado ao final do processo.",
+        );
       } else {
         alert("❌ Erro ao sincronizar");
       }
@@ -421,7 +421,24 @@ export const OrderList: React.FC<OrderListProps> = ({
       .join(" - ");
   };
 
-  const handleExportReport = () => {
+  const getExportRows = () =>
+    filteredOrders.map((order) => ({
+      orderNumber: order.orderNumber,
+      invoiceNumber: (order as any).invoiceNumber || "-",
+      trackingCode: order.trackingCode || "-",
+      shippingDate: formatDateOrDash(order.shippingDate),
+      salesChannel: order.salesChannel,
+      freightType: normalizeCarrierName(order.freightType),
+      estimatedDeliveryDate: formatDateOrDash(order.estimatedDeliveryDate),
+      carrierEstimatedDeliveryDate: formatCarrierForecast(
+        order.carrierEstimatedDeliveryDate,
+      ),
+      latestMovement: getLatestMovementLabel(order),
+      status: getOrderStatusLabel(order),
+      trackingUrl: order.trackingUrl || "#",
+    }));
+
+  const handleExportHtmlReport = () => {
     if (filteredOrders.length === 0) {
       alert("Nao ha pedidos para exportar com os filtros atuais.");
       return;
@@ -436,29 +453,22 @@ export const OrderList: React.FC<OrderListProps> = ({
         .replace(/'/g, "&#39;");
 
     const reportGeneratedAt = new Date();
-    const baseUrl = window.location.origin;
-    const rows = filteredOrders
+    const rows = getExportRows()
       .map((order) => {
-        const trackingUrl = `${baseUrl}/api/orders/${order.id}/open-tracking`;
-
         return `
           <tr>
             <td>${escapeHtml(order.orderNumber)}</td>
-            <td>${escapeHtml((order as any).invoiceNumber || "-")}</td>
-            <td>${escapeHtml(order.trackingCode || "-")}</td>
-            <td>${escapeHtml(formatDateOrDash(order.shippingDate))}</td>
+            <td>${escapeHtml(order.invoiceNumber)}</td>
+            <td>${escapeHtml(order.trackingCode)}</td>
+            <td>${escapeHtml(order.shippingDate)}</td>
             <td>${escapeHtml(order.salesChannel)}</td>
-            <td>${escapeHtml(normalizeCarrierName(order.freightType))}</td>
-            <td>${escapeHtml(formatDateOrDash(order.estimatedDeliveryDate))}</td>
-            <td>${escapeHtml(
-              formatCarrierForecast(order.carrierEstimatedDeliveryDate),
-            )}</td>
-            <td>${escapeHtml(getLatestMovementLabel(order))}</td>
-            <td><span class="status-chip">${escapeHtml(
-              getOrderStatusLabel(order),
-            )}</span></td>
+            <td>${escapeHtml(order.freightType)}</td>
+            <td>${escapeHtml(order.estimatedDeliveryDate)}</td>
+            <td>${escapeHtml(order.carrierEstimatedDeliveryDate)}</td>
+            <td>${escapeHtml(order.latestMovement)}</td>
+            <td><span class="status-chip">${escapeHtml(order.status)}</span></td>
             <td><a href="${escapeHtml(
-              trackingUrl,
+              order.trackingUrl,
             )}" target="_blank" rel="noopener noreferrer">Abrir rastreio</a></td>
           </tr>
         `;
@@ -731,12 +741,95 @@ export const OrderList: React.FC<OrderListProps> = ({
     URL.revokeObjectURL(fileUrl);
   };
 
-  const openTrackingLink = (order: Order) => {
-    window.open(
-      `/api/orders/${order.id}/open-tracking`,
-      "_blank",
-      "noopener,noreferrer",
-    );
+  const handleExportCsvReport = () => {
+    if (filteredOrders.length === 0) {
+      alert("Nao ha pedidos para exportar com os filtros atuais.");
+      return;
+    }
+
+    const escapeCsvValue = (value: unknown) =>
+      `"${toText(value).replace(/"/g, '""')}"`;
+
+    const headers = [
+      "ID / Pedido",
+      "Nota Fiscal",
+      "Codigo de Envio",
+      "Emissao",
+      "Marketplace",
+      "Transportadora",
+      "Prev. Entrega",
+      "Previsao Transportadora",
+      "Ultima Movimentacao",
+      "Status",
+      "Abrir rastreio",
+    ];
+
+    const rows = getExportRows().map((order) => [
+      order.orderNumber,
+      order.invoiceNumber,
+      order.trackingCode,
+      order.shippingDate,
+      order.salesChannel,
+      order.freightType,
+      order.estimatedDeliveryDate,
+      order.carrierEstimatedDeliveryDate,
+      order.latestMovement,
+      order.status,
+      order.trackingUrl,
+    ]);
+
+    const csvContent = [
+      headers.map(escapeCsvValue).join(";"),
+      ...rows.map((row) => row.map(escapeCsvValue).join(";")),
+    ].join("\n");
+
+    const blob = new Blob([`\uFEFF${csvContent}`], {
+      type: "text/csv;charset=utf-8;",
+    });
+    const fileUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const today = new Date().toISOString().slice(0, 10);
+
+    link.href = fileUrl;
+    link.download = `relatorio-pedidos-${today}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(fileUrl);
+  };
+
+  const openTrackingLink = async (order: Order) => {
+    try {
+      let trackingUrl = order.trackingUrl || null;
+
+      if (!trackingUrl) {
+        const response = await fetchWithAuth(
+          `/api/orders/${order.id}/open-tracking?resolve=1`,
+          {
+            headers: {
+              Accept: "application/json",
+            },
+          },
+        );
+        const data = await response.json().catch(() => null);
+
+        if (!response.ok || !data?.trackingUrl) {
+          throw new Error(
+            data?.error || "Nenhum link de rastreio disponivel para este pedido.",
+          );
+        }
+
+        trackingUrl = data.trackingUrl;
+      }
+
+      window.open(trackingUrl, "_blank", "noopener,noreferrer");
+    } catch (error) {
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel abrir o rastreio deste pedido.",
+      );
+    }
   };
 
   const isSyncRunning = isSyncing || syncJob?.status === "running";
@@ -1038,13 +1131,22 @@ export const OrderList: React.FC<OrderListProps> = ({
 
       <div className="flex justify-end">
         <div className="w-full flex flex-col gap-3 sm:max-w-xl sm:flex-row sm:justify-end">
-          <button
-            onClick={handleExportReport}
-            className="flex items-center justify-center gap-2 px-4 py-2 bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-700 dark:text-white rounded-lg hover:bg-slate-50 dark:hover:bg-white/10 transition-colors font-medium"
-          >
-            <Download className="w-4 h-4" />
-            Exportar Relatorio
-          </button>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <button
+              onClick={handleExportHtmlReport}
+              className="flex items-center justify-center gap-2 px-4 py-2 bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-700 dark:text-white rounded-lg hover:bg-slate-50 dark:hover:bg-white/10 transition-colors font-medium"
+            >
+              <Download className="w-4 h-4" />
+              Abrir HTML
+            </button>
+            <button
+              onClick={handleExportCsvReport}
+              className="flex items-center justify-center gap-2 px-4 py-2 bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-700 dark:text-white rounded-lg hover:bg-slate-50 dark:hover:bg-white/10 transition-colors font-medium"
+            >
+              <Download className="w-4 h-4" />
+              Baixar CSV
+            </button>
+          </div>
 
           {onStartTraySync && !isNoMovementView && isTrayAvailable && (
             <button

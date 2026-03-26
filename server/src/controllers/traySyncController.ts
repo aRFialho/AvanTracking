@@ -2,7 +2,6 @@ import { Request, Response } from 'express';
 import { traySyncJobService } from '../services/traySyncJobService';
 import { traySyncService } from '../services/traySyncService';
 import { trayAuthService } from '../services/trayAuthService';
-import { syncReportService } from '../services/syncReportService';
 
 const getUserCompany = (req: Request) => {
   if (!req.user) {
@@ -36,43 +35,11 @@ export const syncTrayOrders = async (req: Request, res: Response) => {
     }
 
     traySyncJobService.ensureSchedule(context.companyId, context.userId);
-    const startedAt = new Date().toISOString();
     const result = await traySyncService.executeSync(context.companyId, req.body || {});
-    let report: { reportUrl?: string; csvUrl?: string; recipients?: number } | null =
-      null;
-
-    try {
-      report = await syncReportService.sendTraySyncReport({
-        companyId: context.companyId,
-        userId: context.userId,
-        trigger: 'manual',
-        payload: {
-          companyId: context.companyId,
-          storeId: result.storeId,
-          modified: result.modified,
-          statuses: result.statuses,
-          created: Number(result?.results?.created || 0),
-          updated: Number(result?.results?.updated || 0),
-          skipped: Number(result?.results?.skipped || 0),
-          totalTrackingEvents: Number(result?.results?.totalTrackingEvents || 0),
-          errors: Array.isArray(result?.results?.errors) ? result.results.errors : [],
-          createdOrders: Array.isArray(result?.results?.createdOrders)
-            ? result.results.createdOrders
-            : [],
-          updatedOrders: Array.isArray(result?.results?.updatedOrders)
-            ? result.results.updatedOrders
-            : [],
-        },
-        startedAt,
-        finishedAt: new Date().toISOString(),
-      });
-    } catch (reportError) {
-      console.error('Erro ao enviar relatorio do sync Tray:', reportError);
-    }
 
     return res.json({
       ...result,
-      report,
+      report: null,
     });
   } catch (error) {
     console.error('Erro na sincronizacao com Tray:', error);

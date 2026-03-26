@@ -339,16 +339,12 @@ class SswTrackingService {
     this.lastRequestAt = Date.now();
   }
 
-  async fetchTrackingByInvoice(cnpj: string, invoiceNumber: string) {
-    const normalizedCnpj = String(cnpj || '').replace(/\D/g, '').trim();
-    const normalizedInvoiceNumber = String(invoiceNumber || '').replace(/\D/g, '').trim();
-
-    if (!normalizedCnpj || !normalizedInvoiceNumber) {
-      return null;
-    }
-
-    const trackingUrl = `${SSW_TRACKING_BASE_URL}/${normalizedCnpj}/${normalizedInvoiceNumber}`;
-
+  private async fetchTrackingInternal(
+    trackingUrl: string,
+    fallbackCnpj: string,
+    fallbackIdentifier: string,
+    displayIdentifier: string,
+  ) {
     try {
       await this.throttle();
 
@@ -371,7 +367,7 @@ class SswTrackingService {
         const directResult = buildResultFromHtml(
           sessionHtml,
           trackingUrl,
-          normalizedInvoiceNumber,
+          displayIdentifier,
         );
 
         if (directResult) {
@@ -387,8 +383,8 @@ class SswTrackingService {
 
       const registerPayload = buildRegisterPayload(
         String(sessionResponse.data || ''),
-        normalizedCnpj,
-        normalizedInvoiceNumber,
+        fallbackCnpj,
+        fallbackIdentifier,
       );
 
       const registerResponse = await axios.post<string>(
@@ -406,7 +402,7 @@ class SswTrackingService {
         const registeredResult = buildResultFromHtml(
           registerHtml,
           SSW_REGISTER_URL,
-          normalizedInvoiceNumber,
+          displayIdentifier,
         );
 
         if (registeredResult) {
@@ -444,7 +440,7 @@ class SswTrackingService {
               const selectedResult = buildResultFromHtml(
                 String(selectionResponse.data || ''),
                 SSW_SELECT_URL,
-                normalizedInvoiceNumber,
+                displayIdentifier,
               );
 
               if (selectedResult) {
@@ -473,12 +469,48 @@ class SswTrackingService {
       return buildResultFromHtml(
         String(detailResponse.data || ''),
         SSW_DETAIL_URL,
-        normalizedInvoiceNumber,
+        displayIdentifier,
       );
     } catch (error) {
       console.error('Erro ao consultar SSW:', error);
       return null;
     }
+  }
+
+  async fetchTrackingByInvoice(cnpj: string, invoiceNumber: string) {
+    const normalizedCnpj = String(cnpj || '').replace(/\D/g, '').trim();
+    const normalizedInvoiceNumber = String(invoiceNumber || '').replace(/\D/g, '').trim();
+
+    if (!normalizedCnpj || !normalizedInvoiceNumber) {
+      return null;
+    }
+
+    const trackingUrl = `${SSW_TRACKING_BASE_URL}/${normalizedCnpj}/${normalizedInvoiceNumber}`;
+    return this.fetchTrackingInternal(
+      trackingUrl,
+      normalizedCnpj,
+      normalizedInvoiceNumber,
+      normalizedInvoiceNumber,
+    );
+  }
+
+  async fetchTrackingByKey(trackingKey: string) {
+    const normalizedTrackingKey = String(trackingKey || '')
+      .replace(/[^A-Za-z0-9]/g, '')
+      .toUpperCase()
+      .trim();
+
+    if (!normalizedTrackingKey) {
+      return null;
+    }
+
+    const trackingUrl = `${SSW_TRACKING_BASE_URL}/${normalizedTrackingKey}`;
+    return this.fetchTrackingInternal(
+      trackingUrl,
+      '',
+      normalizedTrackingKey,
+      normalizedTrackingKey,
+    );
   }
 }
 

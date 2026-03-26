@@ -657,7 +657,7 @@ const MainApp: React.FC = () => {
       case "upload":
         return <UploadModal onUpload={handleOrdersUploaded} />;
       case "alerts":
-        return <AlertsView orders={orders} />;
+        return <AlertsView orders={orders} initialFilters={activeFilters} />;
       case "delivery-failures":
         return <DeliveryFailures orders={orders} />;
       case "admin":

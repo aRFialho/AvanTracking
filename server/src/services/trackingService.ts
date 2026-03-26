@@ -262,29 +262,44 @@ export class TrackingService {
     trackingCode: string | null;
     companyId: string | null;
   }) {
-    const normalizedTrackingIdentifier = String(
-      order.invoiceNumber || order.trackingCode || '',
-    )
+    const normalizedInvoiceNumber = String(order.invoiceNumber || '')
       .replace(/\D/g, '')
       .trim();
-
-    if (!normalizedTrackingIdentifier) {
-      return null;
-    }
+    const normalizedTrackingDigits = String(order.trackingCode || '')
+      .replace(/\D/g, '')
+      .trim();
+    const normalizedTrackingKey = String(order.trackingCode || '')
+      .replace(/[^A-Za-z0-9]/g, '')
+      .toUpperCase()
+      .trim();
+    const hasXmlTrackingKey =
+      !normalizedInvoiceNumber &&
+      (normalizedTrackingKey.length === 44 ||
+        (normalizedTrackingKey.length >= 20 &&
+          /[A-Z]/.test(normalizedTrackingKey) &&
+          /\d/.test(normalizedTrackingKey)));
 
     const { sswRequireCnpjs } = await this.resolveCompanyTrackingConfig(
       order.companyId,
     );
 
-    for (const cnpj of sswRequireCnpjs) {
-      const result = await sswTrackingService.fetchTrackingByInvoice(
-        cnpj,
-        normalizedTrackingIdentifier,
-      );
+    const standardIdentifier = normalizedInvoiceNumber || normalizedTrackingDigits;
 
-      if (result) {
-        return result;
+    if (standardIdentifier) {
+      for (const cnpj of sswRequireCnpjs) {
+        const result = await sswTrackingService.fetchTrackingByInvoice(
+          cnpj,
+          standardIdentifier,
+        );
+
+        if (result) {
+          return result;
+        }
       }
+    }
+
+    if (hasXmlTrackingKey) {
+      return sswTrackingService.fetchTrackingByKey(normalizedTrackingKey);
     }
 
     return null;

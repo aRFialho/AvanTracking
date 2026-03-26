@@ -154,13 +154,17 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({ order, onClose }) => {
                     <span className="text-slate-500 dark:text-slate-400">
                       NF:
                     </span>{" "}
-                    {(order as any).invoiceNumber || "-"}
+                    <span className="break-all whitespace-normal">
+                      {(order as any).invoiceNumber || "-"}
+                    </span>
                   </p>
                   <p className="text-sm text-slate-700 dark:text-slate-200">
                     <span className="text-slate-500 dark:text-slate-400">
                       Código de envio:
                     </span>{" "}
-                    {order.trackingCode || "-"}
+                    <span className="break-all whitespace-normal">
+                      {order.trackingCode || "-"}
+                    </span>
                   </p>
                 </div>
 
