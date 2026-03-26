@@ -30,6 +30,7 @@ interface Company {
   name: string;
   cnpj?: string;
   intelipostClientId?: string | null;
+  sswRequireCnpjs?: string[];
   createdAt: string;
 }
 
@@ -183,7 +184,9 @@ export const AdminPanel: React.FC = () => {
   const [isCheckingTrayStatus, setIsCheckingTrayStatus] = useState(false);
   const [currentCompany, setCurrentCompany] = useState<Company | null>(null);
   const [intelipostClientId, setIntelipostClientId] = useState("");
+  const [sswRequireCnpjs, setSswRequireCnpjs] = useState<string[]>([""]);
   const [isSavingIntelipost, setIsSavingIntelipost] = useState(false);
+  const [isSavingSswRequire, setIsSavingSswRequire] = useState(false);
   const [patchNotesForm, setPatchNotesForm] = useState<PatchNotesFormData>({
     version: "",
     title: "",
@@ -317,9 +320,15 @@ export const AdminPanel: React.FC = () => {
 
       setCurrentCompany(data);
       setIntelipostClientId(data.intelipostClientId || "");
+      setSswRequireCnpjs(
+        Array.isArray(data.sswRequireCnpjs) && data.sswRequireCnpjs.length > 0
+          ? data.sswRequireCnpjs
+          : [""],
+      );
     } catch {
       setCurrentCompany(null);
       setIntelipostClientId("");
+      setSswRequireCnpjs([""]);
     }
   };
 
@@ -533,6 +542,71 @@ export const AdminPanel: React.FC = () => {
       alert(err.message || "Erro ao salvar ID da Intelipost.");
     } finally {
       setIsSavingIntelipost(false);
+    }
+  };
+
+  const handleAddSswRequireCnpj = () => {
+    setSswRequireCnpjs((currentValues) => [...currentValues, ""]);
+  };
+
+  const handleChangeSswRequireCnpj = (index: number, value: string) => {
+    const normalized = value.replace(/\D/g, "");
+    setSswRequireCnpjs((currentValues) =>
+      currentValues.map((item, itemIndex) =>
+        itemIndex === index ? normalized : item,
+      ),
+    );
+  };
+
+  const handleRemoveSswRequireCnpj = (index: number) => {
+    setSswRequireCnpjs((currentValues) => {
+      const nextValues = currentValues.filter((_, itemIndex) => itemIndex !== index);
+      return nextValues.length > 0 ? nextValues : [""];
+    });
+  };
+
+  const handleSaveSswRequire = async () => {
+    const normalizedCnpjs = Array.from(
+      new Set(
+        sswRequireCnpjs
+          .map((value) => value.replace(/\D/g, "").trim())
+          .filter(Boolean),
+      ),
+    );
+
+    if (normalizedCnpjs.some((cnpj) => cnpj.length !== 14)) {
+      alert("Todos os CNPJs do SSW devem conter 14 digitos sem pontuacao.");
+      return;
+    }
+
+    setIsSavingSswRequire(true);
+    try {
+      const response = await fetchWithAuth("/api/companies/current/integration", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sswRequireCnpjs: normalizedCnpjs }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(
+          data.error || "Nao foi possivel salvar os CNPJs do SSW Require.",
+        );
+      }
+
+      setCurrentCompany(data.company || null);
+      setSswRequireCnpjs(
+        Array.isArray(data.company?.sswRequireCnpjs) &&
+          data.company.sswRequireCnpjs.length > 0
+          ? data.company.sswRequireCnpjs
+          : [""],
+      );
+      alert(data.message || "CNPJs do SSW Require atualizados com sucesso.");
+    } catch (err: any) {
+      alert(err.message || "Erro ao salvar os CNPJs do SSW Require.");
+    } finally {
+      setIsSavingSswRequire(false);
     }
   };
 
@@ -1259,6 +1333,71 @@ export const AdminPanel: React.FC = () => {
               <p className="text-[11px] text-slate-400 mt-2">
                 Exemplo aceito: https://www.sualoja.com.br/web_api
               </p>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 dark:border-white/10 dark:bg-white/5">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="font-semibold text-slate-700 dark:text-white">
+                    SSW Require
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    Inserir CNPJ sem pontuacao (12345678000199). O sistema usa esses CNPJs para montar o rastreio
+                    {" "}`https://ssw.inf.br/app/tracking/{"{CNPJ}"}/{"{NF}"}` com a NF do pedido. Se nao localizar no primeiro,
+                    tenta os demais cadastrados na mesma empresa.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleAddSswRequireCnpj}
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-medium text-white bg-blue-600 hover:bg-blue-700 transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  TEM MAIS DE UM CNPJ PARA NF?
+                </button>
+              </div>
+
+              <div className="mt-4 space-y-3">
+                {sswRequireCnpjs.map((cnpj, index) => (
+                  <div key={`${index}-${cnpj}`} className="flex flex-col gap-3 sm:flex-row">
+                    <input
+                      type="text"
+                      value={cnpj}
+                      onChange={(e) =>
+                        handleChangeSswRequireCnpj(index, e.target.value)
+                      }
+                      placeholder="12345678000199"
+                      className="w-full bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white focus:border-blue-500 outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveSswRequireCnpj(index)}
+                      disabled={sswRequireCnpjs.length === 1}
+                      className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-medium border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 hover:border-red-500 hover:text-red-600 disabled:opacity-50 transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      Remover
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                <p className="text-[11px] text-slate-400">
+                  Sempre um cadastro por empresa. Todos os usuarios da mesma empresa compartilham os mesmos CNPJs,
+                  sem conflito com as demais empresas.
+                </p>
+
+                <button
+                  type="button"
+                  onClick={handleSaveSswRequire}
+                  disabled={isSavingSswRequire || !currentCompany}
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-medium text-white bg-slate-700 hover:bg-slate-800 disabled:opacity-50 transition-colors"
+                >
+                  {isSavingSswRequire ? "Salvando..." : "Salvar SSW Require"}
+                </button>
+              </div>
             </div>
 
             <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300">

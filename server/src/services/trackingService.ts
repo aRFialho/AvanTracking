@@ -5,6 +5,7 @@ import type {
   TrackingSyncReportPayload,
 } from '../types/syncReport';
 import { normalizeExcludedPlatformFreight } from '../utils/orderExclusion';
+import { sswTrackingService } from './sswTrackingService';
 
 const prisma = new PrismaClient();
 
@@ -188,16 +189,28 @@ const buildEmptySnapshot = (): SyncReportSnapshot => ({
 });
 
 export class TrackingService {
-  private async resolveIntelipostClientId(companyId?: string | null) {
+  private async resolveCompanyTrackingConfig(companyId?: string | null) {
     if (!companyId) {
-      return DEFAULT_CLIENT_ID;
+      return {
+        intelipostClientId: DEFAULT_CLIENT_ID,
+        sswRequireCnpjs: [] as string[],
+      };
     }
 
-    const company = await prisma.company.findUnique({
+    const company = await (prisma.company as any).findUnique({
       where: { id: companyId },
+      select: {
+        intelipostClientId: true,
+        sswRequireCnpjs: true,
+      },
     });
 
-    return String((company as any)?.intelipostClientId || DEFAULT_CLIENT_ID).trim();
+    return {
+      intelipostClientId: String(company?.intelipostClientId || DEFAULT_CLIENT_ID).trim(),
+      sswRequireCnpjs: Array.isArray(company?.sswRequireCnpjs)
+        ? company.sswRequireCnpjs.map((cnpj) => String(cnpj || '').replace(/\D/g, '').trim()).filter(Boolean)
+        : [],
+    };
   }
 
   private async fetchFromIntelipost(
@@ -205,7 +218,7 @@ export class TrackingService {
     companyId?: string | null,
   ) {
     try {
-      const intelipostClientId = await this.resolveIntelipostClientId(companyId);
+      const { intelipostClientId } = await this.resolveCompanyTrackingConfig(companyId);
       const payload = {
         operationName: null,
         query: INTELIPOST_QUERY,
@@ -241,6 +254,37 @@ export class TrackingService {
       console.error('Erro ao consultar Intelipost:', error);
       return null;
     }
+  }
+
+  private async fetchFromSsw(order: {
+    orderNumber: string;
+    invoiceNumber: string | null;
+    companyId: string | null;
+  }) {
+    const normalizedInvoiceNumber = String(order.invoiceNumber || '')
+      .replace(/\D/g, '')
+      .trim();
+
+    if (!normalizedInvoiceNumber) {
+      return null;
+    }
+
+    const { sswRequireCnpjs } = await this.resolveCompanyTrackingConfig(
+      order.companyId,
+    );
+
+    for (const cnpj of sswRequireCnpjs) {
+      const result = await sswTrackingService.fetchTrackingByInvoice(
+        cnpj,
+        normalizedInvoiceNumber,
+      );
+
+      if (result) {
+        return result;
+      }
+    }
+
+    return null;
   }
 
   private async buildSnapshot(companyId?: string | null): Promise<SyncReportSnapshot> {
@@ -387,43 +431,65 @@ export class TrackingService {
         };
       }
 
-      const trackingData = await this.fetchFromIntelipost(
-        order.orderNumber,
-        order.companyId || companyId,
-      );
+      const sswTrackingData = await this.fetchFromSsw({
+        orderNumber: order.orderNumber,
+        invoiceNumber: order.invoiceNumber,
+        companyId: order.companyId || companyId || null,
+      });
+
+      const trackingData =
+        sswTrackingData ||
+        (await this.fetchFromIntelipost(
+          order.orderNumber,
+          order.companyId || companyId,
+        ));
 
       if (!trackingData) {
         const syncedAt = new Date();
         await prisma.order.update({
           where: { id: orderId },
           data: {
-            lastApiError: 'Sem dados da Intelipost',
+            lastApiError: 'Sem dados da SSW e da Intelipost',
             lastApiSync: syncedAt,
           },
         });
 
         return {
           success: false,
-          message: 'Sem dados de rastreio',
+          message: 'Sem dados de rastreio na SSW e na Intelipost',
           change: {
             ...baseChange,
             lastApiSync: syncedAt.toISOString(),
-            errorMessage: 'Sem dados de rastreio',
+            errorMessage: 'Sem dados de rastreio na SSW e na Intelipost',
           },
         };
       }
 
-      const events = (trackingData.tracking.history || []).map((historyItem: any) => ({
-        orderId,
-        status: historyItem.macro_state?.code || 'UNKNOWN',
-        description: historyItem.provider_message || historyItem.status_label,
-        city: trackingData.end_customer?.address?.city || null,
-        state: trackingData.end_customer?.address?.state || null,
-        eventDate: new Date(historyItem.event_date),
-      }));
+      const usingSsw = 'source' in trackingData && trackingData.source === 'SSW';
+      const events = usingSsw
+        ? trackingData.events.map((event) => ({
+            orderId,
+            status: event.status,
+            description: event.description,
+            city: event.city,
+            state: event.state,
+            eventDate: event.eventDate,
+          }))
+        : (trackingData.tracking.history || []).map((historyItem: any) => ({
+            orderId,
+            status: historyItem.macro_state?.code || 'UNKNOWN',
+            description: historyItem.provider_message || historyItem.status_label,
+            city: trackingData.end_customer?.address?.city || null,
+            state: trackingData.end_customer?.address?.state || null,
+            eventDate: new Date(historyItem.event_date),
+          }));
 
-      const newStatus = resolveTrackingStatus(trackingData, events);
-      const carrierEstimatedDate = resolveCarrierEstimatedDate(events);
+      const newStatus = usingSsw
+        ? trackingData.status
+        : resolveTrackingStatus(trackingData, events);
+      const carrierEstimatedDate = usingSsw
+        ? trackingData.carrierEstimatedDate
+        : resolveCarrierEstimatedDate(events);
       const estimatedDate = order.estimatedDeliveryDate;
 
       const isDelayed =
@@ -431,18 +497,24 @@ export class TrackingService {
         new Date() > estimatedDate &&
         newStatus !== OrderStatus.DELIVERED;
       const syncedAt = new Date();
+      const currentFreightType = usingSsw
+        ? trackingData.freightType || order.freightType || null
+        : trackingData.logistic_provider?.name || order.freightType || null;
+      const rawPayload = usingSsw
+        ? ({ source: 'SSW', ...trackingData.rawPayload } as any)
+        : (trackingData as any);
 
       await prisma.order.update({
         where: { id: orderId },
         data: {
           status: newStatus,
-          freightType: trackingData.logistic_provider?.name || order.freightType,
+          freightType: currentFreightType,
           estimatedDeliveryDate: estimatedDate,
           carrierEstimatedDeliveryDate: carrierEstimatedDate,
           isDelayed: isDelayed || false,
           lastApiSync: syncedAt,
           lastApiError: null,
-          apiRawPayload: trackingData as any,
+          apiRawPayload: rawPayload,
         },
       });
 
@@ -466,8 +538,6 @@ export class TrackingService {
             })
           : null;
 
-      const currentFreightType =
-        trackingData.logistic_provider?.name || order.freightType || null;
       const changed =
         order.status !== newStatus ||
         order.isDelayed !== Boolean(isDelayed) ||
@@ -478,7 +548,9 @@ export class TrackingService {
 
       return {
         success: true,
-        message: 'Rastreio atualizado com sucesso',
+        message: usingSsw
+          ? 'Rastreio atualizado com sucesso pela SSW'
+          : 'Rastreio atualizado com sucesso pela Intelipost',
         change: {
           ...baseChange,
           freightType: currentFreightType,

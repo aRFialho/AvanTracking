@@ -5,6 +5,16 @@ import { ensureDemoCompanyData } from '../services/demoCompanyService';
 
 const prisma = new PrismaClient();
 
+const normalizeSswRequireCnpjs = (value: unknown) => {
+  if (!Array.isArray(value)) return [];
+
+  const normalized = value
+    .map((item) => String(item || '').replace(/\D/g, '').trim())
+    .filter(Boolean);
+
+  return Array.from(new Set(normalized));
+};
+
 // Listar todas as empresas
 export const getCompanies = async (req: Request, res: Response) => {
   try {
@@ -22,18 +32,19 @@ export const getCompanies = async (req: Request, res: Response) => {
 
 // Criar empresa
 export const createCompany = async (req: Request, res: Response) => {
-  const { name, cnpj, intelipostClientId } = req.body;
+  const { name, cnpj, intelipostClientId, sswRequireCnpjs } = req.body;
 
   if (!name) {
     return res.status(400).json({ error: 'Name is required' });
   }
 
   try {
-    const company = await prisma.company.create({
+    const company = await (prisma.company as any).create({
       data: {
         name,
         cnpj,
         intelipostClientId: intelipostClientId ? String(intelipostClientId).trim() : null,
+        sswRequireCnpjs: normalizeSswRequireCnpjs(sswRequireCnpjs),
       }
     });
     res.status(201).json(company);
@@ -68,13 +79,14 @@ export const getCurrentCompany = async (req: Request, res: Response) => {
       return res.status(403).json({ error: 'Usuario sem empresa vinculada' });
     }
 
-    const company = await prisma.company.findUnique({
+    const company = await (prisma.company as any).findUnique({
       where: { id: req.user.companyId },
       select: {
         id: true,
         name: true,
         cnpj: true,
         intelipostClientId: true,
+        sswRequireCnpjs: true,
         createdAt: true,
       },
     });
@@ -99,29 +111,40 @@ export const updateCurrentCompanyIntegration = async (
       return res.status(403).json({ error: 'Usuario sem empresa vinculada' });
     }
 
-    const intelipostClientId = String(req.body?.intelipostClientId || '').trim();
+    const intelipostClientIdRaw = req.body?.intelipostClientId;
+    const intelipostClientId =
+      intelipostClientIdRaw === undefined || intelipostClientIdRaw === null
+        ? undefined
+        : String(intelipostClientIdRaw).trim();
+    const sswRequireCnpjsRaw = req.body?.sswRequireCnpjs;
+    const sswRequireCnpjs =
+      sswRequireCnpjsRaw === undefined
+        ? undefined
+        : normalizeSswRequireCnpjs(sswRequireCnpjsRaw);
 
-    if (!intelipostClientId) {
+    if (intelipostClientId !== undefined && !intelipostClientId) {
       return res.status(400).json({ error: 'ID da Intelipost obrigatorio' });
     }
 
-    const company = await prisma.company.update({
+    const company = await (prisma.company as any).update({
       where: { id: req.user.companyId },
       data: {
-        intelipostClientId,
+        ...(intelipostClientId !== undefined ? { intelipostClientId } : {}),
+        ...(sswRequireCnpjs !== undefined ? { sswRequireCnpjs } : {}),
       },
       select: {
         id: true,
         name: true,
         cnpj: true,
         intelipostClientId: true,
+        sswRequireCnpjs: true,
         createdAt: true,
       },
     });
 
     return res.json({
       success: true,
-      message: 'Configuracao Intelipost atualizada com sucesso.',
+      message: 'Configuracoes de integracao atualizadas com sucesso.',
       company,
     });
   } catch (error) {
