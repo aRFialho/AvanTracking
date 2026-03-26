@@ -441,7 +441,7 @@ export const OrderList: React.FC<OrderListProps> = ({
     ];
 
     const rows = filteredOrders.map((order) => [
-      `${order.id} / ${order.orderNumber}`,
+      order.orderNumber,
       (order as any).invoiceNumber || "-",
       formatDateOrDash(order.shippingDate),
       order.salesChannel,
