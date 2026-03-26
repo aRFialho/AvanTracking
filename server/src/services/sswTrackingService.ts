@@ -2,11 +2,13 @@ import axios from 'axios';
 import { OrderStatus } from '@prisma/client';
 
 const SSW_TRACKING_BASE_URL = 'https://ssw.inf.br/app/tracking';
+const SSW_REGISTER_URL = 'https://ssw.inf.br/2/Tracking';
+const SSW_SELECT_URL = 'https://ssw.inf.br/2/SelecionarDocumento';
 const SSW_DETAIL_URL = 'https://ssw.inf.br/2/SSWDetalhado';
 const SSW_MIN_INTERVAL_MS = 1200;
 
 type SswTrackingEvent = {
-  status: string;
+  status: OrderStatus;
   description: string;
   city: string | null;
   state: string | null;
@@ -79,40 +81,44 @@ const extractHiddenInputValue = (html: string, inputName: string) => {
   return null;
 };
 
-const resolveDetailUrlCandidates = (html: string) => {
+const extractSelectionCandidates = (html: string) => {
   const candidates = new Set<string>();
   const normalizedHtml = String(html || '');
-  const directMatches = normalizedHtml.matchAll(
-    /https:\/\/ssw\.inf\.br\/2\/SSWDetalhado[^\s"'<>)]*/gi,
-  );
+  const patterns = [
+    /SelecionarDocumento\(['"]?([^'")\s]+)['"]?/gi,
+    /selecionarDocumento\(['"]?([^'")\s]+)['"]?/gi,
+    /data-id=["']([^"']+)["']/gi,
+    /name=["']id["'][^>]*value=["']([^"']+)["']/gi,
+    /value=["']([^"']+)["'][^>]*name=["']id["']/gi,
+  ];
 
-  for (const match of directMatches) {
-    if (match[0]) {
-      candidates.add(decodeHtmlEntities(match[0]));
+  for (const pattern of patterns) {
+    for (const match of normalizedHtml.matchAll(pattern)) {
+      if (match[1]) {
+        candidates.add(decodeHtmlEntities(String(match[1]).trim()));
+      }
     }
   }
 
-  const relativeMatches = normalizedHtml.matchAll(
-    /\/2\/SSWDetalhado[^\s"'<>)]*/gi,
-  );
-
-  for (const match of relativeMatches) {
-    if (match[0]) {
-      candidates.add(`https://ssw.inf.br${decodeHtmlEntities(match[0])}`);
-    }
-  }
-
-  const id = extractHiddenInputValue(normalizedHtml, 'id');
-  const md = extractHiddenInputValue(normalizedHtml, 'md');
-  if (id && md) {
-    candidates.add(
-      `${SSW_DETAIL_URL}?id=${encodeURIComponent(id)}&md=${encodeURIComponent(md)}`,
-    );
-  }
-
-  candidates.add(SSW_DETAIL_URL);
   return Array.from(candidates);
 };
+
+const buildAjaxHeaders = (cookieHeader: string, referer: string) => ({
+  Accept: 'text/html, */*;q=0.9',
+  'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+  Cookie: cookieHeader,
+  Referer: referer,
+  'User-Agent': 'Mozilla/5.0 Avantracking/1.0',
+  'X-Requested-With': 'XMLHttpRequest',
+});
+
+const hasTrackingMarkers = (text: string) =>
+  /documento de transporte emitido|saida de unidade|sa[ií]da de unidade|chegada em unidade|mercadoria entregue|previs[aã]o de entrega|em tr[aâ]nsito|ocorr|insucesso|entregue|despachado/i.test(
+    text,
+  );
+
+const hasDirectTrackingTable = (html: string) =>
+  /Data\/Hora|Situa[cç][aã]o|class=["']titulo["']/i.test(String(html || ''));
 
 const parseCarrierForecastFromText = (text: string) => {
   const match = text.match(
@@ -183,7 +189,9 @@ const mapSswStatusToEnum = (text: string): OrderStatus | null => {
     normalized.includes('ct-e autorizado') ||
     normalized.includes('transfer') ||
     normalized.includes('emissao do ct-e') ||
-    normalized.includes('emissão do ct-e')
+    normalized.includes('emissão do ct-e') ||
+    normalized.includes('documento de transporte emitido') ||
+    normalized.includes('chegada em unidade')
   ) {
     return OrderStatus.SHIPPED;
   }
@@ -197,6 +205,128 @@ const mapSswStatusToEnum = (text: string): OrderStatus | null => {
 
   return null;
 };
+
+const extractSswEvents = (html: string): SswTrackingEvent[] => {
+  const rowPattern =
+    /<tr[^>]*style=["'][^"']*background-color:[^"']*["'][^>]*>\s*<td[^>]*>\s*<p[^>]*>\s*([\s\S]*?)\s*<\/p>\s*<\/td>\s*<td[^>]*>\s*<p[^>]*>\s*([\s\S]*?)\s*<\/p>\s*<\/td>\s*<td[^>]*>\s*(?:<b>\s*)?<p[^>]*class=["']titulo["'][^>]*>\s*([\s\S]*?)\s*<\/p>(?:\s*<\/b>)?\s*<p[^>]*>\s*([\s\S]*?)\s*<\/p>\s*<\/td>\s*<\/tr>/gi;
+
+  const events: SswTrackingEvent[] = [];
+
+  for (const match of html.matchAll(rowPattern)) {
+    const rawDate = stripHtml(match[1] || '').join(' ').replace(/\s+/g, ' ').trim();
+    const rawUnit = stripHtml(match[2] || '').join(' ').replace(/\s+/g, ' ').trim();
+    const rawTitle = stripHtml(match[3] || '').join(' ').replace(/\s+/g, ' ').trim();
+    const rawDescription = stripHtml(match[4] || '').join(' ').replace(/\s+/g, ' ').trim();
+    const status = mapSswStatusToEnum(`${rawTitle} ${rawDescription}`);
+
+    if (!status) {
+      continue;
+    }
+
+    const eventDate = parseLatestDateFromText(rawDate || rawDescription);
+    const unitParts = rawUnit
+      .split('/')
+      .map((part) => part.replace(/\bMID\b.*$/i, '').replace(/\u00a0/g, ' ').trim())
+      .filter(Boolean);
+
+    events.push({
+      status,
+      description: [rawTitle, rawDescription].filter(Boolean).join(' - '),
+      city: unitParts[0] || null,
+      state: unitParts[1] ? unitParts[1].slice(0, 2).trim() : null,
+      eventDate,
+    });
+  }
+
+  return events;
+};
+
+const buildResultFromHtml = (
+  html: string,
+  trackingUrl: string,
+  invoiceNumber: string,
+): SswTrackingResult | null => {
+  const normalizedHtml = String(html || '');
+  const htmlSnippet = normalizedHtml.slice(0, 12000);
+  const lines = stripHtml(normalizedHtml);
+  const text = lines.join(' | ');
+
+  if (
+    !text ||
+    text.length < 20 ||
+    !hasTrackingMarkers(text) ||
+    /cloudflare|forbidden|login|acesso negado|erro interno/i.test(text)
+  ) {
+    return null;
+  }
+
+  const events = extractSswEvents(normalizedHtml);
+
+  if (events.length === 0) {
+    const statusSource =
+      lines.find((line) => mapSswStatusToEnum(line) !== null) || text;
+    const status = mapSswStatusToEnum(statusSource);
+
+    if (!status) {
+      return null;
+    }
+
+    events.push({
+      status,
+      description:
+        lines.find((line) =>
+          /previs|entreg|tr[aãâ]nsito|ocorr|colet|despach|chegada|saida|documento/i.test(
+            line,
+          ),
+        ) || `Consulta SSW da NF ${invoiceNumber}`,
+      city: null,
+      state: null,
+      eventDate: parseLatestDateFromText(text),
+    });
+  }
+
+  const latestEvent = events
+    .slice()
+    .sort((left, right) => right.eventDate.getTime() - left.eventDate.getTime())[0];
+
+  return {
+    source: 'SSW',
+    status: latestEvent.status,
+    carrierEstimatedDate: parseCarrierForecastFromText(text),
+    freightType: null,
+    events,
+    rawPayload: {
+      trackingUrl,
+      htmlSnippet,
+    },
+  };
+};
+
+const buildRegisterPayload = (
+  sessionHtml: string,
+  normalizedCnpj: string,
+  normalizedInvoiceNumber: string,
+) => {
+  const payload = new URLSearchParams();
+  payload.set('tipo', 'tracking');
+
+  const n = extractHiddenInputValue(sessionHtml, 'n') || normalizedInvoiceNumber;
+  const c = extractHiddenInputValue(sessionHtml, 'c') || normalizedCnpj;
+  const serie = extractHiddenInputValue(sessionHtml, 'serie');
+  const chave = extractHiddenInputValue(sessionHtml, 'chave');
+
+  if (n) payload.set('n', n);
+  if (c) payload.set('c', c);
+  if (serie) payload.set('serie', serie);
+  if (chave) payload.set('chave', chave);
+
+  return payload;
+};
+
+const looksLikeSelectionList = (html: string) =>
+  /selecionar|conhecimento|documento|lista|escolha|clique/i.test(
+    stripHtml(String(html || '')).join(' | '),
+  );
 
 class SswTrackingService {
   private lastRequestAt = 0;
@@ -236,100 +366,115 @@ class SswTrackingService {
         return null;
       }
 
+      const sessionHtml = String(sessionResponse.data || '');
+      if (hasDirectTrackingTable(sessionHtml)) {
+        const directResult = buildResultFromHtml(
+          sessionHtml,
+          trackingUrl,
+          normalizedInvoiceNumber,
+        );
+
+        if (directResult) {
+          return directResult;
+        }
+      }
+
       const cookieHeader = buildCookieHeader(sessionResponse.headers['set-cookie']);
 
       if (!cookieHeader) {
         return null;
       }
 
-      const detailUrlCandidates = resolveDetailUrlCandidates(
+      const registerPayload = buildRegisterPayload(
         String(sessionResponse.data || ''),
+        normalizedCnpj,
+        normalizedInvoiceNumber,
       );
 
-      let detailHtml = '';
-      let detailUrlUsed = SSW_DETAIL_URL;
-
-      for (const detailUrl of detailUrlCandidates) {
-        const detailResponse = await axios.get<string>(detailUrl, {
+      const registerResponse = await axios.post<string>(
+        SSW_REGISTER_URL,
+        registerPayload.toString(),
+        {
           responseType: 'text',
           validateStatus: () => true,
-          headers: {
-            Accept: 'text/html',
-            Referer: trackingUrl,
-            Cookie: cookieHeader,
-            'User-Agent': 'Mozilla/5.0 Avantracking/1.0',
-          },
-        });
-
-        if (detailResponse.status < 200 || detailResponse.status >= 300) {
-          continue;
-        }
-
-        const candidateHtml = String(detailResponse.data || '');
-        const candidateText = stripHtml(candidateHtml).join(' | ');
-
-        if (
-          candidateText &&
-          candidateText.length >= 20 &&
-          !/cloudflare|forbidden|login|acesso negado|erro interno/i.test(
-            candidateText,
-          )
-        ) {
-          detailHtml = candidateHtml;
-          detailUrlUsed = detailUrl;
-          break;
-        }
-      }
-
-      if (!detailHtml) {
-        return null;
-      }
-
-      const htmlSnippet = detailHtml.slice(0, 12000);
-      const lines = stripHtml(detailHtml);
-      const text = lines.join(' | ');
-
-      if (
-        !text ||
-        text.length < 20 ||
-        /cloudflare|forbidden|login|acesso negado|erro interno/i.test(text)
-      ) {
-        return null;
-      }
-
-      const statusSource =
-        lines.find((line) => mapSswStatusToEnum(line) !== null) || text;
-      const status = mapSswStatusToEnum(statusSource);
-
-      if (!status) {
-        return null;
-      }
-
-      const carrierEstimatedDate = parseCarrierForecastFromText(text);
-      const eventDate = parseLatestDateFromText(text);
-      const description =
-        lines.find((line) => /previs|entreg|tr[aâ]nsito|ocorr|colet|despach/i.test(line)) ||
-        `Consulta SSW da NF ${normalizedInvoiceNumber}`;
-
-      return {
-        source: 'SSW' as const,
-        status,
-        carrierEstimatedDate,
-        freightType: null,
-        events: [
-          {
-            status: status,
-            description,
-            city: null,
-            state: null,
-            eventDate,
-          },
-        ],
-        rawPayload: {
-          trackingUrl: detailUrlUsed,
-          htmlSnippet,
+          headers: buildAjaxHeaders(cookieHeader, SSW_TRACKING_BASE_URL),
         },
-      } satisfies SswTrackingResult;
+      );
+
+      if (registerResponse.status >= 200 && registerResponse.status < 300) {
+        const registerHtml = String(registerResponse.data || '');
+        const registeredResult = buildResultFromHtml(
+          registerHtml,
+          SSW_REGISTER_URL,
+          normalizedInvoiceNumber,
+        );
+
+        if (registeredResult) {
+          return registeredResult;
+        }
+
+        if (looksLikeSelectionList(registerHtml)) {
+          const selectionCandidates = extractSelectionCandidates(registerHtml);
+
+          for (const candidate of selectionCandidates) {
+            const selectionPayloads = [
+              new URLSearchParams({ id: candidate }),
+              new URLSearchParams({ documento: candidate }),
+              new URLSearchParams({ id: candidate, documento: candidate }),
+            ];
+
+            for (const selectionPayload of selectionPayloads) {
+              const selectionResponse = await axios.post<string>(
+                SSW_SELECT_URL,
+                selectionPayload.toString(),
+                {
+                  responseType: 'text',
+                  validateStatus: () => true,
+                  headers: buildAjaxHeaders(cookieHeader, SSW_TRACKING_BASE_URL),
+                },
+              );
+
+              if (
+                selectionResponse.status < 200 ||
+                selectionResponse.status >= 300
+              ) {
+                continue;
+              }
+
+              const selectedResult = buildResultFromHtml(
+                String(selectionResponse.data || ''),
+                SSW_SELECT_URL,
+                normalizedInvoiceNumber,
+              );
+
+              if (selectedResult) {
+                return selectedResult;
+              }
+            }
+          }
+        }
+      }
+
+      const detailResponse = await axios.get<string>(SSW_DETAIL_URL, {
+        responseType: 'text',
+        validateStatus: () => true,
+        headers: {
+          Accept: 'text/html',
+          Referer: SSW_TRACKING_BASE_URL,
+          Cookie: cookieHeader,
+          'User-Agent': 'Mozilla/5.0 Avantracking/1.0',
+        },
+      });
+
+      if (detailResponse.status < 200 || detailResponse.status >= 300) {
+        return null;
+      }
+
+      return buildResultFromHtml(
+        String(detailResponse.data || ''),
+        SSW_DETAIL_URL,
+        normalizedInvoiceNumber,
+      );
     } catch (error) {
       console.error('Erro ao consultar SSW:', error);
       return null;
