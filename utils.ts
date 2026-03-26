@@ -43,10 +43,13 @@ export const normalizeExcludedPlatformFreight = (
   }
 
   if (
+    normalized.includes("correios") ||
     normalized.includes("sedex") ||
-    normalized.includes("correios pac") ||
     normalized === "pac" ||
-    normalized.includes(" pac ")
+    normalized.startsWith("pac ") ||
+    normalized.endsWith(" pac") ||
+    normalized.includes(" pac ") ||
+    normalized.includes("pac tray")
   ) {
     return "Correios";
   }

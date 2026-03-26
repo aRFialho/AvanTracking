@@ -77,10 +77,13 @@ export const UploadModal: React.FC<UploadModalProps> = ({ onUpload }) => {
     }
 
     if (
+      type.includes("correios") ||
       type.includes("sedex") ||
-      type.includes("correios pac") ||
       type === "pac" ||
-      type.includes(" pac ")
+      type.startsWith("pac ") ||
+      type.endsWith(" pac") ||
+      type.includes(" pac ") ||
+      type.includes("pac tray")
     ) {
       return "Correios";
     }

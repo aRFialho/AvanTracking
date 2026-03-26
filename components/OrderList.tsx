@@ -28,6 +28,7 @@ import {
   normalizeCarrierName,
   isOrderOnRoute,
   toText,
+  normalizeTrackingHistory,
   parseOptionalDate,
   formatDateOrDash,
   formatCarrierForecast,
@@ -365,6 +366,112 @@ export const OrderList: React.FC<OrderListProps> = ({
     }
   };
 
+  const getOrderStatusLabel = (order: Order) => {
+    if (
+      order.isDelayed &&
+      order.status !== OrderStatus.DELIVERED &&
+      order.status !== OrderStatus.CHANNEL_LOGISTICS
+    ) {
+      return "Atrasado";
+    }
+
+    return STATUS_LABELS[order.status] || order.status;
+  };
+
+  const getLatestMovementLabel = (order: Order) => {
+    const trackingHistory = normalizeTrackingHistory(order.trackingHistory);
+
+    if (trackingHistory.length === 0) {
+      if (!order.lastUpdate) {
+        return "-";
+      }
+
+      return `${new Date(order.lastUpdate).toLocaleDateString("pt-BR")} ${new Date(
+        order.lastUpdate,
+      ).toLocaleTimeString("pt-BR", {
+        hour: "2-digit",
+        minute: "2-digit",
+      })}`;
+    }
+
+    const latestEvent = [...trackingHistory].sort(
+      (left, right) =>
+        new Date(right.date).getTime() - new Date(left.date).getTime(),
+    )[0];
+
+    const eventDate = parseOptionalDate(latestEvent.date);
+    const eventDateLabel = eventDate
+      ? `${eventDate.toLocaleDateString("pt-BR")} ${eventDate.toLocaleTimeString(
+          "pt-BR",
+          {
+            hour: "2-digit",
+            minute: "2-digit",
+          },
+        )}`
+      : "-";
+
+    return [
+      eventDateLabel,
+      toText(latestEvent.status),
+      toText(latestEvent.description),
+    ]
+      .filter(Boolean)
+      .join(" - ");
+  };
+
+  const handleExportReport = () => {
+    if (filteredOrders.length === 0) {
+      alert("Nao ha pedidos para exportar com os filtros atuais.");
+      return;
+    }
+
+    const escapeCsvValue = (value: unknown) =>
+      `"${toText(value).replace(/"/g, '""')}"`;
+
+    const headers = [
+      "ID / Pedido",
+      "Nota Fiscal",
+      "Emissao",
+      "Marketplace",
+      "Transportadora",
+      "Prev. Entrega",
+      "Previsao Transportadora",
+      "Ultima Movimentacao",
+      "Status",
+    ];
+
+    const rows = filteredOrders.map((order) => [
+      `${order.id} / ${order.orderNumber}`,
+      (order as any).invoiceNumber || "-",
+      formatDateOrDash(order.shippingDate),
+      order.salesChannel,
+      normalizeCarrierName(order.freightType),
+      formatDateOrDash(order.estimatedDeliveryDate),
+      formatCarrierForecast(order.carrierEstimatedDeliveryDate),
+      getLatestMovementLabel(order),
+      getOrderStatusLabel(order),
+    ]);
+
+    const csvContent = [
+      headers.map(escapeCsvValue).join(";"),
+      ...rows.map((row) => row.map(escapeCsvValue).join(";")),
+    ].join("\n");
+
+    const blob = new Blob([`\uFEFF${csvContent}`], {
+      type: "text/csv;charset=utf-8;",
+    });
+    const fileUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const today = new Date().toISOString().slice(0, 10);
+
+    link.href = fileUrl;
+    link.download = `relatorio-pedidos-${today}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(fileUrl);
+  };
+
   const isSyncRunning = isSyncing || syncJob?.status === "running";
   const isTrayJobRunning = traySyncJob?.status === "running";
   const isTrayAvailable = Boolean(trayIntegrationStatus?.authorized);
@@ -664,6 +771,14 @@ export const OrderList: React.FC<OrderListProps> = ({
 
       <div className="flex justify-end">
         <div className="w-full flex flex-col gap-3 sm:max-w-xl sm:flex-row sm:justify-end">
+          <button
+            onClick={handleExportReport}
+            className="flex items-center justify-center gap-2 px-4 py-2 bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-700 dark:text-white rounded-lg hover:bg-slate-50 dark:hover:bg-white/10 transition-colors font-medium"
+          >
+            <Download className="w-4 h-4" />
+            Exportar Relatorio
+          </button>
+
           {onStartTraySync && !isNoMovementView && isTrayAvailable && (
             <button
               onClick={() => setIsTraySyncModalOpen(true)}
