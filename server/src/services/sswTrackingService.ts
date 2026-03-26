@@ -1,6 +1,8 @@
+import axios from 'axios';
 import { OrderStatus } from '@prisma/client';
 
 const SSW_TRACKING_BASE_URL = 'https://ssw.inf.br/app/tracking';
+const SSW_DETAIL_URL = 'https://ssw.inf.br/2/SSWDetalhado';
 const SSW_MIN_INTERVAL_MS = 1200;
 
 type SswTrackingEvent = {
@@ -43,6 +45,74 @@ const stripHtml = (html: string) =>
     .split('\n')
     .map((line) => line.trim())
     .filter(Boolean);
+
+const buildCookieHeader = (setCookieHeaders: string[] | undefined) => {
+  if (!Array.isArray(setCookieHeaders) || setCookieHeaders.length === 0) {
+    return '';
+  }
+
+  return setCookieHeaders
+    .map((cookie) => cookie.split(';')[0]?.trim())
+    .filter(Boolean)
+    .join('; ');
+};
+
+const extractHiddenInputValue = (html: string, inputName: string) => {
+  const patterns = [
+    new RegExp(
+      `<input[^>]*name=["']${inputName}["'][^>]*value=["']([^"']+)["'][^>]*>`,
+      'i',
+    ),
+    new RegExp(
+      `<input[^>]*value=["']([^"']+)["'][^>]*name=["']${inputName}["'][^>]*>`,
+      'i',
+    ),
+  ];
+
+  for (const pattern of patterns) {
+    const match = html.match(pattern);
+    if (match?.[1]) {
+      return decodeHtmlEntities(match[1].trim());
+    }
+  }
+
+  return null;
+};
+
+const resolveDetailUrlCandidates = (html: string) => {
+  const candidates = new Set<string>();
+  const normalizedHtml = String(html || '');
+  const directMatches = normalizedHtml.matchAll(
+    /https:\/\/ssw\.inf\.br\/2\/SSWDetalhado[^\s"'<>)]*/gi,
+  );
+
+  for (const match of directMatches) {
+    if (match[0]) {
+      candidates.add(decodeHtmlEntities(match[0]));
+    }
+  }
+
+  const relativeMatches = normalizedHtml.matchAll(
+    /\/2\/SSWDetalhado[^\s"'<>)]*/gi,
+  );
+
+  for (const match of relativeMatches) {
+    if (match[0]) {
+      candidates.add(`https://ssw.inf.br${decodeHtmlEntities(match[0])}`);
+    }
+  }
+
+  const id = extractHiddenInputValue(normalizedHtml, 'id');
+  const md = extractHiddenInputValue(normalizedHtml, 'md');
+  if (id && md) {
+    candidates.add(
+      `${SSW_DETAIL_URL}?id=${encodeURIComponent(id)}&md=${encodeURIComponent(md)}`,
+    );
+  }
+
+  candidates.add(SSW_DETAIL_URL);
+  return Array.from(candidates);
+};
 
 const parseCarrierForecastFromText = (text: string) => {
   const match = text.match(
@@ -152,20 +222,71 @@ class SswTrackingService {
     try {
       await this.throttle();
 
-      const response = await fetch(trackingUrl, {
+      const sessionResponse = await axios.get<string>(trackingUrl, {
+        maxRedirects: 5,
+        responseType: 'text',
+        validateStatus: () => true,
         headers: {
           Accept: 'text/html',
           'User-Agent': 'Mozilla/5.0 Avantracking/1.0',
         },
       });
 
-      if (!response.ok) {
+      if (sessionResponse.status < 200 || sessionResponse.status >= 300) {
         return null;
       }
 
-      const html = await response.text();
-      const htmlSnippet = html.slice(0, 5000);
-      const lines = stripHtml(htmlSnippet);
+      const cookieHeader = buildCookieHeader(sessionResponse.headers['set-cookie']);
+
+      if (!cookieHeader) {
+        return null;
+      }
+
+      const detailUrlCandidates = resolveDetailUrlCandidates(
+        String(sessionResponse.data || ''),
+      );
+
+      let detailHtml = '';
+      let detailUrlUsed = SSW_DETAIL_URL;
+
+      for (const detailUrl of detailUrlCandidates) {
+        const detailResponse = await axios.get<string>(detailUrl, {
+          responseType: 'text',
+          validateStatus: () => true,
+          headers: {
+            Accept: 'text/html',
+            Referer: trackingUrl,
+            Cookie: cookieHeader,
+            'User-Agent': 'Mozilla/5.0 Avantracking/1.0',
+          },
+        });
+
+        if (detailResponse.status < 200 || detailResponse.status >= 300) {
+          continue;
+        }
+
+        const candidateHtml = String(detailResponse.data || '');
+        const candidateText = stripHtml(candidateHtml).join(' | ');
+
+        if (
+          candidateText &&
+          candidateText.length >= 20 &&
+          !/cloudflare|forbidden|login|acesso negado|erro interno/i.test(
+            candidateText,
+          )
+        ) {
+          detailHtml = candidateHtml;
+          detailUrlUsed = detailUrl;
+          break;
+        }
+      }
+
+      if (!detailHtml) {
+        return null;
+      }
+
+      const htmlSnippet = detailHtml.slice(0, 12000);
+      const lines = stripHtml(detailHtml);
       const text = lines.join(' | ');
 
       if (
@@ -205,7 +326,7 @@ class SswTrackingService {
           },
         ],
         rawPayload: {
-          trackingUrl,
+          trackingUrl: detailUrlUsed,
           htmlSnippet,
         },
       } satisfies SswTrackingResult;
