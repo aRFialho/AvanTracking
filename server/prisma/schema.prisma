@@ -39,6 +39,7 @@ model User {
 
     orders       Order[]           @relation("UserOrders")
     accessTokens UserAccessToken[]
+    releaseNotes ReleaseNote[]
 }
 
 model UserAccessToken {
@@ -67,6 +68,23 @@ model Company {
     users       User[]
     orders      Order[]
     trayAuth    TrayAuth?
+}
+
+model ReleaseNote {
+    id             String   @id @default(uuid())
+    version        String
+    title          String
+    summary        String
+    newFeatures    String[] @default([])
+    adjustments    String[] @default([])
+    htmlContent    String
+    recipientCount Int      @default(0)
+    createdAt      DateTime @default(now())
+
+    sentByUserId String?
+    sentByUser   User?   @relation(fields: [sentByUserId], references: [id])
+
+    @@index([createdAt])
 }
 
 model Carrier {

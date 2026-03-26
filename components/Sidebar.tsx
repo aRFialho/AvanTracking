@@ -20,6 +20,7 @@ import {
   RefreshCcw,
   AlertTriangle,
   Timer,
+  Sparkles,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { LightningStorm } from "./LightningStorm";
@@ -185,6 +186,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <NavItem view="orders" icon={Package} label="Pedidos" />
         <NavItem view="no-movement" icon={Timer} label="Sem Movimentação" />
         <NavItem view="upload" icon={UploadCloud} label="Importar CSV" />
+        <NavItem
+          view="latest-updates"
+          icon={Sparkles}
+          label="Últimas Atualizações"
+        />
 
         <>
           <div className="my-4 border-t border-slate-800 dark:border-white/10 mx-2"></div>

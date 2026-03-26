@@ -19,6 +19,7 @@ import {
   Truck,
   ShoppingBag,
   Eye,
+  ExternalLink,
   Loader2,
   RefreshCw,
   AlertTriangle,
@@ -34,6 +35,7 @@ import {
   formatCarrierForecast,
 } from "../utils";
 import { fetchWithAuth } from "../utils/authFetch";
+import { LOGO_URL } from "../constants";
 
 const STATUS_LABELS: Record<string, string> = {
   [OrderStatus.PENDING]: "Pendente",
@@ -425,51 +427,316 @@ export const OrderList: React.FC<OrderListProps> = ({
       return;
     }
 
-    const escapeCsvValue = (value: unknown) =>
-      `"${toText(value).replace(/"/g, '""')}"`;
+    const escapeHtml = (value: unknown) =>
+      toText(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
 
-    const headers = [
-      "ID / Pedido",
-      "Nota Fiscal",
-      "Emissao",
-      "Marketplace",
-      "Transportadora",
-      "Prev. Entrega",
-      "Previsao Transportadora",
-      "Ultima Movimentacao",
-      "Status",
-    ];
+    const reportGeneratedAt = new Date();
+    const baseUrl = window.location.origin;
+    const rows = filteredOrders
+      .map((order) => {
+        const trackingUrl = `${baseUrl}/api/orders/${order.id}/open-tracking`;
 
-    const rows = filteredOrders.map((order) => [
-      order.orderNumber,
-      (order as any).invoiceNumber || "-",
-      formatDateOrDash(order.shippingDate),
-      order.salesChannel,
-      normalizeCarrierName(order.freightType),
-      formatDateOrDash(order.estimatedDeliveryDate),
-      formatCarrierForecast(order.carrierEstimatedDeliveryDate),
-      getLatestMovementLabel(order),
-      getOrderStatusLabel(order),
-    ]);
+        return `
+          <tr>
+            <td>${escapeHtml(order.orderNumber)}</td>
+            <td>${escapeHtml((order as any).invoiceNumber || "-")}</td>
+            <td>${escapeHtml(order.trackingCode || "-")}</td>
+            <td>${escapeHtml(formatDateOrDash(order.shippingDate))}</td>
+            <td>${escapeHtml(order.salesChannel)}</td>
+            <td>${escapeHtml(normalizeCarrierName(order.freightType))}</td>
+            <td>${escapeHtml(formatDateOrDash(order.estimatedDeliveryDate))}</td>
+            <td>${escapeHtml(
+              formatCarrierForecast(order.carrierEstimatedDeliveryDate),
+            )}</td>
+            <td>${escapeHtml(getLatestMovementLabel(order))}</td>
+            <td><span class="status-chip">${escapeHtml(
+              getOrderStatusLabel(order),
+            )}</span></td>
+            <td><a href="${escapeHtml(
+              trackingUrl,
+            )}" target="_blank" rel="noopener noreferrer">Abrir rastreio</a></td>
+          </tr>
+        `;
+      })
+      .join("");
 
-    const csvContent = [
-      headers.map(escapeCsvValue).join(";"),
-      ...rows.map((row) => row.map(escapeCsvValue).join(";")),
-    ].join("\n");
+    const htmlContent = `<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Relatorio de Pedidos - Avantracking</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f3f6fb;
+        --card: #ffffff;
+        --text: #172033;
+        --muted: #64748b;
+        --line: #d7dfeb;
+        --line-soft: #e8edf5;
+        --brand: #0f766e;
+        --brand-soft: #dff6f1;
+        --header: #eef4fb;
+      }
 
-    const blob = new Blob([`\uFEFF${csvContent}`], {
-      type: "text/csv;charset=utf-8;",
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Segoe UI", Arial, sans-serif;
+        background: linear-gradient(180deg, #eef3f9 0%, #f8fafc 100%);
+        color: var(--text);
+      }
+
+      .page {
+        padding: 32px;
+      }
+
+      .report-card {
+        max-width: 1600px;
+        margin: 0 auto;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 22px;
+        box-shadow: 0 18px 60px rgba(15, 23, 42, 0.08);
+        overflow: hidden;
+      }
+
+      .report-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 24px;
+        padding: 28px 32px 24px;
+        border-bottom: 1px solid var(--line-soft);
+        background: linear-gradient(135deg, #ffffff 0%, #f4f9ff 100%);
+      }
+
+      .brand {
+        display: flex;
+        align-items: flex-start;
+        gap: 18px;
+        min-width: 0;
+      }
+
+      .brand img {
+        width: 168px;
+        height: auto;
+        object-fit: contain;
+        flex-shrink: 0;
+      }
+
+      .brand-copy {
+        min-width: 0;
+        padding-top: 6px;
+      }
+
+      h1 {
+        margin: 0 0 6px;
+        font-size: 28px;
+        line-height: 1.15;
+      }
+
+      .subtitle,
+      .generated-at {
+        margin: 0;
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.5;
+      }
+
+      .summary {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 16px;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: #fff;
+        white-space: nowrap;
+      }
+
+      .summary strong {
+        display: block;
+        font-size: 24px;
+      }
+
+      .summary span {
+        display: block;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .table-wrap {
+        padding: 0 24px 24px;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 0;
+        font-size: 13px;
+      }
+
+      thead th {
+        position: sticky;
+        top: 0;
+        padding: 14px 12px;
+        text-align: left;
+        background: var(--header);
+        color: #334155;
+        border-bottom: 1px solid var(--line);
+        border-top: 1px solid var(--line);
+      }
+
+      thead th:first-child {
+        border-left: 1px solid var(--line);
+        border-top-left-radius: 14px;
+      }
+
+      thead th:last-child {
+        border-right: 1px solid var(--line);
+        border-top-right-radius: 14px;
+      }
+
+      tbody td {
+        padding: 12px;
+        border-bottom: 1px solid var(--line-soft);
+        vertical-align: top;
+        color: #1e293b;
+      }
+
+      tbody tr:nth-child(even) td {
+        background: #fbfdff;
+      }
+
+      tbody tr td:first-child {
+        border-left: 1px solid var(--line-soft);
+      }
+
+      tbody tr td:last-child {
+        border-right: 1px solid var(--line-soft);
+      }
+
+      .status-chip {
+        display: inline-flex;
+        align-items: center;
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: var(--brand-soft);
+        color: var(--brand);
+        font-weight: 600;
+      }
+
+      a {
+        color: #0f62fe;
+        text-decoration: none;
+        font-weight: 600;
+      }
+
+      a:hover {
+        text-decoration: underline;
+      }
+
+      @media (max-width: 960px) {
+        .page {
+          padding: 16px;
+        }
+
+        .report-header {
+          flex-direction: column;
+          align-items: stretch;
+        }
+
+        .brand {
+          flex-direction: column;
+        }
+
+        .brand img {
+          width: 148px;
+        }
+
+        .table-wrap {
+          overflow-x: auto;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <div class="report-card">
+        <div class="report-header">
+          <div class="brand">
+            <img src="${escapeHtml(LOGO_URL)}" alt="Avantracking" />
+            <div class="brand-copy">
+              <h1>Relatorio de Pedidos</h1>
+              <p class="subtitle">Exportacao formatada da aba de pedidos com status, previsoes e link direto de rastreio.</p>
+              <p class="generated-at">Gerado em ${escapeHtml(
+                reportGeneratedAt.toLocaleString("pt-BR"),
+              )}</p>
+            </div>
+          </div>
+          <div class="summary">
+            <div>
+              <strong>${escapeHtml(filteredOrders.length)}</strong>
+              <span>Pedidos exportados</span>
+            </div>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID / Pedido</th>
+                <th>Nota Fiscal</th>
+                <th>Codigo de Envio</th>
+                <th>Emissao</th>
+                <th>Marketplace</th>
+                <th>Transportadora</th>
+                <th>Prev. Entrega</th>
+                <th>Previsao Transportadora</th>
+                <th>Ultima Movimentacao</th>
+                <th>Status</th>
+                <th>Abrir rastreio</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>`;
+
+    const blob = new Blob([htmlContent], {
+      type: "text/html;charset=utf-8;",
     });
     const fileUrl = URL.createObjectURL(blob);
     const link = document.createElement("a");
     const today = new Date().toISOString().slice(0, 10);
 
     link.href = fileUrl;
-    link.download = `relatorio-pedidos-${today}.csv`;
+    link.download = `relatorio-pedidos-${today}.html`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(fileUrl);
+  };
+
+  const openTrackingLink = (order: Order) => {
+    window.open(
+      `/api/orders/${order.id}/open-tracking`,
+      "_blank",
+      "noopener,noreferrer",
+    );
   };
 
   const isSyncRunning = isSyncing || syncJob?.status === "running";
@@ -843,6 +1110,9 @@ export const OrderList: React.FC<OrderListProps> = ({
                   Marketplace
                 </th>
                 <th className="px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]">
+                  Código de Envio
+                </th>
+                <th className="px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]">
                   Transportadora
                 </th>
                 <th className="px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]">
@@ -893,6 +1163,9 @@ export const OrderList: React.FC<OrderListProps> = ({
                       </span>
                     </td>
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                      {order.trackingCode || "-"}
+                    </td>
+                    <td className="px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">
                       {normalizeCarrierName(order.freightType)}
                     </td>
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">
@@ -924,19 +1197,28 @@ export const OrderList: React.FC<OrderListProps> = ({
                       />
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <button
-                        onClick={() => setSelectedOrder(order)}
-                        className="text-slate-400 hover:text-accent dark:hover:text-neon-blue p-1.5 rounded-full hover:bg-blue-50 dark:hover:bg-white/5 transition-colors"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </button>
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => openTrackingLink(order)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5 dark:hover:text-white"
+                        >
+                          <ExternalLink className="h-3.5 w-3.5" />
+                          Abrir rastreio
+                        </button>
+                        <button
+                          onClick={() => setSelectedOrder(order)}
+                          className="text-slate-400 hover:text-accent dark:hover:text-neon-blue p-1.5 rounded-full hover:bg-blue-50 dark:hover:bg-white/5 transition-colors"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
               ) : (
                 <tr>
                   <td
-                    colSpan={10}
+                    colSpan={11}
                     className="px-6 py-12 text-center text-slate-400 dark:text-slate-500"
                   >
                     <Search className="w-12 h-12 mx-auto mb-3 opacity-20" />

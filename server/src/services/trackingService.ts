@@ -259,13 +259,16 @@ export class TrackingService {
   private async fetchFromSsw(order: {
     orderNumber: string;
     invoiceNumber: string | null;
+    trackingCode: string | null;
     companyId: string | null;
   }) {
-    const normalizedInvoiceNumber = String(order.invoiceNumber || '')
+    const normalizedTrackingIdentifier = String(
+      order.invoiceNumber || order.trackingCode || '',
+    )
       .replace(/\D/g, '')
       .trim();
 
-    if (!normalizedInvoiceNumber) {
+    if (!normalizedTrackingIdentifier) {
       return null;
     }
 
@@ -276,7 +279,7 @@ export class TrackingService {
     for (const cnpj of sswRequireCnpjs) {
       const result = await sswTrackingService.fetchTrackingByInvoice(
         cnpj,
-        normalizedInvoiceNumber,
+        normalizedTrackingIdentifier,
       );
 
       if (result) {
@@ -434,6 +437,7 @@ export class TrackingService {
       const sswTrackingData = await this.fetchFromSsw({
         orderNumber: order.orderNumber,
         invoiceNumber: order.invoiceNumber,
+        trackingCode: order.trackingCode,
         companyId: order.companyId || companyId || null,
       });
 

@@ -6,6 +6,7 @@ import { UploadModal } from "./components/UploadModal";
 import { AlertsView } from "./components/AlertsView";
 import { DeliveryFailures } from "./components/DeliveryFailures";
 import { AdminPanel } from "./components/AdminPanel";
+import { LatestUpdates } from "./components/LatestUpdates";
 import { Login } from "./components/Login";
 import { Chatbot } from "./components/Chatbot";
 import { CompanySwitcher } from "./components/CompanySwitcher";
@@ -661,6 +662,8 @@ const MainApp: React.FC = () => {
         return <DeliveryFailures orders={orders} />;
       case "admin":
         return <AdminPanel />;
+      case "latest-updates":
+        return <LatestUpdates />;
       default:
         return <Dashboard orders={orders} onChangeView={handleChangeView} />;
     }
@@ -708,6 +711,7 @@ const MainApp: React.FC = () => {
             {currentView === "orders" && "Gerenciamento de Pedidos"}
             {currentView === "no-movement" && "Pedidos Sem Movimentação"}
             {currentView === "upload" && "Importação de Dados"}
+            {currentView === "latest-updates" && "Últimas Atualizações"}
             {currentView === "alerts" && "Monitoramento de Riscos"}
             {currentView === "delivery-failures" && "Falhas na Entrega"}
             {currentView === "admin" &&

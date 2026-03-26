@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { importOrders, getOrders, getOrderById, syncSingleOrder, syncAllOrders, startSyncAllOrders, getSyncAllStatus, clearOrdersDatabase } from '../controllers/orderController';
+import { importOrders, getOrders, getOrderById, syncSingleOrder, syncAllOrders, startSyncAllOrders, getSyncAllStatus, clearOrdersDatabase, openOrderTracking } from '../controllers/orderController';
 
 const router = Router();
 
@@ -11,6 +11,9 @@ router.post('/import', importOrders);
 
 // GET /api/orders - Listar todos os pedidos
 router.get('/', getOrders);
+
+// GET /api/orders/:id/open-tracking - Abrir link direto de rastreio
+router.get('/:id/open-tracking', openOrderTracking);
 
 // GET /api/orders/:id - Detalhes de um pedido
 router.get('/:id', getOrderById);

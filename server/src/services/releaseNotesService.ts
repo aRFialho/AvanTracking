@@ -12,6 +12,14 @@ interface ReleaseNotesEmailInput {
   recipients: BrevoRecipient[];
 }
 
+interface ReleaseNotesTemplateInput {
+  version: string;
+  title: string;
+  summary: string;
+  newFeatures: string[];
+  adjustments: string[];
+}
+
 const escapeHtml = (value: string) =>
   value
     .replace(/&/g, '&amp;')
@@ -34,7 +42,7 @@ const buildListMarkup = (items: string[], emptyLabel: string) => {
   `;
 };
 
-const buildReleaseNotesHtml = (input: Omit<ReleaseNotesEmailInput, 'recipients'>) => `
+export const buildReleaseNotesHtml = (input: ReleaseNotesTemplateInput) => `
   <!DOCTYPE html>
   <html lang="pt-BR">
     <head>
@@ -89,7 +97,7 @@ const buildReleaseNotesHtml = (input: Omit<ReleaseNotesEmailInput, 'recipients'>
   </html>
 `;
 
-const buildReleaseNotesText = (input: Omit<ReleaseNotesEmailInput, 'recipients'>) =>
+export const buildReleaseNotesText = (input: ReleaseNotesTemplateInput) =>
   [
     `${input.title} - versao ${input.version}`,
     '',

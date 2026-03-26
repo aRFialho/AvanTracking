@@ -119,6 +119,9 @@ const shouldExcludeOrderFromPlatform = (order: any) =>
   order.status === OrderStatus.CHANNEL_LOGISTICS ||
   isExcludedPlatformFreight(order.freightType);
 
+const buildSswTrackingUrl = (cnpj: string, identifier: string) =>
+  `https://ssw.inf.br/app/tracking/${cnpj}/${identifier}`;
+
 export const importOrders = async (req: Request, res: Response) => {
   console.log('Importando pedidos em lote...');
 
@@ -215,6 +218,78 @@ export const getOrderById = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Erro ao buscar pedido:', error);
     return res.status(500).json({ error: 'Erro ao buscar pedido' });
+  }
+};
+
+export const openOrderTracking = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    // @ts-ignore
+    const user = req.user;
+
+    if (typeof id !== 'string') {
+      return res.status(400).json({ error: 'ID invalido' });
+    }
+
+    if (!user || !user.companyId) {
+      return res.status(403).json({ error: 'Acesso negado. Usuario sem empresa.' });
+    }
+
+    const order = await prisma.order.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        companyId: true,
+        invoiceNumber: true,
+        trackingCode: true,
+        apiRawPayload: true,
+        freightType: true,
+        status: true,
+      },
+    });
+
+    if (!order || order.companyId !== user.companyId || shouldExcludeOrderFromPlatform(order)) {
+      return res.status(404).json({ error: 'Pedido nao encontrado' });
+    }
+
+    const identifier = String(order.invoiceNumber || order.trackingCode || '')
+      .replace(/\D/g, '')
+      .trim();
+
+    const company = await ((prisma.company as any).findUnique({
+      where: { id: user.companyId },
+      select: {
+        sswRequireCnpjs: true,
+      },
+    }) as Promise<any>);
+
+    const sswRequireCnpjs = Array.isArray(company?.sswRequireCnpjs)
+      ? company.sswRequireCnpjs
+          .map((cnpj: unknown) => String(cnpj || '').replace(/\D/g, '').trim())
+          .filter(Boolean)
+      : [];
+
+    if (identifier && sswRequireCnpjs.length > 0) {
+      for (const cnpj of sswRequireCnpjs) {
+        const trackingUrl = buildSswTrackingUrl(cnpj, identifier);
+        return res.redirect(trackingUrl);
+      }
+    }
+
+    const liveTrackingUrl =
+      safeString((order.apiRawPayload as any)?.logistic_provider?.live_tracking_url) ||
+      safeString((order.apiRawPayload as any)?.tracking_url);
+
+    if (liveTrackingUrl) {
+      return res.redirect(liveTrackingUrl);
+    }
+
+    return res.status(404).json({
+      error: 'Nenhum link direto de rastreio disponivel para este pedido.',
+    });
+  } catch (error) {
+    console.error('Erro ao abrir link de rastreio:', error);
+    return res.status(500).json({ error: 'Erro ao abrir rastreio do pedido' });
   }
 };
 

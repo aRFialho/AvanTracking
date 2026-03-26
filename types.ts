@@ -1,5 +1,5 @@
 
-export type PageView = 'dashboard' | 'orders' | 'upload' | 'alerts' | 'delivery-failures' | 'admin' | 'no-movement';
+export type PageView = 'dashboard' | 'orders' | 'upload' | 'alerts' | 'delivery-failures' | 'admin' | 'no-movement' | 'latest-updates';
 
 export enum OrderStatus {
   PENDING = 'PENDING', // Importado, aguardando info
@@ -109,4 +109,21 @@ export interface Order {
   trackingHistory: TrackingEvent[];
   lastApiSync: Date | null;
   lastUpdate: Date;
+}
+
+export interface ReleaseNoteSummary {
+  id: string;
+  version: string;
+  title: string;
+  summary: string;
+  newFeatures: string[];
+  adjustments: string[];
+  recipientCount: number;
+  createdAt: string;
+  featureCount: number;
+  adjustmentCount: number;
+}
+
+export interface ReleaseNoteDetail extends ReleaseNoteSummary {
+  htmlContent: string;
 }
