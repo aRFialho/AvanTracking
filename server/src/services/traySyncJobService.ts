@@ -30,6 +30,7 @@ const AUTO_TRAY_SYNC_FILTERS: TraySyncFiltersInput = {
     '5- aguardando faturamento',
     'enviado',
     'aguardando envio',
+    'pedido cadastrado',
   ],
 };
 
