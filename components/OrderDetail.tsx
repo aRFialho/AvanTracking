@@ -57,6 +57,14 @@ const formatPhone = (value: string) => {
   return value;
 };
 
+const formatCurrency = (value: number | null | undefined) => {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return "-";
+  }
+
+  return `R$ ${value.toFixed(2)}`;
+};
+
 interface OrderDetailProps {
   order: Order;
   onClose: () => void;
@@ -140,9 +148,39 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({ order, onClose }) => {
                   </p>
                   <p className="text-sm text-slate-700 dark:text-slate-200">
                     <span className="text-slate-500 dark:text-slate-400">
-                      Frete:
+                      Frete pago:
                     </span>{" "}
-                    R$ {order.freightValue?.toFixed(2)}
+                    {formatCurrency(order.freightValue)}
+                  </p>
+                  <p className="text-sm text-slate-700 dark:text-slate-200">
+                    <span className="text-slate-500 dark:text-slate-400">
+                      Frete cotado:
+                    </span>{" "}
+                    {formatCurrency(order.quotedFreightValue)}
+                  </p>
+                  <p className="text-sm text-slate-700 dark:text-slate-200">
+                    <span className="text-slate-500 dark:text-slate-400">
+                      Transportadora cotada:
+                    </span>{" "}
+                    <span className="break-all whitespace-normal">
+                      {order.quotedCarrierName || "-"}
+                    </span>
+                  </p>
+                  <p className="text-sm text-slate-700 dark:text-slate-200">
+                    <span className="text-slate-500 dark:text-slate-400">
+                      Pago = cotado:
+                    </span>{" "}
+                    {order.freightCarrierMatchesQuote === null
+                      ? "-"
+                      : order.freightCarrierMatchesQuote
+                        ? "Sim"
+                        : "Nao"}
+                  </p>
+                  <p className="text-sm text-slate-700 dark:text-slate-200">
+                    <span className="text-slate-500 dark:text-slate-400">
+                      Rastreio:
+                    </span>{" "}
+                    {order.trackingSourceLabel || "-"}
                   </p>
                   <p className="text-sm text-slate-700 dark:text-slate-200">
                     <span className="text-slate-500 dark:text-slate-400">
@@ -155,7 +193,7 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({ order, onClose }) => {
                       NF:
                     </span>{" "}
                     <span className="break-all whitespace-normal">
-                      {(order as any).invoiceNumber || "-"}
+                      {order.invoiceNumber || "-"}
                     </span>
                   </p>
                   <p className="text-sm text-slate-700 dark:text-slate-200">

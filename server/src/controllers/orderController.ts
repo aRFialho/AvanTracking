@@ -110,6 +110,14 @@ const normalizeAlphaNumeric = (value: unknown) =>
     .toUpperCase()
     .trim();
 
+const normalizeComparableText = (value: unknown) =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, ' ')
+    .trim();
+
 const isXmlTrackingKey = (value: unknown) => {
   const normalized = normalizeAlphaNumeric(value);
   if (!normalized) return false;
@@ -137,6 +145,64 @@ const getStoredTrackingUrl = (
   safeString(order.apiRawPayload?.logistic_provider?.live_tracking_url) ||
   safeString(order.apiRawPayload?.tracking_url) ||
   null;
+
+const resolveTrackingSourceLabel = (rawPayload: any) => {
+  const source = safeString(rawPayload?.source)?.toUpperCase();
+  const lookupMode = safeString(rawPayload?.lookupMode)?.toUpperCase();
+
+  if (source === 'SSW') {
+    if (lookupMode === 'TRACKING_CODE') {
+      return 'SSW com codigo envio/NF';
+    }
+
+    if (lookupMode === 'XML_KEY') {
+      return 'SSW com Codigo XML';
+    }
+
+    return 'SSW com NF';
+  }
+
+  if (
+    source === 'INTELIPOST' ||
+    rawPayload?.tracking ||
+    rawPayload?.logistic_provider
+  ) {
+    return 'Intelipost';
+  }
+
+  if (/ssw\.inf\.br/i.test(String(rawPayload?.trackingUrl || ''))) {
+    if (lookupMode === 'TRACKING_CODE') {
+      return 'SSW com codigo envio/NF';
+    }
+    if (lookupMode === 'XML_KEY') {
+      return 'SSW com Codigo XML';
+    }
+    return 'SSW com NF';
+  }
+
+  return null;
+};
+
+const extractQuotedCarrierName = (quotedFreightDetails: any): string | null => {
+  if (!quotedFreightDetails || typeof quotedFreightDetails !== 'object') {
+    return null;
+  }
+
+  return (
+    safeString(quotedFreightDetails.selectedCarrierName) ||
+    safeString(quotedFreightDetails.selectedServiceName) ||
+    safeString(quotedFreightDetails.selectedOption?.carrier_name) ||
+    safeString(quotedFreightDetails.selectedOption?.carrier) ||
+    safeString(quotedFreightDetails.selectedOption?.transportadora) ||
+    safeString(quotedFreightDetails.selectedOption?.shipping_company) ||
+    safeString(quotedFreightDetails.selectedOption?.delivery_method?.name) ||
+    safeString(quotedFreightDetails.selectedOption?.service_name) ||
+    safeString(quotedFreightDetails.selectedOption?.service) ||
+    safeString(quotedFreightDetails.selectedOption?.identifier) ||
+    safeString(quotedFreightDetails.selectedOption?.name) ||
+    null
+  );
+};
 
 const resolveOrderTrackingUrl = (
   order: {
@@ -179,7 +245,10 @@ const resolveVerifiedOrderTrackingUrl = async (
   sswRequireCnpjs: string[] = [],
 ) => {
   const storedTrackingUrl = getStoredTrackingUrl(order);
-  if (storedTrackingUrl) {
+  const trackingSource = safeString(order.apiRawPayload?.source)?.toUpperCase();
+  const storedUrlLooksLikeSsw = /ssw\.inf\.br/i.test(storedTrackingUrl || '');
+
+  if (storedTrackingUrl && trackingSource !== 'SSW' && !storedUrlLooksLikeSsw) {
     return storedTrackingUrl;
   }
 
@@ -209,6 +278,7 @@ const resolveVerifiedOrderTrackingUrl = async (
   }
 
   return (
+    storedTrackingUrl ||
     safeString(order.apiRawPayload?.logistic_provider?.live_tracking_url) ||
     safeString(order.apiRawPayload?.tracking_url) ||
     null
@@ -239,12 +309,21 @@ const formatOrderForResponse = (order: any, sswRequireCnpjs: string[] = []) => {
     resolveCarrierEstimatedDateFromTrackingEvents(order.trackingEvents) ||
     order.carrierEstimatedDeliveryDate ||
     null;
+  const quotedCarrierName = extractQuotedCarrierName(order.quotedFreightDetails);
+  const freightCarrierMatchesQuote =
+    quotedCarrierName && order.freightType
+      ? normalizeComparableText(order.freightType) ===
+        normalizeComparableText(quotedCarrierName)
+      : null;
 
   return {
     ...order,
     orderNumber: String(order.orderNumber),
     status: order.status as OrderStatus,
     carrierEstimatedDeliveryDate,
+    trackingSourceLabel: resolveTrackingSourceLabel(order.apiRawPayload),
+    quotedCarrierName,
+    freightCarrierMatchesQuote,
     trackingHistory: mapTrackingEventsToHistory(order.trackingEvents),
     lastUpdate: getMovementDate(order),
     trackingUrl: resolveOrderTrackingUrl(order, sswRequireCnpjs),

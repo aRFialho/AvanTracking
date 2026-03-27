@@ -20,8 +20,170 @@ interface TrayOrderCompleteResponse {
   Order: any;
 }
 
+type TrayQuoteCandidate = {
+  value: number;
+  carrierName: string | null;
+  serviceName: string | null;
+  estimatedDeliveryDate: string | null;
+  raw: any;
+};
+
 const isTrayParticularSalesChannel = (salesChannel: string | null | undefined) =>
   String(salesChannel || '').trim().toUpperCase() === 'TRAY - PARTICULAR';
+
+const SHIPPING_HINT_PATTERN =
+  /shipping|shipment|shipments|frete|envio|delivery|cotation|cotacao|quotation|transport/i;
+
+const normalizeMoney = (value: unknown) => {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
+  }
+
+  const raw = String(value).trim();
+  const normalized = raw.includes(',')
+    ? raw.replace(/\./g, '').replace(',', '.').replace(/[^\d.-]/g, '')
+    : raw.replace(/[^\d.-]/g, '');
+
+  if (!normalized) {
+    return null;
+  }
+
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const pickFirstString = (values: unknown[]) => {
+  for (const value of values) {
+    const normalized = String(value || '').trim();
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  return null;
+};
+
+const collectTrayQuoteCandidates = (
+  node: any,
+  path = 'root',
+  visited = new WeakSet<object>(),
+): TrayQuoteCandidate[] => {
+  if (!node || typeof node !== 'object') {
+    return [];
+  }
+
+  if (visited.has(node)) {
+    return [];
+  }
+  visited.add(node);
+
+  const candidates: TrayQuoteCandidate[] = [];
+
+  if (Array.isArray(node)) {
+    for (const [index, item] of node.entries()) {
+      candidates.push(
+        ...collectTrayQuoteCandidates(item, `${path}[${index}]`, visited),
+      );
+    }
+    return candidates;
+  }
+
+  const keys = Object.keys(node);
+  const contextHasShippingHint =
+    SHIPPING_HINT_PATTERN.test(path) ||
+    keys.some((key) => SHIPPING_HINT_PATTERN.test(key));
+
+  if (contextHasShippingHint) {
+    const candidateValue =
+      normalizeMoney(node.value) ??
+      normalizeMoney(node.price) ??
+      normalizeMoney(node.cost) ??
+      normalizeMoney(node.freight_value) ??
+      normalizeMoney(node.shipment_value) ??
+      normalizeMoney(node.total) ??
+      normalizeMoney(node.taxe?.value);
+
+    const candidateCarrierName = pickFirstString([
+      node.carrier_name,
+      node.carrier,
+      node.transportadora,
+      node.shipping_company,
+      node.delivery_method?.name,
+      node.name,
+      node.taxe?.name,
+    ]);
+
+    const candidateServiceName = pickFirstString([
+      node.service_name,
+      node.service,
+      node.identifier,
+      node.description,
+      node.name,
+    ]);
+
+    if (candidateValue !== null) {
+      candidates.push({
+        value: candidateValue,
+        carrierName: candidateCarrierName,
+        serviceName: candidateServiceName,
+        estimatedDeliveryDate: pickFirstString([
+          node.estimated_delivery_date,
+          node.delivery_date,
+          node.deadline,
+        ]),
+        raw: node,
+      });
+    }
+  }
+
+  for (const [key, value] of Object.entries(node)) {
+    if (value && typeof value === 'object') {
+      candidates.push(
+        ...collectTrayQuoteCandidates(value, `${path}.${key}`, visited),
+      );
+    }
+  }
+
+  return candidates;
+};
+
+const extractCheapestTrayQuote = (trayOrder: any) => {
+  const candidates = collectTrayQuoteCandidates(trayOrder)
+    .filter((candidate) => candidate.value >= 0)
+    .sort((left, right) => left.value - right.value);
+
+  const cheapest = candidates[0] || null;
+
+  if (!cheapest) {
+    return {
+      quotedFreightValue: null as number | null,
+      quotedFreightDate: null as Date | null,
+      quotedFreightDetails: null as any,
+    };
+  }
+
+  return {
+    quotedFreightValue: cheapest.value,
+    quotedFreightDate: new Date(),
+    quotedFreightDetails: {
+      selectedOption: cheapest.raw,
+      selectedCarrierName: cheapest.carrierName,
+      selectedServiceName: cheapest.serviceName,
+      selectedEstimatedDeliveryDate: cheapest.estimatedDeliveryDate,
+      optionsCount: candidates.length,
+      options: candidates.map((candidate) => ({
+        value: candidate.value,
+        carrierName: candidate.carrierName,
+        serviceName: candidate.serviceName,
+        estimatedDeliveryDate: candidate.estimatedDeliveryDate,
+      })),
+    },
+  };
+};
 
 export class TrayApiService {
   private companyId: string;
@@ -228,6 +390,7 @@ export class TrayApiService {
       trayOrder.estimated_delivery_date !== '0000-00-00'
         ? new Date(trayOrder.estimated_delivery_date)
         : null;
+    const cheapestQuote = extractCheapestTrayQuote(trayOrder);
 
     return {
       orderNumber: String(trayOrder.id),
@@ -242,6 +405,9 @@ export class TrayApiService {
       salesChannel,
       freightType: normalizedChannelFreight || trayOrder.shipment || 'Nao informado',
       freightValue: parseFloat(trayOrder.shipment_value || '0'),
+      quotedFreightValue: cheapestQuote.quotedFreightValue,
+      quotedFreightDate: cheapestQuote.quotedFreightDate,
+      quotedFreightDetails: cheapestQuote.quotedFreightDetails,
       shippingDate:
         trayOrder.shipment_date && trayOrder.shipment_date !== '0000-00-00'
           ? new Date(trayOrder.shipment_date)
@@ -262,6 +428,7 @@ export class TrayApiService {
       carrierEstimatedDeliveryDate: null,
       status: mappedStatus,
       isDelayed: false,
+      apiRawPayload: trayOrder,
       trackingHistory: [
         {
           status: mappedStatus,

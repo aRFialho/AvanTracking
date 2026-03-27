@@ -161,6 +161,9 @@ const MainApp: React.FC = () => {
         carrierForecastFromTracking ??
         parseDate((order as any).carrierEstimatedDeliveryDate) ??
         (order as any).carrierEstimatedDeliveryDate,
+      quotedFreightDate:
+        parseDate((order as any).quotedFreightDate) ??
+        (order as any).quotedFreightDate,
       lastApiSync: parseDate((order as any).lastApiSync),
       lastUpdate: parseDate((order as any).lastUpdate) ?? new Date(),
       trackingHistory,

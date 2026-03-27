@@ -460,16 +460,20 @@ const buildEmailHtml = (
           <td>
             <div style="background:#ffffff;border-radius:24px;overflow:hidden;border:1px solid #dbeafe;box-shadow:0 24px 70px rgba(15,23,42,0.35);">
               <div style="padding:28px 32px 18px;background:linear-gradient(135deg,#0f172a 0%,#1d4ed8 100%);">
-                <img src="${APP_LOGO_URL}" alt="Avantracking" style="height:52px;display:block;max-width:220px;" />
-                <p style="margin:18px 0 0;font-size:12px;letter-spacing:2px;text-transform:uppercase;color:#bfdbfe;">
-                  Relatorio ${metadata.trigger === 'automatic' ? 'automatico' : 'manual'} de sincronizacao
-                </p>
-                <h1 style="margin:10px 0 0;font-size:30px;line-height:1.15;color:#ffffff;">
-                  ${escapeHtml(metadata.companyName)}
-                </h1>
-                <p style="margin:12px 0 0;font-size:14px;line-height:1.7;color:#dbeafe;">
-                  Sincronizacao finalizada em ${escapeHtml(metadata.finishedAt)} com ${payload.success} sucesso(s) e ${payload.failed} falha(s).
-                </p>
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:18px;">
+                  <div style="flex:1;min-width:0;">
+                    <p style="margin:0;font-size:12px;letter-spacing:2px;text-transform:uppercase;color:#bfdbfe;">
+                      Relatorio ${metadata.trigger === 'automatic' ? 'automatico' : 'manual'} de sincronizacao
+                    </p>
+                    <h1 style="margin:10px 0 0;font-size:30px;line-height:1.15;color:#ffffff;">
+                      ${escapeHtml(metadata.companyName)}
+                    </h1>
+                    <p style="margin:12px 0 0;font-size:14px;line-height:1.7;color:#dbeafe;">
+                      Sincronizacao finalizada em ${escapeHtml(metadata.finishedAt)} com ${payload.success} sucesso(s) e ${payload.failed} falha(s).
+                    </p>
+                  </div>
+                  <img src="${APP_LOGO_URL}" alt="Avantracking" style="height:36px;display:block;max-width:132px;flex-shrink:0;object-fit:contain;" />
+                </div>
               </div>
               <div style="padding:28px 32px;">
                 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;">
@@ -844,16 +848,20 @@ const buildTraySyncEmailHtml = (
           <td>
             <div style="background:#ffffff;border-radius:24px;overflow:hidden;border:1px solid #dbeafe;box-shadow:0 24px 70px rgba(15,23,42,0.35);">
               <div style="padding:28px 32px 18px;background:linear-gradient(135deg,#0f172a 0%,#1d4ed8 100%);">
-                <img src="${APP_LOGO_URL}" alt="Avantracking" style="height:52px;display:block;max-width:220px;" />
-                <p style="margin:18px 0 0;font-size:12px;letter-spacing:2px;text-transform:uppercase;color:#bfdbfe;">
-                  Relatorio ${metadata.trigger === 'automatic' ? 'automatico' : 'manual'} de pedidos Tray
-                </p>
-                <h1 style="margin:10px 0 0;font-size:30px;line-height:1.15;color:#ffffff;">
-                  ${escapeHtml(metadata.companyName)}
-                </h1>
-                <p style="margin:12px 0 0;font-size:14px;line-height:1.7;color:#dbeafe;">
-                  Janela desde ${escapeHtml(payload.modified)}. Incluidos: ${payload.created}. Atualizados: ${payload.updated}. Ignorados: ${payload.skipped}.
-                </p>
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:18px;">
+                  <div style="flex:1;min-width:0;">
+                    <p style="margin:0;font-size:12px;letter-spacing:2px;text-transform:uppercase;color:#bfdbfe;">
+                      Relatorio ${metadata.trigger === 'automatic' ? 'automatico' : 'manual'} de pedidos Tray
+                    </p>
+                    <h1 style="margin:10px 0 0;font-size:30px;line-height:1.15;color:#ffffff;">
+                      ${escapeHtml(metadata.companyName)}
+                    </h1>
+                    <p style="margin:12px 0 0;font-size:14px;line-height:1.7;color:#dbeafe;">
+                      Janela desde ${escapeHtml(payload.modified)}. Incluidos: ${payload.created}. Atualizados: ${payload.updated}. Ignorados: ${payload.skipped}.
+                    </p>
+                  </div>
+                  <img src="${APP_LOGO_URL}" alt="Avantracking" style="height:36px;display:block;max-width:132px;flex-shrink:0;object-fit:contain;" />
+                </div>
               </div>
               <div style="padding:28px 32px;">
                 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;">

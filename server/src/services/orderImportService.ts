@@ -102,6 +102,12 @@ const buildOrderData = (orderData: any, status: OrderStatus) => ({
   salesChannel: safeString(orderData.salesChannel) || 'Nao identificado',
   freightType: safeString(orderData.freightType) || 'Aguardando',
   freightValue: safeNumber(orderData.freightValue),
+  quotedFreightValue:
+    orderData.quotedFreightValue === null || orderData.quotedFreightValue === undefined
+      ? null
+      : safeNumber(orderData.quotedFreightValue),
+  quotedFreightDate: safeDate(orderData.quotedFreightDate),
+  quotedFreightDetails: orderData.quotedFreightDetails ?? null,
   shippingDate: safeDate(orderData.shippingDate),
   address: safeString(orderData.address) || '',
   number: safeString(orderData.number) || '',
@@ -117,6 +123,7 @@ const buildOrderData = (orderData: any, status: OrderStatus) => ({
   carrierEstimatedDeliveryDate: safeDate(orderData.carrierEstimatedDeliveryDate),
   status,
   isDelayed: Boolean(orderData.isDelayed),
+  apiRawPayload: orderData.apiRawPayload ?? null,
 });
 
 const buildTraySyncOrderReport = (

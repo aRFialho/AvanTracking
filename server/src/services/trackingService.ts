@@ -188,6 +188,8 @@ const buildEmptySnapshot = (): SyncReportSnapshot => ({
   failure: 0,
 });
 
+type SswLookupMode = 'INVOICE' | 'TRACKING_CODE' | 'XML_KEY';
+
 export class TrackingService {
   private async resolveCompanyTrackingConfig(companyId?: string | null) {
     if (!companyId) {
@@ -293,13 +295,27 @@ export class TrackingService {
         );
 
         if (result) {
-          return result;
+          return {
+            ...result,
+            lookupMode: normalizedInvoiceNumber
+              ? ('INVOICE' as SswLookupMode)
+              : ('TRACKING_CODE' as SswLookupMode),
+          };
         }
       }
     }
 
     if (hasXmlTrackingKey) {
-      return sswTrackingService.fetchTrackingByKey(normalizedTrackingKey);
+      const result = await sswTrackingService.fetchTrackingByKey(
+        normalizedTrackingKey,
+      );
+
+      if (result) {
+        return {
+          ...result,
+          lookupMode: 'XML_KEY' as SswLookupMode,
+        };
+      }
     }
 
     return null;
@@ -520,8 +536,12 @@ export class TrackingService {
         ? trackingData.freightType || order.freightType || null
         : trackingData.logistic_provider?.name || order.freightType || null;
       const rawPayload = usingSsw
-        ? ({ source: 'SSW', ...trackingData.rawPayload } as any)
-        : (trackingData as any);
+        ? ({
+            source: 'SSW',
+            lookupMode: (trackingData as any).lookupMode || 'INVOICE',
+            ...trackingData.rawPayload,
+          } as any)
+        : ({ source: 'INTELIPOST', ...(trackingData as any) } as any);
 
       await prisma.order.update({
         where: { id: orderId },

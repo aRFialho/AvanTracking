@@ -61,6 +61,14 @@ const TRAY_STATUS_OPTIONS = [
   "aguardando envio",
 ];
 
+const formatCurrency = (value: number | null | undefined) => {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return "-";
+  }
+
+  return `R$ ${value.toFixed(2)}`;
+};
+
 interface OrderListProps {
   orders: Order[];
   initialFilters?: any;
@@ -424,11 +432,13 @@ export const OrderList: React.FC<OrderListProps> = ({
   const getExportRows = () =>
     filteredOrders.map((order) => ({
       orderNumber: order.orderNumber,
-      invoiceNumber: (order as any).invoiceNumber || "-",
+      invoiceNumber: order.invoiceNumber || "-",
       trackingCode: order.trackingCode || "-",
       shippingDate: formatDateOrDash(order.shippingDate),
       salesChannel: order.salesChannel,
       freightType: normalizeCarrierName(order.freightType),
+      freightValue: formatCurrency(order.freightValue),
+      quotedFreightValue: formatCurrency(order.quotedFreightValue),
       estimatedDeliveryDate: formatDateOrDash(order.estimatedDeliveryDate),
       carrierEstimatedDeliveryDate: formatCarrierForecast(
         order.carrierEstimatedDeliveryDate,
@@ -1212,6 +1222,12 @@ export const OrderList: React.FC<OrderListProps> = ({
                   Transportadora
                 </th>
                 <th className="px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]">
+                  Frete Pago
+                </th>
+                <th className="px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]">
+                  Frete Cotado
+                </th>
+                <th className="px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]">
                   Prev. Entrega
                 </th>
                 <th className="px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]">
@@ -1246,7 +1262,7 @@ export const OrderList: React.FC<OrderListProps> = ({
                       </div>
                     </td>
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">
-                      {(order as any).invoiceNumber || "-"}
+                      {order.invoiceNumber || "-"}
                     </td>
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">
                       {order.shippingDate
@@ -1263,6 +1279,20 @@ export const OrderList: React.FC<OrderListProps> = ({
                     </td>
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">
                       {normalizeCarrierName(order.freightType)}
+                    </td>
+                    <td className="px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                      {formatCurrency(order.freightValue)}
+                    </td>
+                    <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
+                      <div className="flex flex-col">
+                        <span className="whitespace-nowrap">
+                          {formatCurrency(order.quotedFreightValue)}
+                        </span>
+                        <span className="text-[10px] text-slate-400 break-all">
+                          {order.quotedCarrierName ||
+                            "Sem cotacao no pedido"}
+                        </span>
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">
                       {formatDateOrDash(order.estimatedDeliveryDate)}
@@ -1314,7 +1344,7 @@ export const OrderList: React.FC<OrderListProps> = ({
               ) : (
                 <tr>
                   <td
-                    colSpan={11}
+                    colSpan={13}
                     className="px-6 py-12 text-center text-slate-400 dark:text-slate-500"
                   >
                     <Search className="w-12 h-12 mx-auto mb-3 opacity-20" />

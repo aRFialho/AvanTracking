@@ -507,11 +507,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
         return;
       }
 
-      current.volume++;
-
       const days = getMeasuredOrderElapsedDays(o, now);
       if (isCarrierQualityMeasurableOrder(o)) {
         current.measurableCount++;
+        current.volume = current.measurableCount;
         if (days >= 0) current.totalTime += days;
       }
 
@@ -531,7 +530,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
       map.set(name, current);
     });
 
-    return Array.from(map.values()).sort((a, b) => b.volume - a.volume);
+    return Array.from(map.values())
+      .filter((carrier) => carrier.measurableCount > 0 || carrier.lateTray > 0)
+      .sort((a, b) => b.volume - a.volume || b.lateTray - a.lateTray);
     // Removed .slice(0, 5) to allow expansion
   }, [filteredOrders]);
 

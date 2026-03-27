@@ -69,8 +69,10 @@ export interface Order {
   // Identification
   id: string; // Internal ID or mapped from 'Pedido'
   orderNumber: string; // 'Pedido'
+  invoiceNumber?: string | null;
   trackingCode?: string; // 'Código de rastreio'
   trackingUrl?: string | null;
+  trackingSourceLabel?: string | null;
   
   // Customer
   customerName: string; // 'Nome do Cliente'
@@ -84,6 +86,11 @@ export interface Order {
   salesChannel: string; // 'Canal de venda'
   freightType: string; // 'Frete tipo' (Transportadora) - Updated by API
   freightValue: number; // 'Frete valor'
+  quotedFreightValue?: number | null;
+  quotedFreightDate?: Date | string | null;
+  quotedFreightDetails?: any;
+  quotedCarrierName?: string | null;
+  freightCarrierMatchesQuote?: boolean | null;
   shippingDate: Date; // 'Envio data'
   
   // Address
