@@ -190,6 +190,17 @@ const buildEmptySnapshot = (): SyncReportSnapshot => ({
 
 type SswLookupMode = 'INVOICE' | 'TRACKING_CODE' | 'XML_KEY';
 
+const isXmlSearchIdentifier = (value: string) => {
+  const normalized = String(value || '')
+    .replace(/[^A-Za-z0-9]/g, '')
+    .toUpperCase()
+    .trim();
+
+  if (!normalized) return false;
+  if (/^\d{44}$/.test(normalized)) return true;
+  return normalized.length >= 20 && /[A-Z]/.test(normalized) && /\d/.test(normalized);
+};
+
 export class TrackingService {
   private async resolveCompanyTrackingConfig(companyId?: string | null) {
     if (!companyId) {
@@ -316,6 +327,66 @@ export class TrackingService {
           lookupMode: 'XML_KEY' as SswLookupMode,
         };
       }
+    }
+
+    return null;
+  }
+
+  async searchExternalIdentifier(identifier: string, companyId?: string | null) {
+    const rawIdentifier = String(identifier || '').trim();
+
+    if (!rawIdentifier) {
+      return null;
+    }
+
+    const normalizedDigits = rawIdentifier.replace(/\D/g, '').trim();
+    const looksLikeXml = isXmlSearchIdentifier(rawIdentifier);
+
+    if (looksLikeXml) {
+      const sswResult = await this.fetchFromSsw({
+        orderNumber: rawIdentifier,
+        invoiceNumber: null,
+        trackingCode: rawIdentifier,
+        companyId: companyId || null,
+      });
+
+      if (sswResult) {
+        return {
+          source: 'SSW' as const,
+          identifier: rawIdentifier,
+          result: sswResult,
+        };
+      }
+    }
+
+    if (normalizedDigits) {
+      const sswResult = await this.fetchFromSsw({
+        orderNumber: rawIdentifier,
+        invoiceNumber: normalizedDigits,
+        trackingCode: normalizedDigits,
+        companyId: companyId || null,
+      });
+
+      if (sswResult) {
+        return {
+          source: 'SSW' as const,
+          identifier: rawIdentifier,
+          result: sswResult,
+        };
+      }
+    }
+
+    const intelipostResult = await this.fetchFromIntelipost(
+      rawIdentifier,
+      companyId,
+    );
+
+    if (intelipostResult) {
+      return {
+        source: 'INTELIPOST' as const,
+        identifier: rawIdentifier,
+        result: intelipostResult,
+      };
     }
 
     return null;

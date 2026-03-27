@@ -2,7 +2,12 @@ import React, { useState, useMemo } from "react";
 import { Order, OrderStatus } from "../types";
 import { OrderDetail } from "./OrderDetail";
 import { AlertTriangle, AlertOctagon, CheckCircle, Search } from "lucide-react";
-import { normalizeCarrierName, toText } from "../utils";
+import {
+  getLatestDeliveryFailureEvent,
+  isOrderWithDeliveryFailure,
+  normalizeCarrierName,
+  toText,
+} from "../utils";
 
 interface DeliveryFailuresProps {
   orders: Order[];
@@ -18,17 +23,14 @@ export const DeliveryFailures: React.FC<DeliveryFailuresProps> = ({
   const failureOrders = useMemo(() => {
     return orders
       .filter((o) => {
-        // Check if canceled or already delivered
-        if (o.status === OrderStatus.CANCELED || o.status === OrderStatus.DELIVERED) return false;
+        if (o.status === OrderStatus.CANCELED || o.status === OrderStatus.DELIVERED) {
+          return false;
+        }
 
-        // Check for CLARIFY_DELIVERY_FAIL in tracking history
-        const hasFailure =
-          o.trackingHistory &&
-          o.trackingHistory.some((e) => e.status === "CLARIFY_DELIVERY_FAIL");
+        if (!isOrderWithDeliveryFailure(o)) {
+          return false;
+        }
 
-        if (!hasFailure) return false;
-
-        // Text Search
         if (searchText) {
           const lower = searchText.toLowerCase();
           return (
@@ -122,9 +124,7 @@ export const DeliveryFailures: React.FC<DeliveryFailuresProps> = ({
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-white/5">
                 {failureOrders.map((order) => {
-                  const failEvent = order.trackingHistory.find(
-                    (e) => e.status === "CLARIFY_DELIVERY_FAIL",
-                  );
+                  const failEvent = getLatestDeliveryFailureEvent(order);
                   return (
                     <tr
                       key={order.id}

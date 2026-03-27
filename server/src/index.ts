@@ -17,7 +17,7 @@ import {
   getTraySyncStatus,
 } from './controllers/traySyncController';
 import { trayRateLimiter } from './services/rateLimiter';
-import { quoteOrderFreight, quoteBatchFreight } from './controllers/freightController';
+import { quoteOrderFreight, quoteBatchFreight, saveTrayCheckoutQuoteSnapshot } from './controllers/freightController';
 import { authenticateToken } from './middleware/auth';
 import { traySyncJobService } from './services/traySyncJobService';
 import { syncJobService } from './services/syncJobService';
@@ -191,6 +191,7 @@ app.get('/tray/callback/auth', handleAuthCallback);
 // ✅ ROTAS DE COTAÇÃO DE FRETE (protegidas)
 app.post('/api/freight/quote/:orderId', authenticateToken, quoteOrderFreight);
 app.post('/api/freight/quote-batch', quoteBatchFreight);
+app.post('/api/tray/checkout-quotes', authenticateToken, saveTrayCheckoutQuoteSnapshot);
 
 // ✅ ENDPOINT PARA MONITORAR RATE LIMIT (MOVIDO PARA ANTES DO FALLBACK)
 app.get('/api/tray/rate-limit-stats', (req, res) => {
@@ -243,3 +244,4 @@ void weeklyMovementReportService.initializeSchedule().catch((error) => {
 void monthlyMovementReportService.initializeSchedule().catch((error) => {
   console.error('Erro ao inicializar relatorio mensal:', error);
 });
+

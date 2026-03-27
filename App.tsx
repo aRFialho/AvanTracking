@@ -18,7 +18,6 @@ import {
   TraySyncFilters,
   TrayIntegrationStatus,
 } from "./types";
-import { fetchSingleOrder } from "./services/trackingApi";
 import { Loader2 } from "lucide-react";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
@@ -164,6 +163,12 @@ const MainApp: React.FC = () => {
       quotedFreightDate:
         parseDate((order as any).quotedFreightDate) ??
         (order as any).quotedFreightDate,
+      originalQuotedFreightDate:
+        parseDate((order as any).originalQuotedFreightDate) ??
+        (order as any).originalQuotedFreightDate,
+      recalculatedFreightDate:
+        parseDate((order as any).recalculatedFreightDate) ??
+        (order as any).recalculatedFreightDate,
       lastApiSync: parseDate((order as any).lastApiSync),
       lastUpdate: parseDate((order as any).lastUpdate) ?? new Date(),
       trackingHistory,
@@ -482,15 +487,39 @@ const MainApp: React.FC = () => {
   );
 
   const handleFetchSingleOrder = useCallback(
-    async (orderNumber: string) => {
-      const localOrderIndex = orders.findIndex(
-        (order) => order.orderNumber === orderNumber,
-      );
+    async (identifier: string) => {
+      const rawIdentifier = String(identifier || "").trim();
+      const normalizedDigits = rawIdentifier.replace(/\D/g, "").trim();
+      const normalizedAlphaNumeric = rawIdentifier
+        .replace(/[^A-Za-z0-9]/g, "")
+        .toUpperCase()
+        .trim();
+
+      const localOrder = orders.find((order) => {
+        const orderNumberMatch = order.orderNumber === rawIdentifier;
+        const invoiceMatch =
+          Boolean(normalizedDigits) &&
+          String(order.invoiceNumber || "").replace(/\D/g, "") === normalizedDigits;
+        const trackingDigitsMatch =
+          Boolean(normalizedDigits) &&
+          String(order.trackingCode || "").replace(/\D/g, "") === normalizedDigits;
+        const trackingAlphaNumericMatch =
+          Boolean(normalizedAlphaNumeric) &&
+          String(order.trackingCode || "")
+            .replace(/[^A-Za-z0-9]/g, "")
+            .toUpperCase() === normalizedAlphaNumeric;
+
+        return (
+          orderNumberMatch ||
+          invoiceMatch ||
+          trackingDigitsMatch ||
+          trackingAlphaNumericMatch
+        );
+      });
 
       try {
-        if (localOrderIndex > -1) {
-          const existing = orders[localOrderIndex];
-          const response = await fetchWithAuth(`/api/orders/${existing.id}/sync`, {
+        if (localOrder) {
+          const response = await fetchWithAuth(`/api/orders/${localOrder.id}/sync`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
           });
@@ -506,74 +535,40 @@ const MainApp: React.FC = () => {
           }
 
           setLastSyncTime(new Date());
-          alert(`Pedido ${orderNumber} atualizado com sucesso.`);
+          alert(`Consulta ${rawIdentifier} atualizada com sucesso.`);
           return;
         }
 
-        const companyResponse = await fetchWithAuth("/api/companies/current");
-        const companyData = await companyResponse.json().catch(() => ({}));
-        const intelipostClientId =
-          companyResponse.ok && companyData?.intelipostClientId
-            ? String(companyData.intelipostClientId)
-            : "40115";
+        const response = await fetchWithAuth("/api/orders/search-external", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ identifier: rawIdentifier }),
+        });
 
-        const fetchedData = await fetchSingleOrder(
-          orderNumber,
-          intelipostClientId,
-        );
-        if (!fetchedData) {
-          alert(`Pedido ${orderNumber} não encontrado na Intelipost.`);
+        const data = await response.json().catch(() => ({}));
+
+        if (!response.ok || !data?.order) {
+          throw new Error(
+            data?.error || `Nenhum resultado encontrado para ${rawIdentifier}.`,
+          );
+        }
+
+        if (isExcludedPlatformFreight(data.order.freightType)) {
+          alert(`Consulta ${rawIdentifier} ignorada pelo tipo de frete.`);
           return;
         }
 
-        if (isExcludedPlatformFreight(fetchedData.freightType)) {
-          alert(`Pedido ${orderNumber} ignorado pelo tipo de frete.`);
-          return;
-        }
-
-        let newOrder: Order = {
-          id: fetchedData.orderNumber || orderNumber,
-          orderNumber: fetchedData.orderNumber || orderNumber,
-          customerName: "Cliente Externo",
-          corporateName: "",
-          cpf: "",
-          cnpj: "",
-          phone: "",
-          mobile: "",
-          salesChannel: "Externo",
-          freightType: fetchedData.freightType || "Desconhecido",
-          freightValue: 0,
-          shippingDate: new Date(),
-          address: "",
-          number: "",
-          complement: "",
-          neighborhood: "",
-          city: fetchedData.city || "",
-          state: fetchedData.state || "",
-          zipCode: "",
-          totalValue: 0,
-          recipient: "",
-          maxShippingDeadline: new Date(Date.now() + 86400000 * 7),
-          estimatedDeliveryDate:
-            fetchedData.estimatedDeliveryDate || new Date(),
-          carrierEstimatedDeliveryDate:
-            fetchedData.carrierEstimatedDeliveryDate || null,
-          status: fetchedData.status || OrderStatus.PENDING,
-          isDelayed: false,
-          trackingHistory: fetchedData.trackingHistory || [],
-          lastUpdate: fetchedData.lastUpdate || new Date(),
-          lastApiSync: new Date(),
-        };
-
-        newOrder = normalizeOrderRecord(newOrder);
-        setOrders((previousOrders) => [newOrder, ...previousOrders]);
-        alert(`Pedido ${orderNumber} encontrado e adicionado.`);
+        upsertOrder(data.order as Order);
+        setLastSyncTime(new Date());
+        alert(`Consulta ${rawIdentifier} encontrada e adicionada.`);
       } catch (error) {
         console.error(error);
-        alert("Erro ao consultar API.");
+        alert(
+          error instanceof Error ? error.message : "Erro ao consultar API.",
+        );
       }
     },
-    [normalizeOrderRecord, orders, upsertOrder],
+    [orders, upsertOrder],
   );
 
   const handleOrdersUploaded = async (newOrders: Order[]) => {

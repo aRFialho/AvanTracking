@@ -121,6 +121,13 @@ model Order {
     quotedFreightValue   Float? // Frete cotado pela API
     quotedFreightDate    DateTime? // Data da última cotação
     quotedFreightDetails Json? // Detalhes da cotação (JSON com todas as opções)
+    originalQuotedFreightValue Float? // Cotacao original salva no checkout/gateway
+    originalQuotedFreightDate DateTime? // Data da cotacao original do checkout
+    originalQuotedFreightDetails Json? // Snapshot da cotacao original
+    originalQuotedFreightQuotationId String? // quotation_id da Tray
+    recalculatedFreightValue Float? // Cotacao recalculada depois do pedido
+    recalculatedFreightDate DateTime? // Data do recalculo mais recente
+    recalculatedFreightDetails Json? // Snapshot do recalculo atual
 
     shippingDate DateTime?
 
@@ -173,6 +180,42 @@ model Order {
     @@index([trackingCode])
     @@index([isDelayed])
     @@index([lastApiSync])
+    @@index([originalQuotedFreightQuotationId])
+}
+
+model TrayCheckoutQuote {
+    id String @id @default(uuid())
+
+    companyIdValue String?
+    company Company? @relation(fields: [companyIdValue], references: [id], onDelete: Cascade)
+
+    trayStoreId String?
+    token String?
+    sessionId String?
+    originZipCode String?
+    destinationZipCode String?
+    productsRaw Json?
+    productsHash String?
+
+    quotationId String @unique
+    shippingId String?
+    shipmentType String?
+    serviceCode String?
+    serviceName String?
+    integrator String?
+    quotedValue Float?
+    minPeriod Int?
+    maxPeriod Int?
+    selectedPossible Boolean?
+    snapshotData Json?
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@index([companyIdValue])
+    @@index([trayStoreId])
+    @@index([sessionId])
+    @@index([productsHash])
 }
 
 model TrackingEvent {

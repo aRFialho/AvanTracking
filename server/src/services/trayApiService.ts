@@ -185,6 +185,194 @@ const extractCheapestTrayQuote = (trayOrder: any) => {
   };
 };
 
+type TrayOriginalCheckoutQuote = {
+  originalQuotedFreightValue: number | null;
+  originalQuotedFreightDate: Date | null;
+  originalQuotedFreightDetails: any;
+  originalQuotedFreightQuotationId: string | null;
+};
+
+type TrayOriginalQuoteCandidate = {
+  quotationId: string | null;
+  shippingId: string | null;
+  shipmentType: string | null;
+  serviceCode: string | null;
+  serviceName: string | null;
+  integrator: string | null;
+  estimatedDeliveryDate: string | null;
+  minPeriod: number | null;
+  maxPeriod: number | null;
+  value: number | null;
+  raw: any;
+};
+
+const normalizeInteger = (value: unknown) => {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+
+  const parsed = Number.parseInt(String(value).replace(/[^\d-]/g, ''), 10);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const collectOriginalQuoteCandidates = (
+  node: any,
+  path = 'root',
+  visited = new WeakSet<object>(),
+): TrayOriginalQuoteCandidate[] => {
+  if (!node || typeof node !== 'object') {
+    return [];
+  }
+
+  if (visited.has(node)) {
+    return [];
+  }
+  visited.add(node);
+
+  const candidates: TrayOriginalQuoteCandidate[] = [];
+
+  if (Array.isArray(node)) {
+    for (const [index, item] of node.entries()) {
+      candidates.push(
+        ...collectOriginalQuoteCandidates(item, `${path}[${index}]`, visited),
+      );
+    }
+    return candidates;
+  }
+
+  const keys = Object.keys(node);
+  const contextHasShippingHint =
+    SHIPPING_HINT_PATTERN.test(path) ||
+    keys.some((key) => SHIPPING_HINT_PATTERN.test(key));
+
+  if (contextHasShippingHint) {
+    const quotationId = pickFirstString([
+      node.id_quotation,
+      node.quotation_id,
+    ]);
+    const shippingId = pickFirstString([node.shipping_id, node.id]);
+    const hasStrongReference = Boolean(quotationId || shippingId);
+
+    if (hasStrongReference) {
+      candidates.push({
+        quotationId,
+        shippingId,
+        shipmentType: pickFirstString([
+          node.shipment,
+          node.shipment_type,
+          node.type,
+        ]),
+        serviceCode: pickFirstString([
+          node.identifier,
+          node.service_code,
+          node.shipping_id,
+        ]),
+        serviceName: pickFirstString([
+          node.service_name,
+          node.service,
+          node.name,
+          node.description,
+        ]),
+        integrator: pickFirstString([
+          node.shipment_integrator,
+          node.integrator,
+        ]),
+        estimatedDeliveryDate: pickFirstString([
+          node.estimated_delivery_date,
+          node.delivery_date,
+          node.deadline,
+        ]),
+        minPeriod: normalizeInteger(node.min_period),
+        maxPeriod: normalizeInteger(node.max_period),
+        value:
+          normalizeMoney(node.value) ??
+          normalizeMoney(node.freight_value) ??
+          normalizeMoney(node.shipment_value) ??
+          normalizeMoney(node.taxe?.value),
+        raw: node,
+      });
+    }
+  }
+
+  for (const [key, value] of Object.entries(node)) {
+    if (value && typeof value === 'object') {
+      candidates.push(
+        ...collectOriginalQuoteCandidates(value, `${path}.${key}`, visited),
+      );
+    }
+  }
+
+  return candidates;
+};
+
+const extractOriginalCheckoutQuote = (
+  trayOrder: any,
+): TrayOriginalCheckoutQuote => {
+  const orderQuotationId = pickFirstString([
+    trayOrder?.id_quotation,
+    trayOrder?.quotation_id,
+  ]);
+  const orderShippingId = pickFirstString([
+    trayOrder?.shipping_id,
+    trayOrder?.id_shipping,
+  ]);
+
+  const candidates = collectOriginalQuoteCandidates(trayOrder);
+  const selectedCandidate =
+    candidates.find(
+      (candidate) =>
+        orderQuotationId &&
+        candidate.quotationId &&
+        candidate.quotationId === orderQuotationId,
+    ) ||
+    candidates.find(
+      (candidate) =>
+        orderShippingId &&
+        candidate.shippingId &&
+        candidate.shippingId === orderShippingId,
+    ) ||
+    candidates.find((candidate) => candidate.quotationId) ||
+    null;
+
+  if (!selectedCandidate) {
+    return {
+      originalQuotedFreightValue: null,
+      originalQuotedFreightDate: null,
+      originalQuotedFreightDetails: orderQuotationId
+        ? {
+            quotationId: orderQuotationId,
+            shippingId: orderShippingId,
+            shipment: pickFirstString([trayOrder?.shipment]),
+            shipmentIntegrator: pickFirstString([trayOrder?.shipment_integrator]),
+            deliveryTime: pickFirstString([trayOrder?.delivery_time]),
+            source: 'tray_order_reference_only',
+          }
+        : null,
+      originalQuotedFreightQuotationId: orderQuotationId,
+    };
+  }
+
+  return {
+    originalQuotedFreightValue: selectedCandidate.value,
+    originalQuotedFreightDate: new Date(),
+    originalQuotedFreightDetails: {
+      quotationId: selectedCandidate.quotationId,
+      shippingId: selectedCandidate.shippingId,
+      shipmentType: selectedCandidate.shipmentType,
+      serviceCode: selectedCandidate.serviceCode,
+      serviceName: selectedCandidate.serviceName,
+      integrator: selectedCandidate.integrator,
+      estimatedDeliveryDate: selectedCandidate.estimatedDeliveryDate,
+      minPeriod: selectedCandidate.minPeriod,
+      maxPeriod: selectedCandidate.maxPeriod,
+      selectedOption: selectedCandidate.raw,
+      source: 'tray_order_payload',
+    },
+    originalQuotedFreightQuotationId:
+      selectedCandidate.quotationId || orderQuotationId,
+  };
+};
+
 export class TrayApiService {
   private companyId: string;
   private manualToken?: string;
@@ -391,6 +579,7 @@ export class TrayApiService {
         ? new Date(trayOrder.estimated_delivery_date)
         : null;
     const cheapestQuote = extractCheapestTrayQuote(trayOrder);
+    const originalCheckoutQuote = extractOriginalCheckoutQuote(trayOrder);
 
     return {
       orderNumber: String(trayOrder.id),
@@ -405,6 +594,16 @@ export class TrayApiService {
       salesChannel,
       freightType: normalizedChannelFreight || trayOrder.shipment || 'Nao informado',
       freightValue: parseFloat(trayOrder.shipment_value || '0'),
+      originalQuotedFreightValue:
+        originalCheckoutQuote.originalQuotedFreightValue,
+      originalQuotedFreightDate: originalCheckoutQuote.originalQuotedFreightDate,
+      originalQuotedFreightDetails:
+        originalCheckoutQuote.originalQuotedFreightDetails,
+      originalQuotedFreightQuotationId:
+        originalCheckoutQuote.originalQuotedFreightQuotationId,
+      recalculatedFreightValue: null,
+      recalculatedFreightDate: null,
+      recalculatedFreightDetails: null,
       quotedFreightValue: cheapestQuote.quotedFreightValue,
       quotedFreightDate: cheapestQuote.quotedFreightDate,
       quotedFreightDetails: cheapestQuote.quotedFreightDetails,

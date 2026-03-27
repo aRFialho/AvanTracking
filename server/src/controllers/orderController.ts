@@ -5,8 +5,9 @@ import { TrackingService } from '../services/trackingService';
 import { importOrdersForCompany } from '../services/orderImportService';
 import { isExcludedPlatformFreight } from '../utils/orderExclusion';
 import { sswTrackingService } from '../services/sswTrackingService';
+import { syncReportService } from '../services/syncReportService';
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient() as any;
 const trackingService = new TrackingService();
 
 const safeString = (value: any): string | null => {
@@ -134,6 +135,20 @@ const buildSswTrackingUrl = (identifier: string, cnpj?: string | null) =>
     ? `https://ssw.inf.br/app/tracking/${cnpj}/${identifier}`
     : `https://ssw.inf.br/app/tracking/${identifier}`;
 
+const buildIntelipostTrackingUrl = (
+  intelipostClientId: string | null | undefined,
+  orderNumber: string | null | undefined,
+) => {
+  const normalizedClientId = normalizeDigits(intelipostClientId);
+  const normalizedOrderNumber = safeString(orderNumber);
+
+  if (!normalizedClientId || !normalizedOrderNumber) {
+    return null;
+  }
+
+  return `https://status.ondeestameupedido.com/tracking/${normalizedClientId}/${encodeURIComponent(normalizedOrderNumber)}`;
+};
+
 const getStoredTrackingUrl = (
   order: {
     invoiceNumber?: string | null;
@@ -183,34 +198,88 @@ const resolveTrackingSourceLabel = (rawPayload: any) => {
   return null;
 };
 
-const extractQuotedCarrierName = (quotedFreightDetails: any): string | null => {
-  if (!quotedFreightDetails || typeof quotedFreightDetails !== 'object') {
+const extractQuoteCarrierName = (quoteDetails: any): string | null => {
+  if (!quoteDetails || typeof quoteDetails !== 'object') {
     return null;
   }
 
   return (
-    safeString(quotedFreightDetails.selectedCarrierName) ||
-    safeString(quotedFreightDetails.selectedServiceName) ||
-    safeString(quotedFreightDetails.selectedOption?.carrier_name) ||
-    safeString(quotedFreightDetails.selectedOption?.carrier) ||
-    safeString(quotedFreightDetails.selectedOption?.transportadora) ||
-    safeString(quotedFreightDetails.selectedOption?.shipping_company) ||
-    safeString(quotedFreightDetails.selectedOption?.delivery_method?.name) ||
-    safeString(quotedFreightDetails.selectedOption?.service_name) ||
-    safeString(quotedFreightDetails.selectedOption?.service) ||
-    safeString(quotedFreightDetails.selectedOption?.identifier) ||
-    safeString(quotedFreightDetails.selectedOption?.name) ||
+    safeString(quoteDetails.selectedCarrierName) ||
+    safeString(quoteDetails.selectedServiceName) ||
+    safeString(quoteDetails.selectedOption?.carrier_name) ||
+    safeString(quoteDetails.selectedOption?.carrier) ||
+    safeString(quoteDetails.selectedOption?.transportadora) ||
+    safeString(quoteDetails.selectedOption?.shipping_company) ||
+    safeString(quoteDetails.selectedOption?.delivery_method?.name) ||
+    safeString(quoteDetails.selectedOption?.service_name) ||
+    safeString(quoteDetails.selectedOption?.service) ||
+    safeString(quoteDetails.selectedOption?.identifier) ||
+    safeString(quoteDetails.selectedOption?.name) ||
+    safeString(quoteDetails.serviceName) ||
+    safeString(quoteDetails.serviceCode) ||
     null
   );
+};
+
+const extractOrderQuotationId = (order: any) =>
+  safeString(order.originalQuotedFreightQuotationId) ||
+  safeString(order.apiRawPayload?.id_quotation) ||
+  safeString(order.apiRawPayload?.quotation_id) ||
+  null;
+
+const loadCheckoutQuotesMap = async (
+  companyId: string | null | undefined,
+  orders: any[],
+) => {
+  const quotationIds = Array.from(
+    new Set(
+      orders
+        .map((order) => extractOrderQuotationId(order))
+        .filter((value) => Boolean(value)),
+    ),
+  );
+
+  if (!companyId || quotationIds.length === 0) {
+    return new Map();
+  }
+
+  const rows = await (prisma).trayCheckoutQuote.findMany({
+    where: {
+      companyIdValue: companyId,
+      quotationId: { in: quotationIds },
+    },
+  }).catch(() => []);
+
+  return new Map(rows.map((row) => [String(row.quotationId), row]));
+};
+
+const loadCheckoutQuoteForOrder = async (
+  companyId: string | null | undefined,
+  order: any,
+) => {
+  const quotationId = extractOrderQuotationId(order);
+
+  if (!companyId || !quotationId) {
+    return null;
+  }
+
+  return (prisma).trayCheckoutQuote.findFirst({
+    where: {
+      companyIdValue: companyId,
+      quotationId,
+    },
+  }).catch(() => null);
 };
 
 const resolveOrderTrackingUrl = (
   order: {
     invoiceNumber?: string | null;
     trackingCode?: string | null;
+    orderNumber?: string | null;
     apiRawPayload?: any;
   },
   sswRequireCnpjs: string[] = [],
+  intelipostClientId?: string | null,
 ) => {
   const storedTrackingUrl = getStoredTrackingUrl(order);
   if (storedTrackingUrl) {
@@ -233,16 +302,25 @@ const resolveOrderTrackingUrl = (
     return buildSswTrackingUrl(trackingKey);
   }
 
-  return null;
+  const intelipostTrackingUrl =
+    safeString(order.apiRawPayload?.source)?.toUpperCase() === 'INTELIPOST' ||
+    order.apiRawPayload?.tracking ||
+    order.apiRawPayload?.logistic_provider
+      ? buildIntelipostTrackingUrl(intelipostClientId, order.orderNumber)
+      : null;
+
+  return intelipostTrackingUrl;
 };
 
 const resolveVerifiedOrderTrackingUrl = async (
   order: {
     invoiceNumber?: string | null;
     trackingCode?: string | null;
+    orderNumber?: string | null;
     apiRawPayload?: any;
   },
   sswRequireCnpjs: string[] = [],
+  intelipostClientId?: string | null,
 ) => {
   const storedTrackingUrl = getStoredTrackingUrl(order);
   const trackingSource = safeString(order.apiRawPayload?.source)?.toUpperCase();
@@ -277,10 +355,18 @@ const resolveVerifiedOrderTrackingUrl = async (
     }
   }
 
+  const intelipostTrackingUrl =
+    safeString(order.apiRawPayload?.source)?.toUpperCase() === "INTELIPOST" ||
+    order.apiRawPayload?.tracking ||
+    order.apiRawPayload?.logistic_provider
+      ? buildIntelipostTrackingUrl(intelipostClientId, order.orderNumber)
+      : null;
+
   return (
     storedTrackingUrl ||
     safeString(order.apiRawPayload?.logistic_provider?.live_tracking_url) ||
     safeString(order.apiRawPayload?.tracking_url) ||
+    intelipostTrackingUrl ||
     null
   );
 };
@@ -304,16 +390,261 @@ const getCompanySswRequireCnpjs = async (companyId: string | null | undefined) =
     : [];
 };
 
-const formatOrderForResponse = (order: any, sswRequireCnpjs: string[] = []) => {
+const getCompanyIntelipostClientId = async (
+  companyId: string | null | undefined,
+) => {
+  if (!companyId) {
+    return null;
+  }
+
+  const company = await ((prisma.company as any).findUnique({
+    where: { id: companyId },
+    select: {
+      intelipostClientId: true,
+    },
+  }) as Promise<any>);
+
+  return safeString(company?.intelipostClientId);
+};
+
+const mapIntelipostStatusToEnum = (status: string): OrderStatus => {
+  const normalizedStatus = status ? status.toUpperCase() : '';
+
+  if (
+    normalizedStatus.includes('SAIU PARA ENTREGA') ||
+    normalizedStatus.includes('DELIVERY_ATTEMPT') ||
+    normalizedStatus.includes('TO_BE_DELIVERED')
+  ) {
+    return OrderStatus.DELIVERY_ATTEMPT;
+  }
+  if (
+    normalizedStatus.includes('ENTREGUE') ||
+    normalizedStatus.includes('DELIVERED')
+  ) {
+    return OrderStatus.DELIVERED;
+  }
+  if (
+    normalizedStatus.includes('FALHA') ||
+    normalizedStatus.includes('FAILURE') ||
+    normalizedStatus.includes('ROUBO') ||
+    normalizedStatus.includes('AVARIA')
+  ) {
+    return OrderStatus.FAILURE;
+  }
+  if (normalizedStatus.includes('DEVOL') || normalizedStatus.includes('RETURN')) {
+    return OrderStatus.RETURNED;
+  }
+  if (normalizedStatus.includes('CANCEL')) {
+    return OrderStatus.CANCELED;
+  }
+  if (
+    normalizedStatus.includes('SHIPPED') ||
+    normalizedStatus.includes('TRANSIT') ||
+    normalizedStatus.includes('EM TR')
+  ) {
+    return OrderStatus.SHIPPED;
+  }
+  if (
+    normalizedStatus.includes('CRIADO') ||
+    normalizedStatus.includes('CREATED') ||
+    normalizedStatus.includes('NEW')
+  ) {
+    return OrderStatus.CREATED;
+  }
+
+  return OrderStatus.PENDING;
+};
+
+const buildExternalOrderResponse = (
+  identifier: string,
+  source: 'SSW' | 'INTELIPOST',
+  result: any,
+  intelipostClientId?: string | null,
+) => {
+  if (source === 'SSW') {
+    const events = Array.isArray(result.events) ? result.events : [];
+    const orderedEvents = events
+      .slice()
+      .sort((left, right) => right.eventDate.getTime() - left.eventDate.getTime());
+    const latestEvent = orderedEvents[0] || null;
+    const lookupMode = safeString(result.lookupMode) || 'INVOICE';
+
+    return {
+      id: `external-${normalizeAlphaNumeric(identifier) || normalizeDigits(identifier) || Date.now()}` ,
+      orderNumber: String(identifier),
+      invoiceNumber: lookupMode === 'INVOICE' ? normalizeDigits(identifier) : null,
+      trackingCode: lookupMode === 'XML_KEY' ? identifier : null,
+      trackingUrl: safeString(result.rawPayload?.trackingUrl),
+      trackingSourceLabel:
+        lookupMode === 'XML_KEY'
+          ? 'SSW com Codigo XML'
+          : lookupMode === 'TRACKING_CODE'
+            ? 'SSW com codigo envio/NF'
+            : 'SSW com NF',
+      customerName: 'Consulta externa',
+      corporateName: null,
+      cpf: null,
+      cnpj: null,
+      phone: null,
+      mobile: null,
+      salesChannel: 'Externo',
+      freightType: result.freightType || 'SSW',
+      freightValue: 0,
+      quotedFreightValue: null,
+      quotedFreightDate: null,
+      quotedFreightDetails: null,
+      quotedCarrierName: null,
+      freightCarrierMatchesQuote: null,
+      shippingDate: latestEvent?.eventDate || new Date(),
+      address: '',
+      number: '',
+      complement: null,
+      neighborhood: '',
+      city: latestEvent?.city || '',
+      state: latestEvent?.state || '',
+      zipCode: '',
+      totalValue: 0,
+      recipient: null,
+      maxShippingDeadline: null,
+      estimatedDeliveryDate: result.carrierEstimatedDate || null,
+      carrierEstimatedDeliveryDate: result.carrierEstimatedDate || null,
+      status: result.status as OrderStatus,
+      isDelayed: false,
+      trackingHistory: events.map((event: any) => ({
+        status: safeString(event.status) || 'UNKNOWN',
+        description: safeString(event.description) || 'Evento de rastreamento',
+        date: safeDate(event.eventDate) || new Date(),
+        city: safeString(event.city) || '',
+        state: safeString(event.state) || '',
+      })),
+      lastApiSync: new Date(),
+      lastUpdate: latestEvent?.eventDate || new Date(),
+    };
+  }
+
+  const trackingHistory = (result?.tracking?.history || []).map((historyItem: any) => ({
+    status: historyItem.macro_state?.code || 'UNKNOWN',
+    description:
+      historyItem.provider_message ||
+      historyItem.status_label ||
+      'Evento de rastreamento',
+    date: safeDate(historyItem.event_date) || new Date(),
+    city: safeString(result?.end_customer?.address?.city) || '',
+    state: safeString(result?.end_customer?.address?.state) || '',
+  }));
+
+  const latestTrackingEvent =
+    trackingHistory.length > 0
+      ? trackingHistory.reduce((latest: any, current: any) =>
+          new Date(latest.date).getTime() > new Date(current.date).getTime()
+            ? latest
+            : current,
+        )
+      : null;
+
+  const status = mapIntelipostStatusToEnum(
+    [
+      safeString(result?.tracking?.status),
+      safeString(result?.tracking?.status_label),
+      safeString(latestTrackingEvent?.status),
+      safeString(latestTrackingEvent?.description),
+    ]
+      .filter(Boolean)
+      .join(' '),
+  );
+
+  const resolvedOrderNumber = safeString(result?.order?.order_number) || identifier;
+
+  return {
+    id: `external-${normalizeAlphaNumeric(resolvedOrderNumber) || Date.now()}` ,
+    orderNumber: resolvedOrderNumber,
+    invoiceNumber: null,
+    trackingCode: null,
+    trackingUrl: buildIntelipostTrackingUrl(
+      intelipostClientId,
+      resolvedOrderNumber,
+    ),
+    trackingSourceLabel: 'Intelipost',
+    customerName: 'Consulta externa',
+    corporateName: null,
+    cpf: null,
+    cnpj: null,
+    phone: null,
+    mobile: null,
+    salesChannel: 'Externo',
+    freightType: safeString(result?.logistic_provider?.name) || 'Desconhecida',
+    freightValue: 0,
+    quotedFreightValue: null,
+    quotedFreightDate: null,
+    quotedFreightDetails: null,
+    quotedCarrierName: null,
+    freightCarrierMatchesQuote: null,
+    shippingDate: new Date(),
+    address: '',
+    number: '',
+    complement: null,
+    neighborhood: '',
+    city: safeString(result?.end_customer?.address?.city) || '',
+    state: safeString(result?.end_customer?.address?.state) || '',
+    zipCode: '',
+    totalValue: 0,
+    recipient: null,
+    maxShippingDeadline: null,
+    estimatedDeliveryDate: safeDate(result?.tracking?.estimated_delivery_date_lp),
+    carrierEstimatedDeliveryDate: safeDate(result?.tracking?.estimated_delivery_date_lp),
+    status,
+    isDelayed: false,
+    trackingHistory,
+    lastApiSync: new Date(),
+    lastUpdate: safeDate(latestTrackingEvent?.date) || new Date(),
+  };
+};
+
+const formatOrderForResponse = (
+  order: any,
+  sswRequireCnpjs: string[] = [],
+  intelipostClientId?: string | null,
+  checkoutQuote?: any,
+) => {
   const carrierEstimatedDeliveryDate =
     resolveCarrierEstimatedDateFromTrackingEvents(order.trackingEvents) ||
     order.carrierEstimatedDeliveryDate ||
     null;
-  const quotedCarrierName = extractQuotedCarrierName(order.quotedFreightDetails);
-  const freightCarrierMatchesQuote =
-    quotedCarrierName && order.freightType
+  const legacyQuotedValue = order.quotedFreightValue ?? null;
+  const legacyQuotedDate = order.quotedFreightDate ?? null;
+  const legacyQuotedDetails = order.quotedFreightDetails ?? null;
+  const originalQuotedFreightValue =
+    order.originalQuotedFreightValue ??
+    checkoutQuote?.quotedValue ??
+    legacyQuotedValue;
+  const originalQuotedFreightDate =
+    order.originalQuotedFreightDate ??
+    checkoutQuote?.createdAt ??
+    legacyQuotedDate;
+  const originalQuotedFreightDetails =
+    order.originalQuotedFreightDetails ??
+    checkoutQuote?.snapshotData ??
+    legacyQuotedDetails;
+  const originalQuotedFreightQuotationId =
+    extractOrderQuotationId(order) || safeString(checkoutQuote?.quotationId);
+  const recalculatedFreightValue = order.recalculatedFreightValue ?? null;
+  const recalculatedFreightDate = order.recalculatedFreightDate ?? null;
+  const recalculatedFreightDetails = order.recalculatedFreightDetails ?? null;
+  const originalQuotedCarrierName = extractQuoteCarrierName(
+    originalQuotedFreightDetails,
+  );
+  const recalculatedQuotedCarrierName = extractQuoteCarrierName(
+    recalculatedFreightDetails,
+  );
+  const freightCarrierMatchesOriginalQuote =
+    originalQuotedCarrierName && order.freightType
       ? normalizeComparableText(order.freightType) ===
-        normalizeComparableText(quotedCarrierName)
+        normalizeComparableText(originalQuotedCarrierName)
+      : null;
+  const freightCarrierMatchesRecalculatedQuote =
+    recalculatedQuotedCarrierName && order.freightType
+      ? normalizeComparableText(order.freightType) ===
+        normalizeComparableText(recalculatedQuotedCarrierName)
       : null;
 
   return {
@@ -322,11 +653,29 @@ const formatOrderForResponse = (order: any, sswRequireCnpjs: string[] = []) => {
     status: order.status as OrderStatus,
     carrierEstimatedDeliveryDate,
     trackingSourceLabel: resolveTrackingSourceLabel(order.apiRawPayload),
-    quotedCarrierName,
-    freightCarrierMatchesQuote,
+    quotedFreightValue: legacyQuotedValue,
+    quotedFreightDate: legacyQuotedDate,
+    quotedFreightDetails: legacyQuotedDetails,
+    quotedCarrierName: originalQuotedCarrierName,
+    originalQuotedFreightValue,
+    originalQuotedFreightDate,
+    originalQuotedFreightDetails,
+    originalQuotedFreightQuotationId,
+    originalQuotedCarrierName,
+    recalculatedFreightValue,
+    recalculatedFreightDate,
+    recalculatedFreightDetails,
+    recalculatedQuotedCarrierName,
+    freightCarrierMatchesQuote: freightCarrierMatchesOriginalQuote,
+    freightCarrierMatchesOriginalQuote,
+    freightCarrierMatchesRecalculatedQuote,
     trackingHistory: mapTrackingEventsToHistory(order.trackingEvents),
     lastUpdate: getMovementDate(order),
-    trackingUrl: resolveOrderTrackingUrl(order, sswRequireCnpjs),
+    trackingUrl: resolveOrderTrackingUrl(
+      order,
+      sswRequireCnpjs,
+      intelipostClientId,
+    ),
   };
 };
 
@@ -386,11 +735,20 @@ export const getOrders = async (req: Request, res: Response) => {
     });
 
     const sswRequireCnpjs = await getCompanySswRequireCnpjs(user.companyId);
+    const intelipostClientId = await getCompanyIntelipostClientId(user.companyId);
+    const checkoutQuotesMap = await loadCheckoutQuotesMap(user.companyId, orders);
 
     return res.json(
       orders
         .filter((order) => !shouldExcludeOrderFromPlatform(order))
-        .map((order) => formatOrderForResponse(order, sswRequireCnpjs)),
+        .map((order) =>
+          formatOrderForResponse(
+            order,
+            sswRequireCnpjs,
+            intelipostClientId,
+            checkoutQuotesMap.get(extractOrderQuotationId(order) || ''),
+          ),
+        ),
     );
   } catch (error) {
     console.error('Erro ao buscar pedidos:', error);
@@ -431,8 +789,17 @@ export const getOrderById = async (req: Request, res: Response) => {
     }
 
     const sswRequireCnpjs = await getCompanySswRequireCnpjs(order.companyId);
+    const intelipostClientId = await getCompanyIntelipostClientId(order.companyId);
+    const checkoutQuote = await loadCheckoutQuoteForOrder(order.companyId, order);
 
-    return res.json(formatOrderForResponse(order, sswRequireCnpjs));
+    return res.json(
+      formatOrderForResponse(
+        order,
+        sswRequireCnpjs,
+        intelipostClientId,
+        checkoutQuote,
+      ),
+    );
   } catch (error) {
     console.error('Erro ao buscar pedido:', error);
     return res.status(500).json({ error: 'Erro ao buscar pedido' });
@@ -460,6 +827,7 @@ export const openOrderTracking = async (req: Request, res: Response) => {
         companyId: true,
         invoiceNumber: true,
         trackingCode: true,
+        orderNumber: true,
         apiRawPayload: true,
         freightType: true,
         status: true,
@@ -471,9 +839,11 @@ export const openOrderTracking = async (req: Request, res: Response) => {
     }
 
     const sswRequireCnpjs = await getCompanySswRequireCnpjs(user.companyId);
+    const intelipostClientId = await getCompanyIntelipostClientId(user.companyId);
     const trackingUrl = await resolveVerifiedOrderTrackingUrl(
       order,
       sswRequireCnpjs,
+      intelipostClientId,
     );
 
     if (!trackingUrl) {
@@ -493,6 +863,97 @@ export const openOrderTracking = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Erro ao abrir link de rastreio:', error);
     return res.status(500).json({ error: 'Erro ao abrir rastreio do pedido' });
+  }
+};
+
+export const searchExternalOrder = async (req: Request, res: Response) => {
+  try {
+    // @ts-ignore
+    const user = req.user;
+    const identifier = safeString(req.body?.identifier);
+
+    if (!user || !user.companyId) {
+      return res.status(403).json({ error: 'Acesso negado. Usuario sem empresa.' });
+    }
+
+    if (!identifier) {
+      return res.status(400).json({ error: 'Informe pedido, NF ou chave XML.' });
+    }
+
+    const normalizedDigits = normalizeDigits(identifier);
+    const normalizedAlphaNumeric = normalizeAlphaNumeric(identifier);
+
+    const existingOrder = await prisma.order.findFirst({
+      where: {
+        companyId: user.companyId,
+        OR: [
+          { orderNumber: identifier },
+          ...(normalizedDigits ? [{ invoiceNumber: normalizedDigits }] : []),
+          ...(normalizedDigits ? [{ trackingCode: normalizedDigits }] : []),
+          ...(normalizedAlphaNumeric ? [{ trackingCode: normalizedAlphaNumeric }] : []),
+        ],
+      },
+    });
+
+    if (existingOrder && !shouldExcludeOrderFromPlatform(existingOrder)) {
+      const syncResult = await trackingService.syncOrder(existingOrder.id, user.companyId);
+
+      if (!syncResult.success && syncResult.message !== 'Pedido jÃƒÂ¡ finalizado') {
+        return res.status(400).json({
+          error: syncResult.message || 'Nao foi possivel atualizar o pedido local.',
+        });
+      }
+
+      const refreshedOrder = await prisma.order.findUnique({
+        where: { id: existingOrder.id },
+        include: {
+          carrier: true,
+          trackingEvents: {
+            orderBy: { eventDate: 'desc' },
+          },
+        },
+      });
+
+      const sswRequireCnpjs = await getCompanySswRequireCnpjs(user.companyId);
+      const intelipostClientId = await getCompanyIntelipostClientId(user.companyId);
+
+      return res.json({
+        source: 'LOCAL',
+        order: refreshedOrder
+          ? formatOrderForResponse(
+              refreshedOrder,
+              sswRequireCnpjs,
+              intelipostClientId,
+            )
+          : null,
+      });
+    }
+
+    const externalResult = await trackingService.searchExternalIdentifier(
+      identifier,
+      user.companyId,
+    );
+
+    if (!externalResult) {
+      return res.status(404).json({
+        error: 'Nenhum resultado encontrado na SSW ou Intelipost para este identificador.',
+      });
+    }
+
+    const intelipostClientId = await getCompanyIntelipostClientId(user.companyId);
+
+    return res.json({
+      source: externalResult.source,
+      order: buildExternalOrderResponse(
+        identifier,
+        externalResult.source,
+        externalResult.result,
+        intelipostClientId,
+      ),
+    });
+  } catch (error) {
+    console.error('Erro na busca externa:', error);
+    return res.status(500).json({ error: 'Erro ao consultar pedido externamente' });
   }
 };
 
@@ -537,11 +998,22 @@ export const syncSingleOrder = async (req: Request, res: Response) => {
     }
 
     const sswRequireCnpjs = await getCompanySswRequireCnpjs(user.companyId);
+    const intelipostClientId = await getCompanyIntelipostClientId(user.companyId);
+    const checkoutQuote = order
+      ? await loadCheckoutQuoteForOrder(user.companyId, order)
+      : null;
 
     return res.json({
       success: true,
       message: result.message,
-      order: order ? formatOrderForResponse(order, sswRequireCnpjs) : null,
+      order: order
+        ? formatOrderForResponse(
+            order,
+            sswRequireCnpjs,
+            intelipostClientId,
+            checkoutQuote,
+          )
+        : null,
     });
   } catch (error) {
     console.error('Erro ao sincronizar pedido:', error);
@@ -558,14 +1030,30 @@ export const syncAllOrders = async (req: Request, res: Response) => {
       return res.status(403).json({ error: 'Acesso negado. Usuario sem empresa.' });
     }
 
+    const startedAt = new Date().toISOString();
     const results = await trackingService.syncAllActive(user.companyId);
+    const finishedAt = new Date().toISOString();
     syncJobService.ensureSchedule(user.companyId, user.id);
+
+    let report: any = null;
+    try {
+      report = await syncReportService.sendTrackingSyncReport({
+        companyId: user.companyId,
+        userId: user.id,
+        trigger: 'manual',
+        payload: results.report,
+        startedAt,
+        finishedAt,
+      });
+    } catch (reportError) {
+      console.error('Falha ao enviar relatorio da sincronizacao direta:', reportError);
+    }
 
     return res.json({
       success: true,
       message: `Sincronizacao concluida: ${results.success} sucessos, ${results.failed} falhas`,
       results,
-      report: null,
+      report,
       schedule: syncJobService.getSchedule(user.companyId),
     });
   } catch (error) {
@@ -677,3 +1165,5 @@ export const clearOrdersDatabase = async (req: Request, res: Response) => {
     return res.status(500).json({ error: 'Erro ao limpar banco de dados' });
   }
 };
+
+

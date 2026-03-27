@@ -90,6 +90,60 @@ export const formatCarrierForecast = (value: unknown, locale = "pt-BR"): string 
   return parsed ? parsed.toLocaleDateString(locale) : "Sem previsão no rastreio";
 };
 
+const normalizeFailureText = (value: unknown) =>
+  toText(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase();
+
+export const isFailureTrackingEvent = (event: unknown): boolean => {
+  const combined = `${toText((event as any)?.status)} ${toText((event as any)?.description)}`.trim();
+
+  if (!combined) {
+    return false;
+  }
+
+  if (mapIntelipostStatusToEnum(combined) === OrderStatus.FAILURE) {
+    return true;
+  }
+
+  const normalized = normalizeFailureText(combined);
+  return [
+    "CLARIFY_DELIVERY_FAIL",
+    "DELIVERY_FAIL",
+    "INSUCESSO",
+    "NAO ENTREG",
+    "ENDERECO INVALIDO",
+    "ENDERECO NAO LOCALIZADO",
+    "DESTINATARIO AUSENTE",
+    "RECUSA",
+    "RECUSADO",
+  ].some((token) => normalized.includes(token));
+};
+
+export const getLatestDeliveryFailureEvent = (
+  order: Pick<Order, "trackingHistory">,
+) => {
+  const trackingHistory = normalizeTrackingHistory(order.trackingHistory);
+  const failureEvents = trackingHistory.filter((event) =>
+    isFailureTrackingEvent(event),
+  );
+
+  if (failureEvents.length === 0) {
+    return null;
+  }
+
+  return failureEvents.reduce((latest, current) =>
+    new Date(latest.date) > new Date(current.date) ? latest : current,
+  );
+};
+
+export const isOrderWithDeliveryFailure = (
+  order: Pick<Order, "status" | "trackingHistory">,
+): boolean =>
+  order.status === OrderStatus.FAILURE ||
+  getLatestDeliveryFailureEvent(order) !== null;
+
 export const mapIntelipostStatusToEnum = (status: string): OrderStatus => {
   const s = status ? status.toUpperCase() : '';
   // Colocando SAIU PARA ENTREGA ANTES de EM TRÂNSITO para evitar sobrescrever

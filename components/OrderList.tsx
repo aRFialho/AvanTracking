@@ -433,12 +433,14 @@ export const OrderList: React.FC<OrderListProps> = ({
     filteredOrders.map((order) => ({
       orderNumber: order.orderNumber,
       invoiceNumber: order.invoiceNumber || "-",
-      trackingCode: order.trackingCode || "-",
       shippingDate: formatDateOrDash(order.shippingDate),
       salesChannel: order.salesChannel,
       freightType: normalizeCarrierName(order.freightType),
       freightValue: formatCurrency(order.freightValue),
-      quotedFreightValue: formatCurrency(order.quotedFreightValue),
+      originalQuotedFreightValue: formatCurrency(
+        order.originalQuotedFreightValue ?? order.quotedFreightValue,
+      ),
+      recalculatedFreightValue: formatCurrency(order.recalculatedFreightValue),
       estimatedDeliveryDate: formatDateOrDash(order.estimatedDeliveryDate),
       carrierEstimatedDeliveryDate: formatCarrierForecast(
         order.carrierEstimatedDeliveryDate,
@@ -469,10 +471,12 @@ export const OrderList: React.FC<OrderListProps> = ({
           <tr>
             <td>${escapeHtml(order.orderNumber)}</td>
             <td>${escapeHtml(order.invoiceNumber)}</td>
-            <td>${escapeHtml(order.trackingCode)}</td>
             <td>${escapeHtml(order.shippingDate)}</td>
             <td>${escapeHtml(order.salesChannel)}</td>
             <td>${escapeHtml(order.freightType)}</td>
+            <td>${escapeHtml(order.freightValue)}</td>
+            <td>${escapeHtml(order.originalQuotedFreightValue)}</td>
+            <td>${escapeHtml(order.recalculatedFreightValue)}</td>
             <td>${escapeHtml(order.estimatedDeliveryDate)}</td>
             <td>${escapeHtml(order.carrierEstimatedDeliveryDate)}</td>
             <td>${escapeHtml(order.latestMovement)}</td>
@@ -717,10 +721,12 @@ export const OrderList: React.FC<OrderListProps> = ({
               <tr>
                 <th>ID / Pedido</th>
                 <th>Nota Fiscal</th>
-                <th>Codigo de Envio</th>
                 <th>Emissao</th>
                 <th>Marketplace</th>
                 <th>Transportadora</th>
+                <th>Frete Pago</th>
+                <th>Frete Cotado Original</th>
+                <th>Frete Recalculado</th>
                 <th>Prev. Entrega</th>
                 <th>Previsao Transportadora</th>
                 <th>Ultima Movimentacao</th>
@@ -763,10 +769,12 @@ export const OrderList: React.FC<OrderListProps> = ({
     const headers = [
       "ID / Pedido",
       "Nota Fiscal",
-      "Codigo de Envio",
       "Emissao",
       "Marketplace",
       "Transportadora",
+      "Frete Pago",
+      "Frete Cotado Original",
+      "Frete Recalculado",
       "Prev. Entrega",
       "Previsao Transportadora",
       "Ultima Movimentacao",
@@ -777,10 +785,12 @@ export const OrderList: React.FC<OrderListProps> = ({
     const rows = getExportRows().map((order) => [
       order.orderNumber,
       order.invoiceNumber,
-      order.trackingCode,
       order.shippingDate,
       order.salesChannel,
       order.freightType,
+      order.freightValue,
+      order.originalQuotedFreightValue,
+      order.recalculatedFreightValue,
       order.estimatedDeliveryDate,
       order.carrierEstimatedDeliveryDate,
       order.latestMovement,
@@ -1216,16 +1226,16 @@ export const OrderList: React.FC<OrderListProps> = ({
                   Marketplace
                 </th>
                 <th className="px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]">
-                  Código de Envio
-                </th>
-                <th className="px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]">
                   Transportadora
                 </th>
                 <th className="px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]">
                   Frete Pago
                 </th>
                 <th className="px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]">
-                  Frete Cotado
+                  Frete Cotado Original
+                </th>
+                <th className="px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]">
+                  Frete Recalculado
                 </th>
                 <th className="px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]">
                   Prev. Entrega
@@ -1275,9 +1285,6 @@ export const OrderList: React.FC<OrderListProps> = ({
                       </span>
                     </td>
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">
-                      {order.trackingCode || "-"}
-                    </td>
-                    <td className="px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">
                       {normalizeCarrierName(order.freightType)}
                     </td>
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">
@@ -1286,10 +1293,25 @@ export const OrderList: React.FC<OrderListProps> = ({
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
                       <div className="flex flex-col">
                         <span className="whitespace-nowrap">
-                          {formatCurrency(order.quotedFreightValue)}
+                          {formatCurrency(
+                            order.originalQuotedFreightValue ??
+                              order.quotedFreightValue,
+                          )}
                         </span>
                         <span className="text-[10px] text-slate-400 break-all">
-                          {order.quotedCarrierName ||
+                          {order.originalQuotedCarrierName ||
+                            order.quotedCarrierName ||
+                            "Sem cotacao original"}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
+                      <div className="flex flex-col">
+                        <span className="whitespace-nowrap">
+                          {formatCurrency(order.recalculatedFreightValue)}
+                        </span>
+                        <span className="text-[10px] text-slate-400 break-all">
+                          {order.recalculatedQuotedCarrierName ||
                             "Sem cotacao no pedido"}
                         </span>
                       </div>
@@ -1615,7 +1637,7 @@ export const OrderList: React.FC<OrderListProps> = ({
                   Busca Externa
                 </h3>
                 <p className="text-xs text-slate-500">
-                  Consultar Intelipost via API
+                  Consultar Intelipost e SSW
                 </p>
               </div>
               <button
@@ -1629,13 +1651,13 @@ export const OrderList: React.FC<OrderListProps> = ({
             <form onSubmit={executeApiSearch} className="space-y-4">
               <div>
                 <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
-                  Número do Pedido
+                  Pedido, NF ou chave XML
                 </label>
                 <input
                   type="text"
                   required
                   autoFocus
-                  placeholder="Ex: 12345678"
+                  placeholder="Ex: pedido 123456, NF 109770 ou XML/CT-e"
                   value={apiSearchInput}
                   onChange={(e) => setApiSearchInput(e.target.value)}
                   className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-lg p-3 text-lg font-mono tracking-wider text-slate-900 dark:text-white focus:border-accent dark:focus:border-neon-blue outline-none"

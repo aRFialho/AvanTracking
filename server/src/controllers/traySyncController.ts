@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { traySyncJobService } from '../services/traySyncJobService';
 import { traySyncService } from '../services/traySyncService';
 import { trayAuthService } from '../services/trayAuthService';
+import { syncReportService } from '../services/syncReportService';
 
 const getUserCompany = (req: Request) => {
   if (!req.user) {
@@ -35,11 +36,27 @@ export const syncTrayOrders = async (req: Request, res: Response) => {
     }
 
     traySyncJobService.ensureSchedule(context.companyId, context.userId);
+    const startedAt = new Date().toISOString();
     const result = await traySyncService.executeSync(context.companyId, req.body || {});
+    const finishedAt = new Date().toISOString();
+
+    let report: any = null;
+    try {
+      report = await syncReportService.sendTraySyncReport({
+        companyId: context.companyId,
+        userId: context.userId,
+        trigger: 'manual',
+        payload: result.report,
+        startedAt,
+        finishedAt,
+      });
+    } catch (reportError) {
+      console.error('Falha ao enviar relatorio da sincronizacao direta da Tray:', reportError);
+    }
 
     return res.json({
       ...result,
-      report: null,
+      report,
     });
   } catch (error) {
     console.error('Erro na sincronizacao com Tray:', error);
@@ -125,3 +142,4 @@ export const getTraySyncStatus = async (req: Request, res: Response) => {
     });
   }
 };
+

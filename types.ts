@@ -89,8 +89,19 @@ export interface Order {
   quotedFreightValue?: number | null;
   quotedFreightDate?: Date | string | null;
   quotedFreightDetails?: any;
+  originalQuotedFreightValue?: number | null;
+  originalQuotedFreightDate?: Date | string | null;
+  originalQuotedFreightDetails?: any;
+  originalQuotedFreightQuotationId?: string | null;
+  originalQuotedCarrierName?: string | null;
+  recalculatedFreightValue?: number | null;
+  recalculatedFreightDate?: Date | string | null;
+  recalculatedFreightDetails?: any;
+  recalculatedQuotedCarrierName?: string | null;
   quotedCarrierName?: string | null;
   freightCarrierMatchesQuote?: boolean | null;
+  freightCarrierMatchesOriginalQuote?: boolean | null;
+  freightCarrierMatchesRecalculatedQuote?: boolean | null;
   shippingDate: Date; // 'Envio data'
   
   // Address

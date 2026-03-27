@@ -950,7 +950,7 @@ const buildTraySyncEmailText = (
   ].join('\n');
 
 class SyncReportService {
-  private async resolveRecipients(companyId: string) {
+  private async resolveRecipients(companyId: string, userId?: string) {
     const users = await prisma.user.findMany({
       where: {
         companyId,
@@ -973,6 +973,24 @@ class SyncReportService {
         email: user.email,
         name: user.name || user.email,
       });
+    }
+
+    if (uniqueRecipients.size === 0 && userId) {
+      const triggeringUser = await prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          email: true,
+          name: true,
+        },
+      });
+
+      const normalizedEmail = String(triggeringUser?.email || '').trim().toLowerCase();
+      if (normalizedEmail) {
+        uniqueRecipients.set(normalizedEmail, {
+          email: String(triggeringUser?.email),
+          name: String(triggeringUser?.name || triggeringUser?.email || normalizedEmail),
+        });
+      }
     }
 
     return Array.from(uniqueRecipients.values());
@@ -1017,7 +1035,7 @@ class SyncReportService {
       fs.writeFile(path.join(reportsDir, `${reportId}.csv`), reportCsv, 'utf8'),
     ]);
 
-    const recipients = await this.resolveRecipients(input.companyId);
+    const recipients = await this.resolveRecipients(input.companyId, input.userId);
 
     if (recipients.length === 0) {
       return {
@@ -1082,7 +1100,7 @@ class SyncReportService {
       fs.writeFile(path.join(reportsDir, `${reportId}.csv`), reportCsv, 'utf8'),
     ]);
 
-    const recipients = await this.resolveRecipients(input.companyId);
+    const recipients = await this.resolveRecipients(input.companyId, input.userId);
 
     if (recipients.length === 0) {
       return {
@@ -1110,3 +1128,4 @@ class SyncReportService {
 }
 
 export const syncReportService = new SyncReportService();
+

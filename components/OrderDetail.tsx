@@ -10,38 +10,33 @@ import {
 } from "../utils";
 
 const STATUS_TRANSLATIONS: Record<string, string> = {
-  PENDING: "Aguardando Envio",
-  CREATED: "Pedido Criado",
-  SHIPPED: "Em Trânsito",
-  DELIVERY_ATTEMPT: "Saiu para Entrega",
+  PENDING: "Aguardando envio",
+  CREATED: "Pedido criado",
+  SHIPPED: "Em transito",
+  DELIVERY_ATTEMPT: "Saiu para entrega",
   DELIVERED: "Entregue",
-  FAILURE: "Falha na Entrega",
+  FAILURE: "Falha na entrega",
   RETURNED: "Devolvido",
   CANCELED: "Cancelado",
-  CHANNEL_LOGISTICS: "Logística do Canal",
-  // Intelipost / Generic Statuses
+  CHANNEL_LOGISTICS: "Logistica do canal",
   NEW: "Novo",
-  IN_TRANSIT: "Em Trânsito",
-  TO_BE_DELIVERED: "Saiu para Entrega",
-  CLARIFY_DELIVERY_FAIL: "Falha na Entrega",
+  IN_TRANSIT: "Em transito",
+  TO_BE_DELIVERED: "Saiu para entrega",
+  CLARIFY_DELIVERY_FAIL: "Falha na entrega",
   DELIVERY_DELAY: "Atraso",
-  PAYMENT_CONFIRMED: "Pagamento Confirmado",
+  PAYMENT_CONFIRMED: "Pagamento confirmado",
   INVOICED: "Faturado",
-  READY_FOR_SHIPPING: "Pronto para Envio",
+  READY_FOR_SHIPPING: "Pronto para envio",
 };
 
-const formatCPF = (value: string) => {
+const formatDocument = (value: string) => {
   if (!value) return "";
   const cleaned = value.replace(/\D/g, "");
   if (cleaned.length === 11) {
     return cleaned.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
   }
   if (cleaned.length === 14) {
-    // CNPJ
-    return cleaned.replace(
-      /(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/,
-      "$1.$2.$3/$4-$5",
-    );
+    return cleaned.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5");
   }
   return value;
 };
@@ -51,7 +46,8 @@ const formatPhone = (value: string) => {
   const cleaned = value.replace(/\D/g, "");
   if (cleaned.length === 11) {
     return cleaned.replace(/(\d{2})(\d{5})(\d{4})/, "($1) $2-$3");
-  } else if (cleaned.length === 10) {
+  }
+  if (cleaned.length === 10) {
     return cleaned.replace(/(\d{2})(\d{4})(\d{4})/, "($1) $2-$3");
   }
   return value;
@@ -65,6 +61,17 @@ const formatCurrency = (value: number | null | undefined) => {
   return `R$ ${value.toFixed(2)}`;
 };
 
+const formatMatchLabel = (value: boolean | null | undefined) => {
+  if (value === null || value === undefined) return "-";
+  return value ? "Sim" : "Nao";
+};
+
+const formatDateTime = (value: Date | string | null | undefined) => {
+  if (!value) return "-";
+  const parsed = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(parsed.getTime()) ? "-" : parsed.toLocaleString("pt-BR");
+};
+
 interface OrderDetailProps {
   order: Order;
   onClose: () => void;
@@ -72,22 +79,20 @@ interface OrderDetailProps {
 
 export const OrderDetail: React.FC<OrderDetailProps> = ({ order, onClose }) => {
   const trackingHistory = normalizeTrackingHistory(order.trackingHistory);
-  // Sort history descending
   const sortedHistory = [...trackingHistory].sort(
     (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
   );
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-      <div className="bg-white dark:bg-dark-card w-full max-w-4xl max-h-[90vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 border border-slate-200 dark:border-white/10">
-        {/* Header */}
+      <div className="bg-white dark:bg-dark-card w-full max-w-5xl max-h-[90vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 border border-slate-200 dark:border-white/10">
         <div className="flex items-center justify-between p-6 border-b border-slate-100 dark:border-white/10 bg-slate-50/50 dark:bg-black/20">
           <div>
             <h2 className="text-xl font-bold text-slate-800 dark:text-white">
               Pedido #{order.orderNumber}
             </h2>
             <p className="text-sm text-slate-500 dark:text-slate-400">
-              Detalhes completos e rastreamento
+              Detalhes completos, frete e rastreamento
             </p>
           </div>
           <button
@@ -98,12 +103,9 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({ order, onClose }) => {
           </button>
         </div>
 
-        {/* Content */}
         <div className="flex-1 overflow-auto p-6">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Left Column: Info */}
             <div className="lg:col-span-2 space-y-6">
-              {/* Cards Grid */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="p-4 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50/30 dark:bg-white/5">
                   <div className="flex items-center gap-2 mb-2 text-slate-800 dark:text-white font-semibold text-sm">
@@ -113,10 +115,10 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({ order, onClose }) => {
                     {order.customerName}
                   </p>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                    CPF: {formatCPF(order.cpf || order.cnpj || "")}
+                    Documento: {formatDocument(order.cpf || order.cnpj || "") || "-"}
                   </p>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Número: {formatPhone(order.mobile || order.phone || "")}
+                    Telefone: {formatPhone(order.mobile || order.phone || "") || "-"}
                   </p>
                 </div>
 
@@ -128,7 +130,7 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({ order, onClose }) => {
                     {order.address}, {order.number}
                   </p>
                   <p className="text-sm text-slate-500 dark:text-slate-400">
-                    {order.neighborhood}
+                    {order.neighborhood || "-"}
                   </p>
                   <p className="text-sm font-medium mt-1 text-slate-700 dark:text-slate-200">
                     {order.city} - {order.state}
@@ -136,74 +138,82 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({ order, onClose }) => {
                   <p className="text-xs text-slate-400">{order.zipCode}</p>
                 </div>
 
-                <div className="p-4 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50/30 dark:bg-white/5">
-                  <div className="flex items-center gap-2 mb-2 text-slate-800 dark:text-white font-semibold text-sm">
-                    <Truck className="w-4 h-4 text-accent" /> Logística
+                <div className="p-4 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50/30 dark:bg-white/5 md:col-span-2">
+                  <div className="flex items-center gap-2 mb-3 text-slate-800 dark:text-white font-semibold text-sm">
+                    <Truck className="w-4 h-4 text-accent" /> Analise de frete
                   </div>
-                  <p className="text-sm text-slate-700 dark:text-slate-200">
-                    <span className="text-slate-500 dark:text-slate-400">
-                      Transp:
-                    </span>{" "}
-                    {normalizeCarrierName(order.freightType)}
-                  </p>
-                  <p className="text-sm text-slate-700 dark:text-slate-200">
-                    <span className="text-slate-500 dark:text-slate-400">
-                      Frete pago:
-                    </span>{" "}
-                    {formatCurrency(order.freightValue)}
-                  </p>
-                  <p className="text-sm text-slate-700 dark:text-slate-200">
-                    <span className="text-slate-500 dark:text-slate-400">
-                      Frete cotado:
-                    </span>{" "}
-                    {formatCurrency(order.quotedFreightValue)}
-                  </p>
-                  <p className="text-sm text-slate-700 dark:text-slate-200">
-                    <span className="text-slate-500 dark:text-slate-400">
-                      Transportadora cotada:
-                    </span>{" "}
-                    <span className="break-all whitespace-normal">
-                      {order.quotedCarrierName || "-"}
-                    </span>
-                  </p>
-                  <p className="text-sm text-slate-700 dark:text-slate-200">
-                    <span className="text-slate-500 dark:text-slate-400">
-                      Pago = cotado:
-                    </span>{" "}
-                    {order.freightCarrierMatchesQuote === null
-                      ? "-"
-                      : order.freightCarrierMatchesQuote
-                        ? "Sim"
-                        : "Nao"}
-                  </p>
-                  <p className="text-sm text-slate-700 dark:text-slate-200">
-                    <span className="text-slate-500 dark:text-slate-400">
-                      Rastreio:
-                    </span>{" "}
-                    {order.trackingSourceLabel || "-"}
-                  </p>
-                  <p className="text-sm text-slate-700 dark:text-slate-200">
-                    <span className="text-slate-500 dark:text-slate-400">
-                      Canal:
-                    </span>{" "}
-                    {order.salesChannel}
-                  </p>
-                  <p className="text-sm text-slate-700 dark:text-slate-200">
-                    <span className="text-slate-500 dark:text-slate-400">
-                      NF:
-                    </span>{" "}
-                    <span className="break-all whitespace-normal">
-                      {order.invoiceNumber || "-"}
-                    </span>
-                  </p>
-                  <p className="text-sm text-slate-700 dark:text-slate-200">
-                    <span className="text-slate-500 dark:text-slate-400">
-                      Código de envio:
-                    </span>{" "}
-                    <span className="break-all whitespace-normal">
-                      {order.trackingCode || "-"}
-                    </span>
-                  </p>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-white/70 dark:bg-black/10 p-3">
+                      <p className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1">
+                        Frete pago
+                      </p>
+                      <p className="text-lg font-semibold text-slate-800 dark:text-white">
+                        {formatCurrency(order.freightValue)}
+                      </p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
+                        Transportadora real: {normalizeCarrierName(order.freightType)}
+                      </p>
+                    </div>
+
+                    <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-white/70 dark:bg-black/10 p-3">
+                      <p className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1">
+                        Frete cotado original
+                      </p>
+                      <p className="text-lg font-semibold text-slate-800 dark:text-white">
+                        {formatCurrency(order.originalQuotedFreightValue ?? order.quotedFreightValue)}
+                      </p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 break-all">
+                        Transportadora: {order.originalQuotedCarrierName || order.quotedCarrierName || "-"}
+                      </p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 break-all">
+                        Quotation ID: {order.originalQuotedFreightQuotationId || "-"}
+                      </p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        Capturado em: {formatDateTime(order.originalQuotedFreightDate ?? order.quotedFreightDate)}
+                      </p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        Carrier coincide: {formatMatchLabel(order.freightCarrierMatchesOriginalQuote ?? order.freightCarrierMatchesQuote)}
+                      </p>
+                    </div>
+
+                    <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-white/70 dark:bg-black/10 p-3">
+                      <p className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1">
+                        Frete recalculado atual
+                      </p>
+                      <p className="text-lg font-semibold text-slate-800 dark:text-white">
+                        {formatCurrency(order.recalculatedFreightValue)}
+                      </p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 break-all">
+                        Transportadora: {order.recalculatedQuotedCarrierName || "-"}
+                      </p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        Recalculado em: {formatDateTime(order.recalculatedFreightDate)}
+                      </p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        Carrier coincide: {formatMatchLabel(order.freightCarrierMatchesRecalculatedQuote)}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-slate-700 dark:text-slate-200">
+                    <p>
+                      <span className="text-slate-500 dark:text-slate-400">Rastreio:</span>{" "}
+                      {order.trackingSourceLabel || "-"}
+                    </p>
+                    <p>
+                      <span className="text-slate-500 dark:text-slate-400">Canal:</span>{" "}
+                      {order.salesChannel}
+                    </p>
+                    <p>
+                      <span className="text-slate-500 dark:text-slate-400">NF:</span>{" "}
+                      <span className="break-all whitespace-normal">{order.invoiceNumber || "-"}</span>
+                    </p>
+                    <p>
+                      <span className="text-slate-500 dark:text-slate-400">Codigo de envio:</span>{" "}
+                      <span className="break-all whitespace-normal">{order.trackingCode || "-"}</span>
+                    </p>
+                  </div>
                 </div>
 
                 <div className="p-4 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50/30 dark:bg-white/5">
@@ -211,10 +221,8 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({ order, onClose }) => {
                     <Calendar className="w-4 h-4 text-accent" /> Prazos
                   </div>
                   <p className="text-sm text-slate-700 dark:text-slate-200">
-                    <span className="text-slate-500 dark:text-slate-400">
-                      Envio:
-                    </span>{" "}
-                    {new Date(order.shippingDate).toLocaleDateString()}
+                    <span className="text-slate-500 dark:text-slate-400">Envio:</span>{" "}
+                    {formatDateOrDash(order.shippingDate)}
                   </p>
                   <p
                     className={clsx(
@@ -230,50 +238,42 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({ order, onClose }) => {
                     {formatDateOrDash(order.estimatedDeliveryDate)}
                   </p>
                   <p className="text-sm text-slate-700 dark:text-slate-200">
-                    <span className="text-slate-500 dark:text-slate-400">
-                      Previsão transportadora:
-                    </span>{" "}
+                    <span className="text-slate-500 dark:text-slate-400">Previsao transportadora:</span>{" "}
                     {formatCarrierForecast(order.carrierEstimatedDeliveryDate)}
                   </p>
                 </div>
               </div>
 
-              {/* Status Warning */}
               {order.isDelayed && order.status !== OrderStatus.DELIVERED && (
                 <div className="bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-900/30 p-4 rounded-lg flex items-start gap-3">
                   <div className="p-2 bg-red-100 dark:bg-red-900/50 rounded-full text-red-600 dark:text-red-300">
-                    <CreditCard className="w-4 h-4" />{" "}
-                    {/* Just an icon placeholder */}
+                    <CreditCard className="w-4 h-4" />
                   </div>
                   <div>
                     <h4 className="font-bold text-red-700 dark:text-red-400 text-sm">
-                      Risco de Atraso Detectado
+                      Risco de atraso detectado
                     </h4>
                     <p className="text-xs text-red-600 dark:text-red-300 mt-1">
-                      A data atual excede a previsão de entrega e o status do
-                      pedido ainda não consta como entregue.
+                      A data atual excede a previsao de entrega e o pedido ainda nao consta como entregue.
                     </p>
                   </div>
                 </div>
               )}
             </div>
 
-            {/* Right Column: Timeline */}
             <div className="border-l border-slate-200 dark:border-white/10 pl-8 relative">
               <h3 className="font-bold text-slate-800 dark:text-white mb-6">
-                Histórico de Rastreamento
+                Historico de rastreamento
               </h3>
 
               <div className="space-y-8">
                 {sortedHistory.length > 0 ? (
                   sortedHistory.map((event, idx) => (
                     <div key={idx} className="relative group">
-                      {/* Line connector */}
                       {idx !== sortedHistory.length - 1 && (
                         <div className="absolute top-2 left-[-33px] w-0.5 h-full bg-slate-200 dark:bg-white/10 group-last:hidden"></div>
                       )}
 
-                      {/* Dot */}
                       <div
                         className={clsx(
                           "absolute top-1.5 left-[-37px] w-2.5 h-2.5 rounded-full border-2",
@@ -294,7 +294,7 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({ order, onClose }) => {
                           <span>{new Date(event.date).toLocaleString()}</span>
                           {event.city && (
                             <span>
-                              • {event.city}
+                              � {event.city}
                               {event.state ? `/${event.state}` : ""}
                             </span>
                           )}
@@ -304,11 +304,10 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({ order, onClose }) => {
                   ))
                 ) : (
                   <div className="text-slate-400 text-sm italic">
-                    Aguardando primeira atualização de rastreamento...
+                    Aguardando primeira atualizacao de rastreamento...
                   </div>
                 )}
 
-                {/* Initial State */}
                 <div className="relative">
                   <div className="absolute top-1.5 left-[-37px] w-2.5 h-2.5 rounded-full border-2 bg-slate-200 dark:bg-slate-700 border-slate-300 dark:border-slate-600"></div>
                   <div>
@@ -318,24 +317,14 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({ order, onClose }) => {
                     <p className="text-xs text-slate-500 dark:text-slate-400">
                       Pedido importado para o sistema
                     </p>
-                    <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
-                      {new Date().toLocaleDateString()}
-                    </p>
+                    <div className="flex items-center gap-2 text-xs text-slate-400 dark:text-slate-500 mt-1">
+                      <span>{new Date(order.shippingDate).toLocaleString()}</span>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
-
-        {/* Footer */}
-        <div className="p-4 border-t border-slate-100 dark:border-white/10 bg-slate-50 dark:bg-black/20 flex justify-end">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-lg text-sm font-medium text-slate-700 dark:text-white hover:bg-slate-100 dark:hover:bg-white/10"
-          >
-            Fechar
-          </button>
         </div>
       </div>
     </div>

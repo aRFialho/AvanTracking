@@ -108,6 +108,23 @@ const buildOrderData = (orderData: any, status: OrderStatus) => ({
       : safeNumber(orderData.quotedFreightValue),
   quotedFreightDate: safeDate(orderData.quotedFreightDate),
   quotedFreightDetails: orderData.quotedFreightDetails ?? null,
+  originalQuotedFreightValue:
+    orderData.originalQuotedFreightValue === null ||
+    orderData.originalQuotedFreightValue === undefined
+      ? null
+      : safeNumber(orderData.originalQuotedFreightValue),
+  originalQuotedFreightDate: safeDate(orderData.originalQuotedFreightDate),
+  originalQuotedFreightDetails: orderData.originalQuotedFreightDetails ?? null,
+  originalQuotedFreightQuotationId: safeString(
+    orderData.originalQuotedFreightQuotationId,
+  ),
+  recalculatedFreightValue:
+    orderData.recalculatedFreightValue === null ||
+    orderData.recalculatedFreightValue === undefined
+      ? null
+      : safeNumber(orderData.recalculatedFreightValue),
+  recalculatedFreightDate: safeDate(orderData.recalculatedFreightDate),
+  recalculatedFreightDetails: orderData.recalculatedFreightDetails ?? null,
   shippingDate: safeDate(orderData.shippingDate),
   address: safeString(orderData.address) || '',
   number: safeString(orderData.number) || '',
