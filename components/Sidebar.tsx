@@ -180,7 +180,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           isCollapsed ? "p-3" : "p-6",
         )}
       >
-        <div className="absolute inset-0 z-0 opacity-60">
+        <div className="absolute inset-0 z-0 opacity-60 pointer-events-none">
           <LightningStorm />
         </div>
 
@@ -190,7 +190,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             type="button"
             title={isCollapsed ? "Expandir menu" : "Recolher menu"}
             className={clsx(
-              "rounded-lg border border-white/10 bg-black/20 text-slate-300 hover:text-white hover:bg-white/10 transition-colors",
+              "rounded-lg border border-white/10 bg-black/20 text-slate-300 hover:text-white hover:bg-white/10 transition-colors relative z-20",
               isCollapsed ? "p-2" : "absolute top-0 right-0 p-2",
             )}
           >
@@ -253,37 +253,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {!isCollapsed && (
           <div className="mt-4 mx-1">
-            <div className="relative h-24 bg-gradient-to-b from-slate-800 to-slate-900 dark:from-slate-900 dark:to-black rounded-lg overflow-hidden border border-slate-700 dark:border-slate-800 shadow-inner group">
-              <div className="absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_50%_50%,rgba(59,130,246,0.4),transparent_60%)]"></div>
-              <div className="absolute bottom-2 w-full h-0.5 bg-slate-500/30"></div>
-
-              <div className="skate-container">
-                <svg
-                  viewBox="0 0 100 140"
-                  className="w-full h-full drop-shadow-[0_4px_6px_rgba(0,0,0,0.5)]"
-                >
-                  <g className="skate-body-group">
-                    <rect x="25" y="10" width="50" height="35" rx="10" fill="#3b82f6" stroke="#fff" strokeWidth="2" />
-                    <line x1="50" y1="10" x2="50" y2="0" stroke="#fff" strokeWidth="2" />
-                    <circle cx="50" cy="0" r="3" fill="#ef4444" className="animate-pulse" />
-                    <circle cx="40" cy="25" r="5" fill="#00f3ff" />
-                    <circle cx="60" cy="25" r="5" fill="#00f3ff" />
-                    <rect x="25" y="50" width="50" height="40" rx="6" fill="#1e293b" stroke="#64748b" strokeWidth="2" />
-                    <rect x="10" y="55" width="15" height="10" rx="3" fill="#3b82f6" transform="rotate(-20 10 55)" />
-                    <rect x="75" y="55" width="15" height="10" rx="3" fill="#3b82f6" transform="rotate(20 75 55)" />
-                    <rect x="30" y="90" width="12" height="15" fill="#1e293b" />
-                    <rect x="58" y="90" width="12" height="15" fill="#1e293b" />
-                    <path d="M15 110 Q50 115 85 110 L90 112 Q50 120 10 112 Z" fill="#ec4899" stroke="#fff" strokeWidth="1" />
-                    <rect x="30" y="110" width="40" height="3" fill="#000" opacity="0.5" />
-                    <circle cx="25" cy="118" r="6" fill="#facc15" stroke="#fff" strokeWidth="1" className="skate-wheel" />
-                    <circle cx="75" cy="118" r="6" fill="#facc15" stroke="#fff" strokeWidth="1" className="skate-wheel" />
-                  </g>
-                </svg>
-              </div>
-
-              <div className="absolute bottom-4 left-0 w-full h-1 bg-gradient-to-r from-transparent via-blue-500/20 to-transparent animate-pulse"></div>
-            </div>
-
             <div className="relative mt-2 bg-blue-900/40 border border-blue-500/20 rounded-lg p-3 transition-all duration-300">
               <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-blue-900/40 border-t border-l border-blue-500/20 rotate-45"></div>
 

@@ -205,18 +205,29 @@ const extractQuoteCarrierName = (quoteDetails: any): string | null => {
 
   return (
     safeString(quoteDetails.selectedCarrierName) ||
+    safeString(quoteDetails.requestedCarrier) ||
     safeString(quoteDetails.selectedServiceName) ||
+    safeString(quoteDetails.shipmentType) ||
+    safeString(quoteDetails.integrator) ||
+    safeString(quoteDetails.selectedOption?.taxe?.name) ||
     safeString(quoteDetails.selectedOption?.carrier_name) ||
     safeString(quoteDetails.selectedOption?.carrier) ||
     safeString(quoteDetails.selectedOption?.transportadora) ||
     safeString(quoteDetails.selectedOption?.shipping_company) ||
     safeString(quoteDetails.selectedOption?.delivery_method?.name) ||
+    safeString(quoteDetails.selectedOption?.shipment_integrator) ||
+    safeString(quoteDetails.selectedOption?.taxe?.name) ||
     safeString(quoteDetails.selectedOption?.service_name) ||
     safeString(quoteDetails.selectedOption?.service) ||
     safeString(quoteDetails.selectedOption?.identifier) ||
     safeString(quoteDetails.selectedOption?.name) ||
+    safeString(quoteDetails.raw?.taxe?.name) ||
+    safeString(quoteDetails.raw?.shipment_integrator) ||
+    safeString(quoteDetails.raw?.service_name) ||
+    safeString(quoteDetails.raw?.name) ||
     safeString(quoteDetails.serviceName) ||
     safeString(quoteDetails.serviceCode) ||
+    safeString(quoteDetails.carrierName) ||
     null
   );
 };
@@ -226,6 +237,33 @@ const extractOrderQuotationId = (order: any) =>
   safeString(order.apiRawPayload?.id_quotation) ||
   safeString(order.apiRawPayload?.quotation_id) ||
   null;
+
+const mergeQuoteDetails = (primary: any, fallback: any) => {
+  if (!primary && !fallback) {
+    return null;
+  }
+
+  if (!primary) {
+    return fallback;
+  }
+
+  if (!fallback) {
+    return primary;
+  }
+
+  return {
+    ...fallback,
+    ...primary,
+    selectedOption: {
+      ...(fallback?.selectedOption || {}),
+      ...(primary?.selectedOption || {}),
+    },
+    raw: {
+      ...(fallback?.raw || {}),
+      ...(primary?.raw || {}),
+    },
+  };
+};
 
 const loadCheckoutQuotesMap = async (
   companyId: string | null | undefined,
@@ -621,10 +659,10 @@ const formatOrderForResponse = (
     order.originalQuotedFreightDate ??
     checkoutQuote?.createdAt ??
     legacyQuotedDate;
-  const originalQuotedFreightDetails =
-    order.originalQuotedFreightDetails ??
-    checkoutQuote?.snapshotData ??
-    legacyQuotedDetails;
+  const originalQuotedFreightDetails = mergeQuoteDetails(
+    mergeQuoteDetails(order.originalQuotedFreightDetails, checkoutQuote?.snapshotData),
+    legacyQuotedDetails,
+  );
   const originalQuotedFreightQuotationId =
     extractOrderQuotationId(order) || safeString(checkoutQuote?.quotationId);
   const recalculatedFreightValue = order.recalculatedFreightValue ?? null;

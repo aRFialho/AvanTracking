@@ -1,4 +1,4 @@
-import { Request, Response } from 'express';
+﻿import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { createHash } from 'crypto';
 import { TrayFreightService } from '../services/trayFreightService';
@@ -37,7 +37,7 @@ const normalizeBoolean = (value: unknown): boolean | null => {
   if (typeof value === 'boolean') return value;
   const normalized = String(value).trim().toLowerCase();
   if (['1', 'true', 'yes', 'sim'].includes(normalized)) return true;
-  if (['0', 'false', 'no', 'nao', 'n�o'].includes(normalized)) return false;
+  if (['0', 'false', 'no', 'nao', 'não'].includes(normalized)) return false;
   return null;
 };
 
@@ -52,6 +52,82 @@ const buildProductsHash = (productsRaw: unknown) => {
     return null;
   }
 };
+
+const extractTrayOrderProducts = (rawPayload: any, fallbackOrder: any) => {
+  const candidateCollections = [
+    rawPayload?.OrderItem,
+    rawPayload?.OrderItems,
+    rawPayload?.ProductsSold,
+    rawPayload?.products,
+    rawPayload?.items,
+  ].filter(Array.isArray);
+
+  for (const collection of candidateCollections) {
+    const products = collection
+      .map((entry: any) => {
+        const item =
+          entry?.OrderItem ||
+          entry?.ProductsSold ||
+          entry?.ProductSold ||
+          entry?.Product ||
+          entry;
+        const productId = safeString(
+          item?.product_id ?? item?.id_product ?? item?.id ?? item?.Product?.id,
+        );
+        const quantity =
+          safeInteger(item?.quantity ?? item?.qty ?? item?.amount ?? 1) || 1;
+        const directTotal = safeNumber(item?.total ?? item?.subtotal);
+        const unitPrice =
+          safeNumber(item?.price ?? item?.sale_price ?? item?.original_price) ??
+          (directTotal !== null ? directTotal / quantity : null);
+
+        if (!productId || unitPrice === null) {
+          return null;
+        }
+
+        return {
+          product_id: productId,
+          price: unitPrice,
+          quantity,
+        };
+      })
+      .filter(Boolean);
+
+    if (products.length > 0) {
+      return products;
+    }
+  }
+
+  return [
+    {
+      product_id: String(fallbackOrder.orderNumber),
+      price: fallbackOrder.totalValue || 100,
+      quantity: 1,
+    },
+  ];
+};
+
+const buildRecalculatedDetails = (
+  cotationOptions: any[],
+  selectedOption: any,
+  matchedByCarrier: boolean,
+  requestedCarrier: string | null | undefined,
+) => ({
+  selectedOption,
+  selectedCarrierName:
+    safeString(selectedOption?.taxe?.name) ||
+    safeString(selectedOption?.name) ||
+    safeString(selectedOption?.identifier) ||
+    null,
+  selectedServiceName:
+    safeString(selectedOption?.name) ||
+    safeString(selectedOption?.identifier) ||
+    null,
+  matchedByCarrier,
+  requestedCarrier: safeString(requestedCarrier),
+  optionsCount: cotationOptions.length,
+  options: cotationOptions,
+});
 
 /**
  * POST /api/freight/quote/:orderId
@@ -80,16 +156,10 @@ export const quoteOrderFreight = async (req: Request, res: Response) => {
     }
 
     const freightService = new TrayFreightService(req.user.companyId);
-
+    const products = extractTrayOrderProducts(order.apiRawPayload, order);
     const cotationParams = {
       zipcode: order.zipCode,
-      products: [
-        {
-          product_id: order.orderNumber,
-          price: order.totalValue || 100,
-          quantity: 1,
-        },
-      ],
+      products,
     };
 
     const cotationResult = await freightService.quoteFreight(cotationParams);
@@ -103,18 +173,37 @@ export const quoteOrderFreight = async (req: Request, res: Response) => {
 
     const cheapestOption = freightService.getCheapestOption(cotationResult.Shipping.cotation);
     const fastestOption = freightService.getFastestOption(cotationResult.Shipping.cotation);
-    const quotedValue = cheapestOption ? Number.parseFloat(cheapestOption.value) : 0;
+    const matchedOption = freightService.getPreferredOptionForCarrier(
+      cotationResult.Shipping.cotation,
+      order.freightType,
+      order.apiRawPayload?.shipment,
+    );
+    const selectedOption =
+      matchedOption ||
+      (!safeString(order.freightType) && !safeString(order.apiRawPayload?.shipment)
+        ? cheapestOption
+        : null);
+    const quotedValue = selectedOption ? Number.parseFloat(selectedOption.value) : null;
 
     await prisma.order.update({
       where: { id: orderId },
       data: {
         recalculatedFreightValue: quotedValue,
         recalculatedFreightDate: new Date(),
-        recalculatedFreightDetails: cotationResult.Shipping.cotation,
+        recalculatedFreightDetails: buildRecalculatedDetails(
+          cotationResult.Shipping.cotation,
+          selectedOption,
+          Boolean(matchedOption),
+          order.freightType,
+        ),
       },
     });
 
-    console.log(`Frete recalculado: R$ ${quotedValue.toFixed(2)}`);
+    console.log(
+      selectedOption
+        ? `Frete recalculado: R$ ${quotedValue?.toFixed(2)}`
+        : 'Nenhuma opcao encontrada para a mesma transportadora do pedido.',
+    );
 
     return res.json({
       success: true,
@@ -124,17 +213,22 @@ export const quoteOrderFreight = async (req: Request, res: Response) => {
         paid: order.freightValue || 0,
         original: order.originalQuotedFreightValue ?? order.quotedFreightValue ?? null,
         recalculated: quotedValue,
-        difference: (order.freightValue || 0) - quotedValue,
+        difference:
+          quotedValue !== null ? (order.freightValue || 0) - quotedValue : null,
         percentDifference: order.freightValue
-          ? (((order.freightValue - quotedValue) / order.freightValue) * 100).toFixed(2)
+          ? quotedValue !== null
+            ? (((order.freightValue - quotedValue) / order.freightValue) * 100).toFixed(2)
+            : null
           : 0,
       },
       options: {
+        matched: matchedOption,
         cheapest: cheapestOption,
         fastest: fastestOption,
         all: cotationResult.Shipping.cotation,
       },
       destination: cotationResult.Shipping.destination,
+      products,
     });
   } catch (error) {
     console.error('Erro ao cotar frete:', error);
@@ -183,27 +277,37 @@ export const quoteBatchFreight = async (req: Request, res: Response) => {
           continue;
         }
 
+        const products = extractTrayOrderProducts(order.apiRawPayload, order);
         const cotationParams = {
           zipcode: order.zipCode,
-          products: [
-            {
-              product_id: order.orderNumber,
-              price: order.totalValue || 100,
-              quantity: 1,
-            },
-          ],
+          products,
         };
 
         const cotationResult = await freightService.quoteFreight(cotationParams);
         const cheapestOption = freightService.getCheapestOption(cotationResult.Shipping.cotation);
-        const quotedValue = cheapestOption ? Number.parseFloat(cheapestOption.value) : 0;
+        const matchedOption = freightService.getPreferredOptionForCarrier(
+          cotationResult.Shipping.cotation,
+          order.freightType,
+          order.apiRawPayload?.shipment,
+        );
+        const selectedOption =
+          matchedOption ||
+          (!safeString(order.freightType) && !safeString(order.apiRawPayload?.shipment)
+            ? cheapestOption
+            : null);
+        const quotedValue = selectedOption ? Number.parseFloat(selectedOption.value) : null;
 
         await prisma.order.update({
           where: { id: orderIdStr },
           data: {
             recalculatedFreightValue: quotedValue,
             recalculatedFreightDate: new Date(),
-            recalculatedFreightDetails: cotationResult.Shipping.cotation,
+            recalculatedFreightDetails: buildRecalculatedDetails(
+              cotationResult.Shipping.cotation,
+              selectedOption,
+              Boolean(matchedOption),
+              order.freightType,
+            ),
           },
         });
 
@@ -214,7 +318,9 @@ export const quoteBatchFreight = async (req: Request, res: Response) => {
           paid: order.freightValue || 0,
           original: order.originalQuotedFreightValue ?? order.quotedFreightValue ?? null,
           recalculated: quotedValue,
-          difference: (order.freightValue || 0) - quotedValue,
+          matchedCarrier: safeString(order.freightType),
+          difference:
+            quotedValue !== null ? (order.freightValue || 0) - quotedValue : null,
         });
       } catch (error) {
         results.push({

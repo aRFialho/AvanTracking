@@ -67,6 +67,49 @@ const pickFirstString = (values: unknown[]) => {
   return null;
 };
 
+const normalizeComparableText = (value: unknown) =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9]+/g, ' ')
+    .trim()
+    .toLowerCase();
+
+const candidateMatchesPaidCarrier = (
+  candidate: TrayOriginalQuoteCandidate,
+  references: string[],
+) => {
+  const normalizedReferences = references
+    .map((value) => normalizeComparableText(value))
+    .filter(Boolean);
+
+  if (!normalizedReferences.length) {
+    return false;
+  }
+
+  const normalizedCandidateFields = [
+    candidate.shipmentType,
+    candidate.serviceCode,
+    candidate.serviceName,
+    candidate.integrator,
+  ]
+    .map((value) => normalizeComparableText(value))
+    .filter(Boolean);
+
+  if (!normalizedCandidateFields.length) {
+    return false;
+  }
+
+  return normalizedReferences.some((reference) =>
+    normalizedCandidateFields.some(
+      (field) =>
+        field === reference ||
+        field.includes(reference) ||
+        reference.includes(field),
+    ),
+  );
+};
+
 const collectTrayQuoteCandidates = (
   node: any,
   path = 'root',
@@ -316,6 +359,13 @@ const extractOriginalCheckoutQuote = (
     trayOrder?.shipping_id,
     trayOrder?.id_shipping,
   ]);
+  const paidCarrierReferences = [
+    trayOrder?.shipment,
+    trayOrder?.shipment_integrator,
+    trayOrder?.delivery_method?.name,
+    trayOrder?.Shipping?.name,
+    trayOrder?.shipping_service,
+  ].filter(Boolean);
 
   const candidates = collectOriginalQuoteCandidates(trayOrder);
   const selectedCandidate =
@@ -330,6 +380,9 @@ const extractOriginalCheckoutQuote = (
         orderShippingId &&
         candidate.shippingId &&
         candidate.shippingId === orderShippingId,
+    ) ||
+    candidates.find((candidate) =>
+      candidateMatchesPaidCarrier(candidate, paidCarrierReferences),
     ) ||
     candidates.find((candidate) => candidate.quotationId) ||
     null;

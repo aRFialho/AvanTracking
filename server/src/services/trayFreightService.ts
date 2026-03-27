@@ -140,4 +140,70 @@ export class TrayFreightService {
       option.identifier.toLowerCase().includes(normalized)
     ) || null;
   }
+
+  private normalizeComparableText(value: unknown) {
+    return String(value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, ' ')
+      .trim();
+  }
+
+  private getOptionComparableTexts(option: FreightCotationOption) {
+    return [
+      option.name,
+      option.identifier,
+      option.taxe?.name,
+      option.information,
+    ]
+      .map((value) => this.normalizeComparableText(value))
+      .filter(Boolean);
+  }
+
+  getPreferredOptionForCarrier(
+    cotation: FreightCotationOption[],
+    carrierName: string | null | undefined,
+    fallbackServiceName?: string | null,
+  ): FreightCotationOption | null {
+    if (!cotation || cotation.length === 0) return null;
+
+    const normalizedCarrier = this.normalizeComparableText(carrierName);
+    const normalizedFallbackService = this.normalizeComparableText(fallbackServiceName);
+    const shouldRequireMatch = Boolean(normalizedCarrier || normalizedFallbackService);
+
+    if (normalizedCarrier) {
+      const directMatch =
+        cotation.find((option) =>
+          this.getOptionComparableTexts(option).some(
+            (text) =>
+              text === normalizedCarrier ||
+              text.includes(normalizedCarrier) ||
+              normalizedCarrier.includes(text),
+          ),
+        ) || null;
+
+      if (directMatch) {
+        return directMatch;
+      }
+    }
+
+    if (normalizedFallbackService) {
+      const serviceMatch =
+        cotation.find((option) =>
+          this.getOptionComparableTexts(option).some(
+            (text) =>
+              text === normalizedFallbackService ||
+              text.includes(normalizedFallbackService) ||
+              normalizedFallbackService.includes(text),
+          ),
+        ) || null;
+
+      if (serviceMatch) {
+        return serviceMatch;
+      }
+    }
+
+    return shouldRequireMatch ? null : this.getCheapestOption(cotation);
+  }
 }
