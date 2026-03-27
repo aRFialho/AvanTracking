@@ -132,6 +132,7 @@ const MainApp: React.FC = () => {
   const [showIntro, setShowIntro] = useState(true);
   const [syncJob, setSyncJob] = useState<SyncJobStatus | null>(null);
   const [traySyncJob, setTraySyncJob] = useState<SyncJobStatus | null>(null);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const previousSyncStatusRef = useRef<SyncJobStatus["status"] | null>(null);
   const previousTraySyncStatusRef = useRef<SyncJobStatus["status"] | null>(null);
@@ -688,13 +689,15 @@ const MainApp: React.FC = () => {
     <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-[#0B0C15] text-slate-900 dark:text-slate-100 transition-colors duration-300 font-sans">
       {showIntro && <SplitIntro />}
 
-      <Sidebar
+            <Sidebar
         currentView={currentView}
         onChangeView={handleChangeView}
         onSync={handleSync}
         isSyncing={isSyncing}
         lastSync={lastSyncTime}
         syncJob={syncJob}
+        isCollapsed={isSidebarCollapsed}
+        onToggleCollapse={() => setIsSidebarCollapsed((current) => !current)}
       />
 
       <main className="flex-1 flex flex-col h-full relative overflow-hidden">
@@ -786,3 +789,5 @@ const App: React.FC = () => {
 };
 
 export default App;
+
+

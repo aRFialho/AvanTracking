@@ -68,6 +68,7 @@ model Company {
     users       User[]
     orders      Order[]
     trayAuth    TrayAuth?
+    trayCheckoutQuotes TrayCheckoutQuote[]
 }
 
 model ReleaseNote {
@@ -253,3 +254,4 @@ model TrayAuth {
 
     @@index([storeId])
 }
+

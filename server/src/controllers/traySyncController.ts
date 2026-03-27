@@ -46,7 +46,13 @@ export const syncTrayOrders = async (req: Request, res: Response) => {
         companyId: context.companyId,
         userId: context.userId,
         trigger: 'manual',
-        payload: result.report,
+        payload: {
+        companyId: context.companyId,
+        storeId: result.storeId,
+        modified: result.modified,
+        statuses: result.statuses,
+        ...result.results,
+      },
         startedAt,
         finishedAt,
       });
@@ -142,4 +148,5 @@ export const getTraySyncStatus = async (req: Request, res: Response) => {
     });
   }
 };
+
 
