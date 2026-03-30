@@ -37,6 +37,22 @@ import {
 import { fetchWithAuth } from "../utils/authFetch";
 import { LOGO_URL } from "../constants";
 
+const DELAYED_STATUS_FILTER = "DELAYED";
+
+type SortDirection = "asc" | "desc";
+type SortKey =
+  | "orderNumber"
+  | "invoiceNumber"
+  | "shippingDate"
+  | "salesChannel"
+  | "freightType"
+  | "freightValue"
+  | "recalculatedFreightValue"
+  | "estimatedDeliveryDate"
+  | "carrierEstimatedDeliveryDate"
+  | "lastUpdate"
+  | "status";
+
 const STATUS_LABELS: Record<string, string> = {
   [OrderStatus.PENDING]: "Pendente",
   [OrderStatus.CREATED]: "Criado",
@@ -120,6 +136,43 @@ const buildTrackingErrorHtml = (message: string) => `<!DOCTYPE html>
   </body>
 </html>`;
 
+const isDelayedOrder = (order: Pick<Order, "isDelayed" | "status">) =>
+  Boolean(
+    order.isDelayed &&
+      order.status !== OrderStatus.DELIVERED &&
+      order.status !== OrderStatus.CHANNEL_LOGISTICS,
+  );
+
+const compareText = (left: unknown, right: unknown) =>
+  toText(left).localeCompare(toText(right), "pt-BR", {
+    sensitivity: "base",
+    numeric: true,
+  });
+
+const compareNumber = (left: number | null | undefined, right: number | null | undefined) =>
+  (left ?? Number.NEGATIVE_INFINITY) - (right ?? Number.NEGATIVE_INFINITY);
+
+const getDateSortValue = (value: string | Date | null | undefined) => {
+  if (value instanceof Date) {
+    return value.getTime();
+  }
+
+  return parseOptionalDate(value)?.getTime() ?? Number.NEGATIVE_INFINITY;
+};
+
+const compareDate = (
+  left: string | Date | null | undefined,
+  right: string | Date | null | undefined,
+) => getDateSortValue(left) - getDateSortValue(right);
+
+const getDisplayStatusLabel = (order: Pick<Order, "isDelayed" | "status">) => {
+  if (isDelayedOrder(order)) {
+    return "Atrasado";
+  }
+
+  return STATUS_LABELS[order.status] || order.status;
+};
+
 interface OrderListProps {
   orders: Order[];
   initialFilters?: any;
@@ -170,6 +223,10 @@ export const OrderList: React.FC<OrderListProps> = ({
   const [marketplaceFilter, setMarketplaceFilter] = useState<string>("ALL");
   const [dateRangeStart, setDateRangeStart] = useState("");
   const [dateRangeEnd, setDateRangeEnd] = useState("");
+  const [sortConfig, setSortConfig] = useState<{
+    key: SortKey;
+    direction: SortDirection;
+  } | null>(null);
 
   // Custom Filter Logic from Dashboard
   const [customStatusFilter, setCustomStatusFilter] = useState<string[] | null>(
@@ -233,6 +290,7 @@ export const OrderList: React.FC<OrderListProps> = ({
       // 2. Dropdowns
       const matchStatus =
         (statusFilter === "ALL" ||
+          (statusFilter === DELAYED_STATUS_FILTER && isDelayedOrder(o)) ||
           o.status === statusFilter ||
           (statusFilter === OrderStatus.DELIVERY_ATTEMPT &&
             isOrderOnRoute(o))) &&
@@ -245,8 +303,7 @@ export const OrderList: React.FC<OrderListProps> = ({
         marketplaceFilter === "ALL" || o.salesChannel === marketplaceFilter;
 
       // 3. Special Filters
-      if (onlyDelayed && (!o.isDelayed || o.status === OrderStatus.DELIVERED))
-        return false;
+      if (onlyDelayed && !isDelayedOrder(o)) return false;
 
       if (dueToday) {
         const today = new Date();
@@ -318,6 +375,86 @@ export const OrderList: React.FC<OrderListProps> = ({
     isNoMovementView,
     noMovementDays,
   ]);
+
+  const sortedOrders = useMemo(() => {
+    if (!sortConfig) {
+      return filteredOrders;
+    }
+
+    const sorted = [...filteredOrders].sort((left, right) => {
+      switch (sortConfig.key) {
+        case "orderNumber":
+          return compareText(left.orderNumber, right.orderNumber);
+        case "invoiceNumber":
+          return compareText(left.invoiceNumber, right.invoiceNumber);
+        case "shippingDate":
+          return compareDate(left.shippingDate, right.shippingDate);
+        case "salesChannel":
+          return compareText(left.salesChannel, right.salesChannel);
+        case "freightType":
+          return compareText(
+            normalizeCarrierName(left.freightType),
+            normalizeCarrierName(right.freightType),
+          );
+        case "freightValue":
+          return compareNumber(left.freightValue, right.freightValue);
+        case "recalculatedFreightValue":
+          return compareNumber(
+            left.recalculatedFreightValue,
+            right.recalculatedFreightValue,
+          );
+        case "estimatedDeliveryDate":
+          return compareDate(
+            left.estimatedDeliveryDate,
+            right.estimatedDeliveryDate,
+          );
+        case "carrierEstimatedDeliveryDate":
+          return compareDate(
+            left.carrierEstimatedDeliveryDate,
+            right.carrierEstimatedDeliveryDate,
+          );
+        case "lastUpdate":
+          return compareDate(left.lastUpdate, right.lastUpdate);
+        case "status":
+          return compareText(
+            getDisplayStatusLabel(left),
+            getDisplayStatusLabel(right),
+          );
+        default:
+          return 0;
+      }
+    });
+
+    return sortConfig.direction === "asc" ? sorted : sorted.reverse();
+  }, [filteredOrders, sortConfig]);
+
+  const getDefaultSortDirection = (key: SortKey): SortDirection =>
+    [
+      "shippingDate",
+      "freightValue",
+      "recalculatedFreightValue",
+      "estimatedDeliveryDate",
+      "carrierEstimatedDeliveryDate",
+      "lastUpdate",
+    ].includes(key)
+      ? "desc"
+      : "asc";
+
+  const handleSort = (key: SortKey) => {
+    setSortConfig((current) => {
+      if (current?.key === key) {
+        return {
+          key,
+          direction: current.direction === "asc" ? "desc" : "asc",
+        };
+      }
+
+      return {
+        key,
+        direction: getDefaultSortDirection(key),
+      };
+    });
+  };
 
   const handleExternalSearchClick = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -430,15 +567,7 @@ export const OrderList: React.FC<OrderListProps> = ({
   };
 
   const getOrderStatusLabel = (order: Order) => {
-    if (
-      order.isDelayed &&
-      order.status !== OrderStatus.DELIVERED &&
-      order.status !== OrderStatus.CHANNEL_LOGISTICS
-    ) {
-      return "Atrasado";
-    }
-
-    return STATUS_LABELS[order.status] || order.status;
+    return getDisplayStatusLabel(order);
   };
 
   const getLatestMovementLabel = (order: Order) => {
@@ -483,7 +612,7 @@ export const OrderList: React.FC<OrderListProps> = ({
   };
 
   const getExportRows = () =>
-    filteredOrders.map((order) => ({
+    sortedOrders.map((order) => ({
       orderNumber: order.orderNumber,
       invoiceNumber: order.invoiceNumber || "-",
       trackingCode: order.trackingCode || "-",
@@ -503,7 +632,7 @@ export const OrderList: React.FC<OrderListProps> = ({
     }));
 
   const handleExportHtmlReport = () => {
-    if (filteredOrders.length === 0) {
+    if (sortedOrders.length === 0) {
       alert("Nao ha pedidos para exportar com os filtros atuais.");
       return;
     }
@@ -763,7 +892,7 @@ export const OrderList: React.FC<OrderListProps> = ({
           </div>
           <div class="summary">
             <div>
-              <strong>${escapeHtml(filteredOrders.length)}</strong>
+              <strong>${escapeHtml(sortedOrders.length)}</strong>
               <span>Pedidos exportados</span>
             </div>
           </div>
@@ -812,7 +941,7 @@ export const OrderList: React.FC<OrderListProps> = ({
   };
 
   const handleExportCsvReport = () => {
-    if (filteredOrders.length === 0) {
+    if (sortedOrders.length === 0) {
       alert("Nao ha pedidos para exportar com os filtros atuais.");
       return;
     }
@@ -955,11 +1084,7 @@ export const OrderList: React.FC<OrderListProps> = ({
     const baseClass =
       "inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wider border";
 
-    if (
-      delayed &&
-      status !== OrderStatus.DELIVERED &&
-      status !== OrderStatus.CHANNEL_LOGISTICS
-    ) {
+    if (isDelayedOrder({ status, isDelayed: delayed })) {
       return (
         <span
           className={clsx(
@@ -1042,6 +1167,34 @@ export const OrderList: React.FC<OrderListProps> = ({
           </span>
         );
     }
+  };
+
+  const renderSortIcon = (key: SortKey) => {
+    const isActive = sortConfig?.key === key;
+    const iconClass = clsx(
+      "h-3 w-3 transition-colors",
+      isActive
+        ? "text-blue-600 dark:text-blue-400"
+        : "text-slate-300 dark:text-slate-600",
+    );
+
+    return (
+      <span className="ml-1.5 inline-flex flex-col items-center justify-center leading-none">
+        <ChevronUp
+          className={clsx(
+            iconClass,
+            isActive && sortConfig?.direction === "asc" ? "" : "opacity-70",
+          )}
+        />
+        <ChevronDown
+          className={clsx(
+            iconClass,
+            "-mt-1",
+            isActive && sortConfig?.direction === "desc" ? "" : "opacity-70",
+          )}
+        />
+      </span>
+    );
   };
 
   return (
@@ -1131,6 +1284,7 @@ export const OrderList: React.FC<OrderListProps> = ({
                 className="w-full p-2 border border-slate-200 dark:border-white/10 rounded-lg text-sm bg-white dark:bg-dark-card dark:text-white focus:border-accent outline-none"
               >
                 <option value="ALL">Todos</option>
+                <option value={DELAYED_STATUS_FILTER}>Atrasado</option>
                 {Object.values(OrderStatus).map((s) => (
                   <option key={s} value={s}>
                     {STATUS_LABELS[s] || s}
@@ -1290,38 +1444,115 @@ export const OrderList: React.FC<OrderListProps> = ({
             <thead className="text-xs text-slate-500 dark:text-slate-400 font-semibold uppercase bg-slate-50 dark:bg-dark-card sticky top-0 z-10 shadow-sm backdrop-blur-md">
               <tr>
                 <th className="px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]">
-                  ID / Pedido
+                  <button
+                    type="button"
+                    onClick={() => handleSort("orderNumber")}
+                    className="inline-flex items-center gap-1 rounded-md transition-colors hover:text-slate-700 dark:hover:text-white"
+                  >
+                    <span>ID / Pedido</span>
+                    {renderSortIcon("orderNumber")}
+                  </button>
                 </th>
                 <th className="px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]">
-                  Nota Fiscal
+                  <button
+                    type="button"
+                    onClick={() => handleSort("invoiceNumber")}
+                    className="inline-flex items-center gap-1 rounded-md transition-colors hover:text-slate-700 dark:hover:text-white"
+                  >
+                    <span>Nota Fiscal</span>
+                    {renderSortIcon("invoiceNumber")}
+                  </button>
                 </th>
                 <th className="px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]">
-                  Emissão
+                  <button
+                    type="button"
+                    onClick={() => handleSort("shippingDate")}
+                    className="inline-flex items-center gap-1 rounded-md transition-colors hover:text-slate-700 dark:hover:text-white"
+                  >
+                    <span>Emissão</span>
+                    {renderSortIcon("shippingDate")}
+                  </button>
                 </th>
                 <th className="px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]">
-                  Marketplace
+                  <button
+                    type="button"
+                    onClick={() => handleSort("salesChannel")}
+                    className="inline-flex items-center gap-1 rounded-md transition-colors hover:text-slate-700 dark:hover:text-white"
+                  >
+                    <span>Marketplace</span>
+                    {renderSortIcon("salesChannel")}
+                  </button>
                 </th>
                 <th className="px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]">
-                  Transportadora
+                  <button
+                    type="button"
+                    onClick={() => handleSort("freightType")}
+                    className="inline-flex items-center gap-1 rounded-md transition-colors hover:text-slate-700 dark:hover:text-white"
+                  >
+                    <span>Transportadora</span>
+                    {renderSortIcon("freightType")}
+                  </button>
                 </th>
                 <th className="px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]">
-                  Frete Pago
+                  <button
+                    type="button"
+                    onClick={() => handleSort("freightValue")}
+                    className="inline-flex items-center gap-1 rounded-md transition-colors hover:text-slate-700 dark:hover:text-white"
+                  >
+                    <span>Frete Pago</span>
+                    {renderSortIcon("freightValue")}
+                  </button>
                 </th>
 
                 <th className="px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]">
-                  Frete Recalculado
+                  <button
+                    type="button"
+                    onClick={() => handleSort("recalculatedFreightValue")}
+                    className="inline-flex items-center gap-1 rounded-md transition-colors hover:text-slate-700 dark:hover:text-white"
+                  >
+                    <span>Frete Recalculado</span>
+                    {renderSortIcon("recalculatedFreightValue")}
+                  </button>
                 </th>
                 <th className="px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]">
-                  Prev. Entrega
+                  <button
+                    type="button"
+                    onClick={() => handleSort("estimatedDeliveryDate")}
+                    className="inline-flex items-center gap-1 rounded-md transition-colors hover:text-slate-700 dark:hover:text-white"
+                  >
+                    <span>Prev. Entrega</span>
+                    {renderSortIcon("estimatedDeliveryDate")}
+                  </button>
                 </th>
                 <th className="px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]">
-                  Previsão Transportadora
+                  <button
+                    type="button"
+                    onClick={() => handleSort("carrierEstimatedDeliveryDate")}
+                    className="inline-flex items-center gap-1 rounded-md transition-colors hover:text-slate-700 dark:hover:text-white"
+                  >
+                    <span>Previsão Transportadora</span>
+                    {renderSortIcon("carrierEstimatedDeliveryDate")}
+                  </button>
                 </th>
                 <th className="px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]">
-                  Última Movimentação
+                  <button
+                    type="button"
+                    onClick={() => handleSort("lastUpdate")}
+                    className="inline-flex items-center gap-1 rounded-md transition-colors hover:text-slate-700 dark:hover:text-white"
+                  >
+                    <span>Última Movimentação</span>
+                    {renderSortIcon("lastUpdate")}
+                  </button>
                 </th>
                 <th className="px-4 py-3 whitespace-nowrap text-center bg-slate-50 dark:bg-[#11131f]">
-                  Status
+                  <button
+                    type="button"
+                    onClick={() => handleSort("status")}
+                    className="inline-flex items-center gap-1 rounded-md transition-colors hover:text-slate-700 dark:hover:text-white"
+                  >
+                    <span>Status</span>
+                    {renderSortIcon("status")}
+                  </button>
                 </th>
                 <th className="px-4 py-3 whitespace-nowrap text-right bg-slate-50 dark:bg-[#11131f]">
                   Ação
@@ -1329,8 +1560,8 @@ export const OrderList: React.FC<OrderListProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-white/5">
-              {filteredOrders.length > 0 ? (
-                filteredOrders.map((order) => (
+              {sortedOrders.length > 0 ? (
+                sortedOrders.map((order) => (
                   <tr
                     key={order.id}
                     className="hover:bg-slate-50 dark:hover:bg-white/5 transition-colors group"

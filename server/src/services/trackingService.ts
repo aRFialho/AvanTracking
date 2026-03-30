@@ -174,6 +174,50 @@ const resolveCarrierEstimatedDate = (
   return null;
 };
 
+const normalizeEventLocation = (value: string) =>
+  String(value || '')
+    .replace(/\u00a0/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/[.;:,]+$/g, '')
+    .trim();
+
+const extractEventLocationFromText = (text: string | null | undefined) => {
+  const normalizedText = normalizeEventLocation(String(text || ''));
+  if (!normalizedText) {
+    return { city: null as string | null, state: null as string | null };
+  }
+
+  const slashMatch = normalizedText.match(
+    /\b([A-ZÀ-Ú0-9' -]+)\s*\/\s*([A-Z]{2})\b/i,
+  );
+  if (slashMatch?.[1]) {
+    return {
+      city: normalizeEventLocation(slashMatch[1]),
+      state: normalizeEventLocation(slashMatch[2]).slice(0, 2).toUpperCase(),
+    };
+  }
+
+  const patterns = [
+    /na cidade de\s+([A-ZÀ-Ú0-9' -]+?)(?:\s+em\b|[.;]|$)/i,
+    /cidade de\s+([A-ZÀ-Ú0-9' -]+?)(?:\s+em\b|[.;]|$)/i,
+    /na unidade\s+([A-ZÀ-Ú0-9' -]+?)(?:\s+em\b|[.;]|$)/i,
+    /da unidade\s+([A-ZÀ-Ú0-9' -]+?)(?:\s+em\b|[.;]|$)/i,
+    /unidade\s+([A-ZÀ-Ú0-9' -]+?)(?:\s+em\b|[.;]|$)/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = normalizedText.match(pattern);
+    if (match?.[1]) {
+      return {
+        city: normalizeEventLocation(match[1]),
+        state: null,
+      };
+    }
+  }
+
+  return { city: null, state: null };
+};
+
 const isRouteStatus = (status: OrderStatus) => ROUTE_STATUSES.includes(status);
 
 const resolveStoredTrackingEventStatus = (event?: {
@@ -627,14 +671,20 @@ export class TrackingService {
             state: event.state,
             eventDate: event.eventDate,
           }))
-        : (trackingData.tracking.history || []).map((historyItem: any) => ({
-            orderId,
-            status: historyItem.macro_state?.code || 'UNKNOWN',
-            description: historyItem.provider_message || historyItem.status_label,
-            city: trackingData.end_customer?.address?.city || null,
-            state: trackingData.end_customer?.address?.state || null,
-            eventDate: new Date(historyItem.event_date),
-          }));
+        : (trackingData.tracking.history || []).map((historyItem: any) => {
+            const description =
+              historyItem.provider_message || historyItem.status_label;
+            const parsedLocation = extractEventLocationFromText(description);
+
+            return {
+              orderId,
+              status: historyItem.macro_state?.code || 'UNKNOWN',
+              description,
+              city: parsedLocation.city,
+              state: parsedLocation.state,
+              eventDate: new Date(historyItem.event_date),
+            };
+          });
 
       const newStatus = usingSsw
         ? trackingData.status

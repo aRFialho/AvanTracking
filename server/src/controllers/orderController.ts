@@ -43,6 +43,50 @@ const mapTrackingEventsToHistory = (trackingEvents: any[] | undefined) => {
   }));
 };
 
+const normalizeEventLocation = (value: unknown) =>
+  String(value || '')
+    .replace(/\u00a0/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/[.;:,]+$/g, '')
+    .trim();
+
+const extractEventLocationFromText = (text: unknown) => {
+  const normalizedText = normalizeEventLocation(text);
+  if (!normalizedText) {
+    return { city: null as string | null, state: null as string | null };
+  }
+
+  const slashMatch = normalizedText.match(
+    /\b([A-ZÀ-Ú0-9' -]+)\s*\/\s*([A-Z]{2})\b/i,
+  );
+  if (slashMatch?.[1]) {
+    return {
+      city: normalizeEventLocation(slashMatch[1]),
+      state: normalizeEventLocation(slashMatch[2]).slice(0, 2).toUpperCase(),
+    };
+  }
+
+  const patterns = [
+    /na cidade de\s+([A-ZÀ-Ú0-9' -]+?)(?:\s+em\b|[.;]|$)/i,
+    /cidade de\s+([A-ZÀ-Ú0-9' -]+?)(?:\s+em\b|[.;]|$)/i,
+    /na unidade\s+([A-ZÀ-Ú0-9' -]+?)(?:\s+em\b|[.;]|$)/i,
+    /da unidade\s+([A-ZÀ-Ú0-9' -]+?)(?:\s+em\b|[.;]|$)/i,
+    /unidade\s+([A-ZÀ-Ú0-9' -]+?)(?:\s+em\b|[.;]|$)/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = normalizedText.match(pattern);
+    if (match?.[1]) {
+      return {
+        city: normalizeEventLocation(match[1]),
+        state: null,
+      };
+    }
+  }
+
+  return { city: null, state: null };
+};
+
 const parseCarrierForecastFromTrackingText = (text: string | null | undefined) => {
   const normalizedText = String(text || '').trim();
   if (!normalizedText) return null;
@@ -561,16 +605,21 @@ const buildExternalOrderResponse = (
     };
   }
 
-  const trackingHistory = (result?.tracking?.history || []).map((historyItem: any) => ({
-    status: historyItem.macro_state?.code || 'UNKNOWN',
-    description:
+  const trackingHistory = (result?.tracking?.history || []).map((historyItem: any) => {
+    const description =
       historyItem.provider_message ||
       historyItem.status_label ||
-      'Evento de rastreamento',
-    date: safeDate(historyItem.event_date) || new Date(),
-    city: safeString(result?.end_customer?.address?.city) || '',
-    state: safeString(result?.end_customer?.address?.state) || '',
-  }));
+      'Evento de rastreamento';
+    const parsedLocation = extractEventLocationFromText(description);
+
+    return {
+      status: historyItem.macro_state?.code || 'UNKNOWN',
+      description,
+      date: safeDate(historyItem.event_date) || new Date(),
+      city: parsedLocation.city || '',
+      state: parsedLocation.state || '',
+    };
+  });
 
   const latestTrackingEvent =
     trackingHistory.length > 0

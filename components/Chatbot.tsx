@@ -13,6 +13,7 @@ import { fetchWithAuth } from "../utils/authFetch";
 
 const BOT_NAME = "Muriçoca";
 const BOT_AVATAR_SRC = "/muricoca.png";
+const BOT_ANIMATED_AVATAR_SRC = "/muricoca_animated.mp4";
 const BOT_BUTTON_SIZE = 64;
 const BOT_WINDOW_GAP = 16;
 const BOT_MARGIN = 24;
@@ -166,6 +167,7 @@ export const Chatbot: React.FC = () => {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isAvatarOk, setIsAvatarOk] = useState(true);
+  const [isAnimatedAvatarOk, setIsAnimatedAvatarOk] = useState(true);
   const [launcherPosition, setLauncherPosition] = useState({ x: 0, y: 0 });
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -498,21 +500,44 @@ export const Chatbot: React.FC = () => {
           <div className="absolute inset-0 bg-blue-500/10 dark:bg-blue-400/10 rounded-full animate-pulse opacity-70"></div>
         )}
 
-        <img
-          src={BOT_AVATAR_SRC}
-          alt={BOT_NAME}
-          className={clsx(
-            "w-14 h-14 object-contain relative z-10 select-none pointer-events-none muricoca-float transition-transform duration-300",
-            isOpen ? "opacity-0" : "group-hover:scale-110 group-hover:rotate-2",
-          )}
-          draggable={false}
-          onDragStart={(event) => event.preventDefault()}
-          onError={(e) => {
-            console.error("Erro ao carregar imagem do Muriçoca", e);
-            setIsAvatarOk(false);
-          }}
-          style={{ display: isAvatarOk ? "block" : "none" }}
-        />
+        {!isOpen && (
+          <div
+            className={clsx(
+              "absolute inset-[4px] overflow-hidden rounded-full relative z-10 muricoca-float transition-transform duration-300",
+              "group-hover:scale-110 group-hover:rotate-2",
+            )}
+          >
+            {isAnimatedAvatarOk ? (
+              <video
+                src={BOT_ANIMATED_AVATAR_SRC}
+                poster={BOT_AVATAR_SRC}
+                className="h-full w-full object-cover select-none pointer-events-none"
+                autoPlay
+                muted
+                loop
+                playsInline
+                preload="auto"
+                onError={(event) => {
+                  console.error("Erro ao carregar video da Muriçoca", event);
+                  setIsAnimatedAvatarOk(false);
+                }}
+              />
+            ) : (
+              <img
+                src={BOT_AVATAR_SRC}
+                alt={BOT_NAME}
+                className="h-full w-full object-cover select-none pointer-events-none"
+                draggable={false}
+                onDragStart={(event) => event.preventDefault()}
+                onError={(event) => {
+                  console.error("Erro ao carregar imagem do Muriçoca", event);
+                  setIsAvatarOk(false);
+                }}
+                style={{ display: isAvatarOk ? "block" : "none" }}
+              />
+            )}
+          </div>
+        )}
 
         {!isAvatarOk && !isOpen && (
           <MessageCircle className="w-7 h-7 relative z-10 text-blue-600 dark:text-blue-400" />

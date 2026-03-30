@@ -164,6 +164,50 @@ const parseLatestDateFromText = (text: string) => {
   return latest || new Date();
 };
 
+const normalizeLocationToken = (value: string) =>
+  value
+    .replace(/\u00a0/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/[.;:,]+$/g, '')
+    .trim();
+
+const extractLocationFromText = (text: string) => {
+  const normalizedText = normalizeLocationToken(text);
+  if (!normalizedText) {
+    return { city: null as string | null, state: null as string | null };
+  }
+
+  const patterns = [
+    /na cidade de\s+([A-ZÀ-Ú0-9' -]+?)(?:\s+em\b|[.;]|$)/i,
+    /cidade de\s+([A-ZÀ-Ú0-9' -]+?)(?:\s+em\b|[.;]|$)/i,
+    /na unidade\s+([A-ZÀ-Ú0-9' -]+?)(?:\s+em\b|[.;]|$)/i,
+    /da unidade\s+([A-ZÀ-Ú0-9' -]+?)(?:\s+em\b|[.;]|$)/i,
+    /unidade\s+([A-ZÀ-Ú0-9' -]+?)(?:\s+em\b|[.;]|$)/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = normalizedText.match(pattern);
+    if (match?.[1]) {
+      return {
+        city: normalizeLocationToken(match[1]),
+        state: null,
+      };
+    }
+  }
+
+  const slashMatch = normalizedText.match(
+    /\b([A-ZÀ-Ú0-9' -]+)\s*\/\s*([A-Z]{2})\b/i,
+  );
+  if (slashMatch?.[1]) {
+    return {
+      city: normalizeLocationToken(slashMatch[1]),
+      state: normalizeLocationToken(slashMatch[2]).slice(0, 2).toUpperCase(),
+    };
+  }
+
+  return { city: null, state: null };
+};
+
 const mapSswStatusToEnum = (text: string): OrderStatus | null => {
   const normalized = text.toLowerCase();
 
@@ -228,12 +272,17 @@ const extractSswEvents = (html: string): SswTrackingEvent[] => {
       .split('/')
       .map((part) => part.replace(/\bMID\b.*$/i, '').replace(/\u00a0/g, ' ').trim())
       .filter(Boolean);
+    const parsedLocation = extractLocationFromText(
+      [rawTitle, rawDescription, rawUnit].filter(Boolean).join(' '),
+    );
 
     events.push({
       status,
       description: [rawTitle, rawDescription].filter(Boolean).join(' - '),
-      city: unitParts[0] || null,
-      state: unitParts[1] ? unitParts[1].slice(0, 2).trim() : null,
+      city: parsedLocation.city || unitParts[0] || null,
+      state:
+        parsedLocation.state ||
+        (unitParts[1] ? unitParts[1].slice(0, 2).trim() : null),
       eventDate,
     });
   }

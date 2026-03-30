@@ -43,6 +43,23 @@ const escapeCsv = (value: unknown) => {
   return text;
 };
 
+const RELEVANT_TRACKING_STATUSES: OrderStatus[] = [
+  OrderStatus.SHIPPED,
+  OrderStatus.DELIVERY_ATTEMPT,
+  OrderStatus.DELIVERED,
+  OrderStatus.FAILURE,
+];
+
+const isRelevantTrackingChange = (change: SyncOrderChangeReport) =>
+  change.enteredDelivered ||
+  change.enteredDelay ||
+  change.enteredFailure ||
+  change.enteredRoute ||
+  (
+    change.previousStatus !== change.currentStatus &&
+    RELEVANT_TRACKING_STATUSES.includes(change.currentStatus)
+  );
+
 const formatDateTime = (value: string | null) =>
   value ? new Date(value).toLocaleString('pt-BR') : '-';
 
@@ -435,10 +452,9 @@ const buildEmailHtml = (
     (change) => change.enteredFailure,
   ).length;
   const enteredRoute = payload.changes.filter((change) => change.enteredRoute).length;
-  const changedOrders = payload.changes.filter(
-    (change) => change.changed || change.errorMessage,
-  );
-  const highlights = changedOrders.slice(0, 8);
+  const highlights = payload.changes
+    .filter((change) => isRelevantTrackingChange(change))
+    .slice(0, 8);
   const metrics = [
     { label: 'Entregues', value: enteredDelivered, color: '#10b981' },
     { label: 'Em rota', value: payload.after.onRoute, color: '#2563eb' },
