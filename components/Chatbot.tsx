@@ -155,13 +155,248 @@ const KNOWLEDGE_BASE: KnowledgeItem[] = [
   },
 ];
 
+const SUPPORT_FALLBACK_MESSAGE =
+  "Nao consegui identificar essa funcionalidade com seguranca.\n\nEntre em contato com o desenvolvedor da plataforma para orientacao ou correcao.";
+
+const normalizeKnowledgeText = (value: string) =>
+  value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+
+const isUncertainAiResponse = (text: string) => {
+  const normalized = normalizeKnowledgeText(text);
+
+  return [
+    "nao entendi",
+    "nao compreendi",
+    "nao sei",
+    "nao tenho certeza",
+    "nao encontrei",
+    "nao consigo identificar",
+    "falta contexto",
+  ].some((term) => normalized.includes(term));
+};
+
+const ENHANCED_KNOWLEDGE_BASE: KnowledgeItem[] = [
+  {
+    keywords: [
+      "dashboard",
+      "grafico",
+      "kpi",
+      "ranking",
+      "resumo",
+      "tela inicial",
+      "metricas",
+      "indicadores",
+      "cards",
+    ],
+    response:
+      "Dashboard Executivo\n\nNo Dashboard voce acompanha os indicadores principais da operacao.\n- cards com totais e visoes de status\n- graficos de distribuicao dos pedidos\n- ranking de transportadoras\n- atalhos para abrir a tela de pedidos com filtros aplicados",
+  },
+  {
+    keywords: [
+      "pedidos",
+      "pedido",
+      "lista",
+      "filtro",
+      "detalhe",
+      "historico",
+      "rastreamento",
+      "ordenar",
+      "exportar",
+      "abrir rastreio",
+      "status atrasado",
+    ],
+    response:
+      "Gerenciamento de Pedidos\n\nNa tela Pedidos voce pode:\n- filtrar por status, transportadora, marketplace, texto e periodo\n- usar o status Atrasado para localizar pedidos em atraso\n- ordenar clicando nas colunas\n- exportar em HTML e CSV\n- abrir detalhes completos no icone de olho\n- usar Abrir rastreio para abrir o link real do rastreio",
+  },
+  {
+    keywords: [
+      "buscar api",
+      "api",
+      "consulta externa",
+      "pedido unico",
+      "nf",
+      "nota fiscal",
+      "codigo de rastreio",
+      "intelipost",
+    ],
+    response:
+      "Consulta de pedido via API\n\nNa tela Pedidos voce pode buscar um pedido individual pela API.\n1. clique em Buscar API\n2. informe numero do pedido, nota fiscal ou codigo de rastreio\n3. o sistema tenta localizar o pedido e atualizar ou adicionar na lista",
+  },
+  {
+    keywords: [
+      "sem movimentacao",
+      "sem atualizacao",
+      "parado",
+      "sem movimento",
+      "dias sem movimentacao",
+    ],
+    response:
+      "Pedidos sem movimentacao\n\nEssa tela destaca pedidos ativos que ficaram dias sem atualizacao.\n- pedidos finalizados ficam fora dessa lista\n- voce pode ajustar a faixa de dias para localizar casos mais criticos\n- essa visao ajuda a agir antes de virar atraso ou falha",
+  },
+  {
+    keywords: [
+      "alerta",
+      "alertas",
+      "risco",
+      "atraso",
+      "monitoramento",
+      "critico",
+      "problema",
+    ],
+    response:
+      "Alertas de Risco\n\nA tela de Alertas foca no que exige atencao imediata.\n- ajuda a localizar pedidos atrasados e situacoes criticas\n- facilita a priorizacao do acompanhamento\n- permite abrir detalhes para entender onde o pedido parou",
+  },
+  {
+    keywords: [
+      "falha na entrega",
+      "falhas na entrega",
+      "insucesso",
+      "tentativa de entrega",
+      "entrega falhou",
+    ],
+    response:
+      "Falhas na Entrega\n\nEssa tela mostra pedidos com problema real de entrega.\n- pedidos ja entregues nao devem entrar na contagem pendente\n- fretes de retirada na agencia podem ser ignorados nessa analise\n- a visao ajuda a acompanhar novas falhas e agir com a transportadora",
+  },
+  {
+    keywords: [
+      "importar",
+      "csv",
+      "xlsx",
+      "excel",
+      "planilha",
+      "upload",
+      "layout",
+      "dados",
+    ],
+    response:
+      "Importacao de Dados\n\nPara importar pedidos:\n1. acesse Importar CSV\n2. envie um arquivo CSV ou XLSX\n3. o sistema valida e processa a carga\n\nRegras importantes:\n- pedidos cancelados sao ignorados\n- o arquivo deve trazer dados do pedido, cliente, frete, datas e endereco",
+  },
+  {
+    keywords: [
+      "sync",
+      "sincronizar",
+      "sincronizacao",
+      "manual",
+      "automatico",
+      "relatorio de sincronizacao",
+      "relatorio sync",
+    ],
+    response:
+      "Sincronizacao\n\nO Avantracking trabalha com sincronizacao manual e automatica.\n- sincroniza rastreios de pedidos ativos\n- possui jobs para pedidos da Tray\n- pode enviar relatorios por e-mail ao final do processo com sucessos, falhas e movimentacoes relevantes",
+  },
+  {
+    keywords: [
+      "tray",
+      "integracao tray",
+      "sincronizar pedidos da tray",
+      "oauth tray",
+      "loja tray",
+    ],
+    response:
+      "Integracao Tray\n\nA integracao com a Tray permite:\n- autorizar a loja na tela de Integracao\n- acompanhar o status da integracao\n- sincronizar pedidos da Tray\n- reaproveitar dados da Tray em recursos como recotacao de frete",
+  },
+  {
+    keywords: [
+      "frete",
+      "recalculado",
+      "recalculo",
+      "cotacao",
+      "quote",
+      "frete recalculado atual",
+    ],
+    response:
+      "Frete recalculado\n\nA plataforma suporta recotacao de frete por pedido e em lote.\n- o calculo depende de CEP valido e itens reais do pedido\n- a comparacao entre frete pago e frete recalculado ajuda a encontrar divergencias\n- a cotacao usa os dados da integracao quando eles estao disponiveis",
+  },
+  {
+    keywords: [
+      "release notes",
+      "patch notes",
+      "ultimas atualizacoes",
+      "ultima atualizacao",
+      "release",
+    ],
+    response:
+      "Release Notes e Ultimas Atualizacoes\n\nA plataforma possui historico de atualizacoes publicadas.\n- administradores podem montar e enviar release notes por e-mail\n- a tela Ultimas Atualizacoes mostra o historico enviado\n- cada item exibe versao, resumo, novidades, ajustes e a previa do template",
+  },
+  {
+    keywords: [
+      "admin",
+      "administracao",
+      "usuario",
+      "usuarios",
+      "empresa",
+      "empresas",
+      "permissao",
+      "acesso",
+      "senha",
+    ],
+    response:
+      "Painel Administrativo\n\nNo painel administrativo ou de integracao voce pode:\n- gerenciar usuarios\n- definir perfil ADMIN ou USER\n- cadastrar e gerenciar empresas\n- configurar integracoes da empresa atual\n- enviar release notes\n\nAlgumas acoes exigem permissao de administrador.",
+  },
+  {
+    keywords: [
+      "trocar empresa",
+      "empresa atual",
+      "alternar empresa",
+      "mudar empresa",
+    ],
+    response:
+      "Troca de empresa\n\nUsuarios com acesso administrativo podem alternar a empresa ativa quando houver mais de uma empresa disponivel.\n- a troca muda o contexto da operacao\n- pedidos, integracoes e configuracoes passam a refletir a empresa selecionada",
+  },
+  {
+    keywords: [
+      "logistica do canal",
+      "canal",
+      "shopee",
+      "mercado livre",
+      "coletas",
+      "me2",
+      "priority",
+      "retirada",
+      "agencia",
+    ],
+    response:
+      "Logistica do Canal e fretes especiais\n\nQuando o frete e administrado pelo marketplace, o pedido pode aparecer como Logistica do Canal.\n- isso e comum em operacoes como Shopee Xpress, Mercado Envios e Coletas ME2\n- em alguns cenarios a plataforma ignora fretes de retirada na agencia em visoes especificas\n- o rastreio pode ser limitado quando a responsabilidade fica com o canal",
+  },
+  {
+    keywords: [
+      "login",
+      "esqueci a senha",
+      "redefinir senha",
+      "convite",
+      "acesso por link",
+    ],
+    response:
+      "Acesso e senha\n\nA plataforma possui fluxo de login e definicao de senha.\n- o usuario pode solicitar redefinicao de senha\n- convites podem ser concluidos por link de acesso\n- algumas rotas e configuracoes so ficam disponiveis apos autenticacao",
+  },
+  {
+    keywords: [
+      "ola",
+      "oi",
+      "ajuda",
+      "bom dia",
+      "boa tarde",
+      "boa noite",
+      "comecar",
+      "iniciar",
+      "help",
+    ],
+    response:
+      "Ola! Eu sou a Muricoca.\n\nPosso te ajudar com as funcoes do Avantracking, como Dashboard, Pedidos, Alertas, Falhas na Entrega, Importacao, Sync, Tray, Frete recalculado, Administracao e Release Notes.\n\nSe eu nao entender sua duvida, vou te orientar a entrar em contato com o desenvolvedor da plataforma.",
+  },
+];
+
 export const Chatbot: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "0",
       role: "model",
-      text: `👋 Oi! Eu sou a ${BOT_NAME}.\n\nPosso te ajudar a usar o Avantracking de ponta a ponta (Dashboard, Pedidos, Importação, Alertas, Sync, Admin e integrações). O que você precisa?`,
+      text: `Ola! Eu sou a ${BOT_NAME}.\n\nPosso te ajudar com Dashboard, Pedidos, Importacao, Alertas, Falhas na Entrega, Sync, Tray, Frete recalculado, Administracao e Release Notes.\n\nSe eu nao entender sua duvida, vou te orientar a entrar em contato com o desenvolvedor da plataforma.`,
     },
   ]);
   const [input, setInput] = useState("");
@@ -212,16 +447,25 @@ export const Chatbot: React.FC = () => {
     return () => window.removeEventListener("resize", updateViewport);
   }, []);
 
-  const findResponse = (text: string): string => {
-    const normalizedText = text.toLowerCase().trim();
+  const findResponse = (text: string): string | null => {
+    const normalizedText = normalizeKnowledgeText(text);
+    let bestMatch: KnowledgeItem | null = null;
+    let bestScore = 0;
 
-    for (const item of KNOWLEDGE_BASE) {
-      if (item.keywords.some((keyword) => normalizedText.includes(keyword))) {
-        return item.response;
+    for (const item of ENHANCED_KNOWLEDGE_BASE) {
+      const score = item.keywords.reduce((total, keyword) => {
+        return normalizedText.includes(normalizeKnowledgeText(keyword))
+          ? total + 1
+          : total;
+      }, 0);
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestMatch = item;
       }
     }
 
-    return "Desculpe, não entendi exatamente. 😕\n\nTente usar palavras-chave como:\n\n* 'Dashboard' (para dúvidas sobre gráficos)\n* 'Importar' (para dúvidas sobre CSV/Excel)\n* 'Alertas' (para riscos de atraso)\n* 'API' (para consulta de pedido único)\n* 'Sync' (para sincronização)";
+    return bestMatch && bestScore > 0 ? bestMatch.response : null;
   };
 
   const askAI = async (
@@ -266,18 +510,38 @@ export const Chatbot: React.FC = () => {
     setMessages((prev) => [...prev, userMsg]);
     setIsLoading(true);
 
+    const quickResponse = findResponse(userText);
+
+    if (quickResponse) {
+      setMessages((prev) => [
+        ...prev,
+        { id: Date.now().toString(), role: "model", text: quickResponse },
+      ]);
+      setIsLoading(false);
+      return;
+    }
+
     try {
       const historySnapshot = [...messages, userMsg];
       const aiText = await askAI(historySnapshot, userText);
       setMessages((prev) => [
         ...prev,
-        { id: Date.now().toString(), role: "model", text: aiText },
+        {
+          id: Date.now().toString(),
+          role: "model",
+          text: isUncertainAiResponse(aiText)
+            ? SUPPORT_FALLBACK_MESSAGE
+            : aiText,
+        },
       ]);
     } catch {
-      const responseText = findResponse(userText);
       setMessages((prev) => [
         ...prev,
-        { id: Date.now().toString(), role: "model", text: responseText },
+        {
+          id: Date.now().toString(),
+          role: "model",
+          text: SUPPORT_FALLBACK_MESSAGE,
+        },
       ]);
     } finally {
       setIsLoading(false);
@@ -486,7 +750,7 @@ export const Chatbot: React.FC = () => {
           "pointer-events-auto h-16 w-16 rounded-full shadow-lg flex items-center justify-center transition-all duration-300 hover:scale-110 active:scale-95 group relative overflow-hidden touch-none",
           isOpen
             ? "bg-slate-800 text-white"
-            : "bg-white dark:bg-[#151725] border border-slate-200 dark:border-white/10",
+            : "bg-white border border-white",
         )}
         style={{
           cursor: dragStateRef.current.pointerId === -1 ? "grab" : "grabbing",
@@ -503,7 +767,7 @@ export const Chatbot: React.FC = () => {
         {!isOpen && (
           <div
             className={clsx(
-              "absolute inset-[4px] overflow-hidden rounded-full relative z-10 muricoca-float transition-transform duration-300",
+              "absolute inset-[4px] overflow-hidden rounded-full relative z-10 muricoca-float transition-transform duration-300 bg-white",
               "group-hover:scale-110 group-hover:rotate-2",
             )}
           >

@@ -79,8 +79,20 @@ app.post("/api/chat", authenticateToken, async (req, res) => {
       "- REGRA CRÍTICA DE FALLBACK: Se você não souber a resposta, ou se o usuário disser que 'não está funcionando', 'deu erro', 'não consigo' ou relatar falhas técnicas persistentes, peça para ele entrar em contato com o desenvolvedor para resolução.",
     ].join("\n");
 
+    const enrichedSystem = [
+      SYSTEM,
+      "Base complementar de conhecimento atual:",
+      "- Dashboard com KPIs, graficos, ranking e atalhos para filtros.",
+      "- Pedidos com filtros, ordenacao por colunas, detalhes, exportacao HTML e CSV e abertura de rastreio.",
+      "- Alertas de risco, Falhas na Entrega e Sem Movimentacao.",
+      "- Integracao Tray, sincronizacao de pedidos e frete recalculado.",
+      "- Administracao de usuarios, empresas, integracoes e release notes.",
+      "- Ultimas Atualizacoes com historico dos release notes enviados.",
+      "Se a pergunta nao estiver coberta com seguranca ou se o usuario relatar erro persistente, oriente contato com o desenvolvedor da plataforma.",
+    ].join("\n");
+
     const ollamaMessages = [
-      { role: "system", content: SYSTEM },
+      { role: "system", content: enrichedSystem },
       ...history.map((m: any) => ({
         role: m.role === "user" ? "user" : "assistant",
         content: m.text,
