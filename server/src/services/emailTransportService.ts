@@ -14,12 +14,13 @@ interface SendBrevoEmailInput {
 
 export const sendBrevoEmail = async (input: SendBrevoEmailInput) => {
   const apiKey = process.env.BREVO_API_KEY;
-  const senderEmail = process.env.BREVO_SENDER_EMAIL;
+  const senderEmail =
+    process.env.BREVO_SENDER_EMAIL || process.env.BREVO_SENDER_MAIL;
   const senderName = process.env.BREVO_SENDER_NAME || 'Avantracking';
 
   if (!apiKey || !senderEmail) {
     throw new Error(
-      'Configuracao de e-mail incompleta. Defina BREVO_API_KEY e BREVO_SENDER_EMAIL.',
+      'Configuracao de e-mail incompleta. Defina BREVO_API_KEY e BREVO_SENDER_EMAIL ou BREVO_SENDER_MAIL.',
     );
   }
 

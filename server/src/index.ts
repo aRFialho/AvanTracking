@@ -5,6 +5,7 @@ import orderRoutes from "./routes/orders";
 import userRoutes from "./routes/users";
 import companyRoutes from "./routes/companies";
 import releaseNotesRoutes from "./routes/releaseNotes";
+import supportRoutes from "./routes/support";
 import {
   startTrayAuthorization,
   showInstallPage,
@@ -185,6 +186,9 @@ app.use("/api/companies", authenticateToken, companyRoutes);
 
 // Release Notes API (protegida)
 app.use("/api/release-notes", authenticateToken, releaseNotesRoutes);
+
+// Support API (protegida)
+app.use("/api/support", authenticateToken, supportRoutes);
 
 // Orders API (protegida)
 app.use("/api/orders", authenticateToken, orderRoutes);

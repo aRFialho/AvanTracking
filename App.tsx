@@ -10,6 +10,7 @@ import { LatestUpdates } from "./components/LatestUpdates";
 import { Login } from "./components/Login";
 import { Chatbot } from "./components/Chatbot";
 import { CompanySwitcher } from "./components/CompanySwitcher";
+import { SupportModal } from "./components/SupportModal";
 import {
   Order,
   PageView,
@@ -18,7 +19,7 @@ import {
   TraySyncFilters,
   TrayIntegrationStatus,
 } from "./types";
-import { Loader2 } from "lucide-react";
+import { LifeBuoy, Loader2 } from "lucide-react";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { LOGO_URL } from "./constants";
@@ -133,6 +134,7 @@ const MainApp: React.FC = () => {
   const [syncJob, setSyncJob] = useState<SyncJobStatus | null>(null);
   const [traySyncJob, setTraySyncJob] = useState<SyncJobStatus | null>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isSupportOpen, setIsSupportOpen] = useState(false);
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const previousSyncStatusRef = useRef<SyncJobStatus["status"] | null>(null);
   const previousTraySyncStatusRef = useRef<SyncJobStatus["status"] | null>(null);
@@ -720,6 +722,14 @@ const MainApp: React.FC = () => {
           </h1>
 
           <div className="flex items-center gap-4 text-sm text-slate-500 dark:text-slate-400">
+            <button
+              type="button"
+              onClick={() => setIsSupportOpen(true)}
+              className="inline-flex items-center gap-2 rounded-full border border-[#ffd4c3] bg-[#fff3ee] px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-[#f05a3d] transition-colors hover:border-[#ffb89d] hover:bg-[#ffe7de]"
+            >
+              <LifeBuoy className="h-4 w-4" />
+              Suporte
+            </button>
             {user?.role === "ADMIN" && (
               <div className="border-r border-slate-200 dark:border-slate-700 pr-4">
                 <CompanySwitcher />
@@ -771,6 +781,12 @@ const MainApp: React.FC = () => {
           {renderContent()}
         </div>
 
+        <SupportModal
+          isOpen={isSupportOpen}
+          onClose={() => setIsSupportOpen(false)}
+          currentView={currentView}
+          trayIntegrationStatus={trayIntegrationStatus}
+        />
         <Chatbot />
       </main>
     </div>

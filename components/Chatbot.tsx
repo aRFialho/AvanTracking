@@ -210,7 +210,7 @@ const ENHANCED_KNOWLEDGE_BASE: KnowledgeItem[] = [
       "status atrasado",
     ],
     response:
-      "Gerenciamento de Pedidos\n\nNa tela Pedidos voce pode:\n- filtrar por status, transportadora, marketplace, texto e periodo\n- usar o status Atrasado para localizar pedidos em atraso\n- ordenar clicando nas colunas\n- exportar em HTML e CSV\n- abrir detalhes completos no icone de olho\n- usar Abrir rastreio para abrir o link real do rastreio",
+      "Posso te ajudar melhor com Pedidos se voce me confirmar o foco.\n\nMe diga se a sua duvida e sobre:\n1. passo a passo para usar filtros\n2. ordenacao nas colunas\n3. exportacao HTML ou CSV\n4. abrir detalhes do pedido\n5. abrir rastreio\n6. entender algum status ou comportamento da lista",
   },
   {
     keywords: [
@@ -280,13 +280,16 @@ const ENHANCED_KNOWLEDGE_BASE: KnowledgeItem[] = [
       "sync",
       "sincronizar",
       "sincronizacao",
+      "sincronizacao de pedidos",
+      "sync de pedidos",
+      "sincronizar pedidos",
       "manual",
       "automatico",
       "relatorio de sincronizacao",
       "relatorio sync",
     ],
     response:
-      "Sincronizacao\n\nO Avantracking trabalha com sincronizacao manual e automatica.\n- sincroniza rastreios de pedidos ativos\n- possui jobs para pedidos da Tray\n- pode enviar relatorios por e-mail ao final do processo com sucessos, falhas e movimentacoes relevantes",
+      "Posso te ajudar melhor com sincronizacao de pedidos se voce me confirmar o foco.\n\nMe diga se a sua duvida e sobre:\n1. passo a passo para sincronizar manualmente\n2. como funciona o sync automatico\n3. diferenca entre sync de rastreio e sync da Tray\n4. relatorio de sincronizacao\n5. pedido que nao sincronizou\n6. alguma funcionalidade especifica da sincronizacao",
   },
   {
     keywords: [
@@ -454,9 +457,14 @@ export const Chatbot: React.FC = () => {
 
     for (const item of ENHANCED_KNOWLEDGE_BASE) {
       const score = item.keywords.reduce((total, keyword) => {
-        return normalizedText.includes(normalizeKnowledgeText(keyword))
-          ? total + 1
-          : total;
+        const normalizedKeyword = normalizeKnowledgeText(keyword);
+
+        if (!normalizedText.includes(normalizedKeyword)) {
+          return total;
+        }
+
+        const keywordWeight = Math.max(1, normalizedKeyword.split(" ").length * 2);
+        return total + keywordWeight;
       }, 0);
 
       if (score > bestScore) {
