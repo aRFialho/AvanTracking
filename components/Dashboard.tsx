@@ -38,7 +38,7 @@ import {
   toText,
   parseOptionalDate,
   isChannelManagedOrder,
-  isOrderWithDeliveryFailure,
+  isPendingDeliveryFailureOrder,
 } from "../utils";
 
 interface DashboardProps {
@@ -338,7 +338,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
     // Delivery Failures
     const deliveryFailures = filteredOrders.filter((o) =>
-      isOrderWithDeliveryFailure(o),
+      isPendingDeliveryFailureOrder(o),
     ).length;
 
     // Alertas (Sum of risky situations)

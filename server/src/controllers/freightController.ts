@@ -53,17 +53,40 @@ const buildProductsHash = (productsRaw: unknown) => {
   }
 };
 
-const extractTrayOrderProducts = (rawPayload: any, fallbackOrder: any) => {
+type FreightRequestProduct = {
+  product_id: string;
+  price: number;
+  quantity: number;
+};
+
+type FreightAuditProduct = FreightRequestProduct & {
+  name: string | null;
+  reference: string | null;
+  variant_id: string | null;
+  weight: number | null;
+  length: number | null;
+  width: number | null;
+  height: number | null;
+};
+
+type ExtractedTrayOrderProducts = {
+  requestProducts: FreightRequestProduct[];
+  auditProducts: FreightAuditProduct[];
+  source: string | null;
+  productsHash: string | null;
+};
+
+const extractTrayOrderProducts = (rawPayload: any): ExtractedTrayOrderProducts => {
   const candidateCollections = [
-    rawPayload?.OrderItem,
-    rawPayload?.OrderItems,
-    rawPayload?.ProductsSold,
-    rawPayload?.products,
-    rawPayload?.items,
-  ].filter(Array.isArray);
+    { source: 'OrderItem', items: rawPayload?.OrderItem },
+    { source: 'OrderItems', items: rawPayload?.OrderItems },
+    { source: 'ProductsSold', items: rawPayload?.ProductsSold },
+    { source: 'products', items: rawPayload?.products },
+    { source: 'items', items: rawPayload?.items },
+  ].filter((entry) => Array.isArray(entry.items));
 
   for (const collection of candidateCollections) {
-    const products = collection
+    const auditProducts = (collection.items as any[])
       .map((entry: any) => {
         const item =
           entry?.OrderItem ||
@@ -78,10 +101,14 @@ const extractTrayOrderProducts = (rawPayload: any, fallbackOrder: any) => {
           safeInteger(item?.quantity ?? item?.qty ?? item?.amount ?? 1) || 1;
         const directTotal = safeNumber(item?.total ?? item?.subtotal);
         const unitPrice =
-          safeNumber(item?.price ?? item?.sale_price ?? item?.original_price) ??
-          (directTotal !== null ? directTotal / quantity : null);
+          safeNumber(
+            item?.price ??
+              item?.sale_price ??
+              item?.original_price ??
+              item?.unit_price,
+          ) ?? (directTotal !== null ? directTotal / quantity : null);
 
-        if (!productId || unitPrice === null) {
+        if (!productId || unitPrice === null || quantity <= 0) {
           return null;
         }
 
@@ -89,22 +116,37 @@ const extractTrayOrderProducts = (rawPayload: any, fallbackOrder: any) => {
           product_id: productId,
           price: unitPrice,
           quantity,
+          name: safeString(item?.name ?? item?.Product?.name),
+          reference: safeString(item?.reference ?? item?.Product?.reference),
+          variant_id: safeString(item?.variant_id ?? item?.variation_id),
+          weight: safeNumber(item?.weight ?? item?.gross_weight),
+          length: safeNumber(item?.length),
+          width: safeNumber(item?.width),
+          height: safeNumber(item?.height),
         };
       })
-      .filter(Boolean);
+      .filter((item): item is FreightAuditProduct => Boolean(item));
 
-    if (products.length > 0) {
-      return products;
+    if (auditProducts.length > 0) {
+      return {
+        requestProducts: auditProducts.map(({ product_id, price, quantity }) => ({
+          product_id,
+          price,
+          quantity,
+        })),
+        auditProducts,
+        source: collection.source,
+        productsHash: buildProductsHash(auditProducts),
+      };
     }
   }
 
-  return [
-    {
-      product_id: String(fallbackOrder.orderNumber),
-      price: fallbackOrder.totalValue || 100,
-      quantity: 1,
-    },
-  ];
+  return {
+    requestProducts: [],
+    auditProducts: [],
+    source: null,
+    productsHash: null,
+  };
 };
 
 const buildRecalculatedDetails = (
@@ -112,6 +154,12 @@ const buildRecalculatedDetails = (
   selectedOption: any,
   matchedByCarrier: boolean,
   requestedCarrier: string | null | undefined,
+  quoteRequest: {
+    zipcode: string;
+    source: string | null;
+    productsHash: string | null;
+    products: FreightAuditProduct[];
+  },
 ) => ({
   selectedOption,
   selectedCarrierName:
@@ -127,6 +175,7 @@ const buildRecalculatedDetails = (
   requestedCarrier: safeString(requestedCarrier),
   optionsCount: cotationOptions.length,
   options: cotationOptions,
+  quoteRequest,
 });
 
 /**
@@ -151,15 +200,24 @@ export const quoteOrderFreight = async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Pedido nao encontrado' });
     }
 
-    if (!order.zipCode) {
-      return res.status(400).json({ error: 'Pedido sem CEP' });
+    const zipcode = normalizeZipCode(order.zipCode);
+    if (!zipcode) {
+      return res.status(400).json({ error: 'Pedido sem CEP valido' });
     }
 
     const freightService = new TrayFreightService(req.user.companyId);
-    const products = extractTrayOrderProducts(order.apiRawPayload, order);
+    const extractedProducts = extractTrayOrderProducts(order.apiRawPayload);
+    if (extractedProducts.requestProducts.length === 0) {
+      return res.status(400).json({
+        error: 'Pedido sem produtos validos para recotacao na Tray',
+        details:
+          'A documentacao da Tray para /shippings/cotation exige products[product_id], price e quantity reais do pedido.',
+      });
+    }
+
     const cotationParams = {
-      zipcode: order.zipCode,
-      products,
+      zipcode,
+      products: extractedProducts.requestProducts,
     };
 
     const cotationResult = await freightService.quoteFreight(cotationParams);
@@ -195,6 +253,12 @@ export const quoteOrderFreight = async (req: Request, res: Response) => {
           selectedOption,
           Boolean(matchedOption),
           order.freightType,
+          {
+            zipcode,
+            source: extractedProducts.source,
+            productsHash: extractedProducts.productsHash,
+            products: extractedProducts.auditProducts,
+          },
         ),
       },
     });
@@ -228,7 +292,7 @@ export const quoteOrderFreight = async (req: Request, res: Response) => {
         all: cotationResult.Shipping.cotation,
       },
       destination: cotationResult.Shipping.destination,
-      products,
+      products: extractedProducts.auditProducts,
     });
   } catch (error) {
     console.error('Erro ao cotar frete:', error);
@@ -268,19 +332,32 @@ export const quoteBatchFreight = async (req: Request, res: Response) => {
           where: { id: orderIdStr },
         });
 
-        if (!order || !order.zipCode) {
+        const zipcode = normalizeZipCode(order?.zipCode);
+
+        if (!order || !zipcode) {
           results.push({
             orderId: orderIdStr,
             success: false,
-            error: 'Pedido nao encontrado ou sem CEP',
+            error: 'Pedido nao encontrado ou sem CEP valido',
           });
           continue;
         }
 
-        const products = extractTrayOrderProducts(order.apiRawPayload, order);
+        const extractedProducts = extractTrayOrderProducts(order.apiRawPayload);
+        if (extractedProducts.requestProducts.length === 0) {
+          results.push({
+            orderId: orderIdStr,
+            orderNumber: order.orderNumber,
+            success: false,
+            error:
+              'Pedido sem produtos validos da Tray para recotacao. O calculo exige product_id, preco e quantidade reais.',
+          });
+          continue;
+        }
+
         const cotationParams = {
-          zipcode: order.zipCode,
-          products,
+          zipcode,
+          products: extractedProducts.requestProducts,
         };
 
         const cotationResult = await freightService.quoteFreight(cotationParams);
@@ -307,6 +384,12 @@ export const quoteBatchFreight = async (req: Request, res: Response) => {
               selectedOption,
               Boolean(matchedOption),
               order.freightType,
+              {
+                zipcode,
+                source: extractedProducts.source,
+                productsHash: extractedProducts.productsHash,
+                products: extractedProducts.auditProducts,
+              },
             ),
           },
         });

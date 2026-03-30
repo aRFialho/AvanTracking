@@ -55,8 +55,10 @@ export const buildReleaseNotesHtml = (input: ReleaseNotesTemplateInput) => `
         <tr>
           <td>
             <div style="border-radius:28px;overflow:hidden;background:#0f172a;box-shadow:0 24px 80px rgba(15,23,42,0.28);">
-              <div style="padding:28px 32px;background:linear-gradient(135deg,#0f172a 0%,#1d4ed8 100%);text-align:center;">
-                <img src="${APP_LOGO_URL}" alt="Avantracking" style="max-width:240px;width:100%;height:auto;display:block;margin:0 auto 20px;" />
+              <div style="padding:28px 32px;background:linear-gradient(135deg,#0f172a 0%,#1d4ed8 100%);">
+                <div style="text-align:right;margin-bottom:12px;">
+                  <img src="${APP_LOGO_URL}" alt="Avantracking" style="width:112px;max-width:112px;height:auto;display:inline-block;" />
+                </div>
                 <div style="display:inline-block;padding:8px 16px;border-radius:999px;background:rgba(255,255,255,0.14);color:#dbeafe;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;">
                   Release Notes ${escapeHtml(input.version)}
                 </div>

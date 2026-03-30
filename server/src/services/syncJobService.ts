@@ -30,10 +30,15 @@ type ScheduleEntry = {
   nextScheduledAt: string | null;
   timeout: NodeJS.Timeout | null;
 };
+type RequesterEntry = {
+  email?: string | null;
+  name?: string | null;
+};
 
 class SyncJobService {
   private jobs: CompanyJobMap = new Map();
   private schedules: Map<string, ScheduleEntry> = new Map();
+  private requesters: Map<string, RequesterEntry> = new Map();
 
   getJob(companyId: string) {
     return this.jobs.get(companyId) || null;
@@ -87,7 +92,12 @@ class SyncJobService {
     };
   }
 
-  startJob(companyId: string, userId: string, trigger: SyncTrigger = 'manual') {
+  startJob(
+    companyId: string,
+    userId: string,
+    trigger: SyncTrigger = 'manual',
+    requester?: RequesterEntry,
+  ) {
     const existing = this.jobs.get(companyId);
 
     if (existing && existing.status === 'running') {
@@ -113,6 +123,7 @@ class SyncJobService {
     };
 
     this.clearScheduledTimeout(companyId);
+    this.requesters.set(companyId, requester || {});
     this.pushLog(job, 'info', 'Sincronização iniciada.');
     this.jobs.set(companyId, job);
 
@@ -170,9 +181,12 @@ class SyncJobService {
       );
 
       try {
+        const requester = this.requesters.get(job.companyId);
         const report = await syncReportService.sendTrackingSyncReport({
           companyId: job.companyId,
           userId: job.userId,
+          userEmail: requester?.email,
+          userName: requester?.name,
           trigger,
           payload: results.report,
           startedAt: job.startedAt,

@@ -1,5 +1,9 @@
 const normalizeFreightText = (freightType: string | null | undefined) =>
-  String(freightType || '').trim().toLowerCase();
+  String(freightType || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
 
 export const normalizeExcludedPlatformFreight = (
   freightType: string | null | undefined,
@@ -24,6 +28,12 @@ export const normalizeExcludedPlatformFreight = (
 
   if (['shopee xpress', 'retirada pelo comprador'].includes(normalized)) {
     return 'Shopee Xpress';
+  }
+
+  if (
+    ['retirada normal na agencia', 'retirada na agencia'].includes(normalized)
+  ) {
+    return 'Retirada na Agencia';
   }
 
   if (

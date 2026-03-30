@@ -1084,6 +1084,8 @@ export const syncAllOrders = async (req: Request, res: Response) => {
       report = await syncReportService.sendTrackingSyncReport({
         companyId: user.companyId,
         userId: user.id,
+        userEmail: user.email,
+        userName: user.email,
         trigger: 'manual',
         payload: results.report,
         startedAt,
@@ -1120,7 +1122,10 @@ export const startSyncAllOrders = async (req: Request, res: Response) => {
       return res.status(403).json({ error: 'Acesso negado. Usuario sem empresa.' });
     }
 
-    const job = syncJobService.startJob(user.companyId, user.id);
+    const job = syncJobService.startJob(user.companyId, user.id, 'manual', {
+      email: user.email,
+      name: user.email,
+    });
 
     return res.json({
       success: true,

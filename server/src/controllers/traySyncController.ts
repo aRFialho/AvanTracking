@@ -45,6 +45,8 @@ export const syncTrayOrders = async (req: Request, res: Response) => {
       report = await syncReportService.sendTraySyncReport({
         companyId: context.companyId,
         userId: context.userId,
+        userEmail: req.user?.email,
+        userName: req.user?.email,
         trigger: 'manual',
         payload: {
         companyId: context.companyId,
@@ -102,6 +104,11 @@ export const startTraySyncJob = async (req: Request, res: Response) => {
       context.companyId,
       context.userId,
       req.body || {},
+      'manual',
+      {
+        email: req.user?.email,
+        name: req.user?.email,
+      },
     );
 
     return res.json({

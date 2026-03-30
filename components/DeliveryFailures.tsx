@@ -1,10 +1,10 @@
 import React, { useState, useMemo } from "react";
-import { Order, OrderStatus } from "../types";
+import { Order } from "../types";
 import { OrderDetail } from "./OrderDetail";
-import { AlertTriangle, AlertOctagon, CheckCircle, Search } from "lucide-react";
+import { AlertTriangle, CheckCircle, Search } from "lucide-react";
 import {
   getLatestDeliveryFailureEvent,
-  isOrderWithDeliveryFailure,
+  isPendingDeliveryFailureOrder,
   normalizeCarrierName,
   toText,
 } from "../utils";
@@ -23,11 +23,7 @@ export const DeliveryFailures: React.FC<DeliveryFailuresProps> = ({
   const failureOrders = useMemo(() => {
     return orders
       .filter((o) => {
-        if (o.status === OrderStatus.CANCELED || o.status === OrderStatus.DELIVERED) {
-          return false;
-        }
-
-        if (!isOrderWithDeliveryFailure(o)) {
+        if (!isPendingDeliveryFailureOrder(o)) {
           return false;
         }
 

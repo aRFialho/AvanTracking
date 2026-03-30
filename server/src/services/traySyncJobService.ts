@@ -39,10 +39,15 @@ type ScheduleEntry = {
   nextScheduledAt: string | null;
   timeout: NodeJS.Timeout | null;
 };
+type RequesterEntry = {
+  email?: string | null;
+  name?: string | null;
+};
 
 class TraySyncJobService {
   private jobs: Map<string, SyncJobStatus> = new Map();
   private schedules: Map<string, ScheduleEntry> = new Map();
+  private requesters: Map<string, RequesterEntry> = new Map();
 
   getJob(companyId: string) {
     return this.jobs.get(companyId) || null;
@@ -116,6 +121,7 @@ class TraySyncJobService {
     userId: string,
     filters: TraySyncFiltersInput,
     mode: 'manual' | 'automatic' = 'manual',
+    requester?: RequesterEntry,
   ) {
     const existing = this.jobs.get(companyId);
 
@@ -142,6 +148,7 @@ class TraySyncJobService {
     };
 
     this.clearScheduledTimeout(companyId);
+    this.requesters.set(companyId, requester || {});
     this.pushLog(
       job,
       'info',
@@ -202,9 +209,12 @@ class TraySyncJobService {
       this.pushLog(job, 'success', result.message);
 
       try {
+        const requester = this.requesters.get(job.companyId);
         const report = await syncReportService.sendTraySyncReport({
           companyId: job.companyId,
           userId: job.userId,
+          userEmail: requester?.email,
+          userName: requester?.name,
           trigger: mode as SyncTrigger,
           payload: {
             companyId: job.companyId,

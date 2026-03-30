@@ -217,17 +217,19 @@ export const OrderList: React.FC<OrderListProps> = ({
       let matchDate = true;
       if (dateRangeStart) {
         const estimatedDate = parseOptionalDate(o.estimatedDeliveryDate);
-        matchDate =
-          matchDate &&
-          Boolean(estimatedDate) &&
-          estimatedDate >= new Date(dateRangeStart);
+        if (!estimatedDate) {
+          matchDate = false;
+        } else {
+          matchDate = matchDate && estimatedDate >= new Date(dateRangeStart);
+        }
       }
       if (dateRangeEnd) {
         const estimatedDate = parseOptionalDate(o.estimatedDeliveryDate);
-        matchDate =
-          matchDate &&
-          Boolean(estimatedDate) &&
-          estimatedDate <= new Date(dateRangeEnd);
+        if (!estimatedDate) {
+          matchDate = false;
+        } else {
+          matchDate = matchDate && estimatedDate <= new Date(dateRangeEnd);
+        }
       }
 
       // 5. No Movement Filter
@@ -822,7 +824,25 @@ export const OrderList: React.FC<OrderListProps> = ({
   };
 
   const openTrackingLink = async (order: Order) => {
+    const popup = window.open("", "_blank");
+
+    if (popup) {
+      popup.opener = null;
+      popup.document.write(
+        "<title>Abrindo rastreio...</title><p style=\"font-family:Segoe UI,Arial,sans-serif;padding:16px\">Abrindo rastreio...</p>",
+      );
+    }
+
     try {
+      if (order.trackingUrl) {
+        if (popup) {
+          popup.location.href = order.trackingUrl;
+        } else {
+          window.open(order.trackingUrl, "_blank", "noopener,noreferrer");
+        }
+        return;
+      }
+
       const response = await fetchWithAuth(
         `/api/orders/${order.id}/open-tracking?resolve=1`,
         {
@@ -839,8 +859,13 @@ export const OrderList: React.FC<OrderListProps> = ({
         );
       }
 
-      window.open(data.trackingUrl, "_blank", "noopener,noreferrer");
+      if (popup) {
+        popup.location.href = data.trackingUrl;
+      } else {
+        window.open(data.trackingUrl, "_blank", "noopener,noreferrer");
+      }
     } catch (error) {
+      popup?.close();
       alert(
         error instanceof Error
           ? error.message

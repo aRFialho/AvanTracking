@@ -355,9 +355,8 @@ const buildReportHtml = (
       <div style="max-width:1120px;margin:0 auto;">
         <div style="background:#ffffff;border-radius:28px;padding:30px 32px;box-shadow:0 30px 90px rgba(15,23,42,0.28);">
           <div style="display:flex;justify-content:space-between;gap:20px;align-items:flex-start;flex-wrap:wrap;">
-            <div>
-              <img src="${APP_LOGO_URL}" alt="Avantracking" style="height:56px;max-width:240px;" />
-              <p style="margin:16px 0 0;font-size:12px;letter-spacing:2px;text-transform:uppercase;color:#2563eb;font-weight:700;">
+            <div style="flex:1;min-width:0;">
+              <p style="margin:0;font-size:12px;letter-spacing:2px;text-transform:uppercase;color:#2563eb;font-weight:700;">
                 Relatorio de sincronizacao ${metadata.trigger === 'automatic' ? 'automatica' : 'manual'}
               </p>
               <h1 style="margin:10px 0 0;font-size:34px;line-height:1.15;color:#0f172a;">
@@ -367,13 +366,16 @@ const buildReportHtml = (
                 Relatorio completo da ultima sincronizacao com resumo executivo, graficos de acompanhamento e detalhamento de cada pedido que mudou de status, entrou em atraso, em rota ou apresentou falha.
               </p>
             </div>
-            <div style="display:flex;gap:12px;flex-wrap:wrap;">
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:14px;">
+              <img src="${APP_LOGO_URL}" alt="Avantracking" style="width:112px;max-width:112px;height:auto;display:block;" />
+              <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:flex-end;">
               <a href="${metadata.reportUrl}" style="display:inline-block;padding:14px 20px;border-radius:999px;background:#0f172a;color:#ffffff;text-decoration:none;font-weight:700;">
                 Abrir relatorio
               </a>
               <a href="${metadata.csvUrl}" style="display:inline-block;padding:14px 20px;border-radius:999px;background:#2563eb;color:#ffffff;text-decoration:none;font-weight:700;">
                 Baixar CSV
               </a>
+              </div>
             </div>
           </div>
           <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-top:28px;">
@@ -460,19 +462,19 @@ const buildEmailHtml = (
           <td>
             <div style="background:#ffffff;border-radius:24px;overflow:hidden;border:1px solid #dbeafe;box-shadow:0 24px 70px rgba(15,23,42,0.35);">
               <div style="padding:28px 32px 18px;background:linear-gradient(135deg,#0f172a 0%,#1d4ed8 100%);">
-                <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:18px;">
-                  <div style="flex:1;min-width:0;">
-                    <p style="margin:0;font-size:12px;letter-spacing:2px;text-transform:uppercase;color:#bfdbfe;">
-                      Relatorio ${metadata.trigger === 'automatic' ? 'automatico' : 'manual'} de sincronizacao
-                    </p>
-                    <h1 style="margin:10px 0 0;font-size:30px;line-height:1.15;color:#ffffff;">
-                      ${escapeHtml(metadata.companyName)}
-                    </h1>
-                    <p style="margin:12px 0 0;font-size:14px;line-height:1.7;color:#dbeafe;">
-                      Sincronizacao finalizada em ${escapeHtml(metadata.finishedAt)} com ${payload.success} sucesso(s) e ${payload.failed} falha(s).
-                    </p>
-                  </div>
-                  <img src="${APP_LOGO_URL}" alt="Avantracking" style="height:36px;display:block;max-width:132px;flex-shrink:0;object-fit:contain;" />
+                <div style="text-align:right;margin-bottom:12px;">
+                  <img src="${APP_LOGO_URL}" alt="Avantracking" style="width:112px;max-width:112px;height:auto;display:inline-block;" />
+                </div>
+                <div style="flex:1;min-width:0;">
+                  <p style="margin:0;font-size:12px;letter-spacing:2px;text-transform:uppercase;color:#bfdbfe;">
+                    Relatorio ${metadata.trigger === 'automatic' ? 'automatico' : 'manual'} de sincronizacao
+                  </p>
+                  <h1 style="margin:10px 0 0;font-size:30px;line-height:1.15;color:#ffffff;">
+                    ${escapeHtml(metadata.companyName)}
+                  </h1>
+                  <p style="margin:12px 0 0;font-size:14px;line-height:1.7;color:#dbeafe;">
+                    Sincronizacao finalizada em ${escapeHtml(metadata.finishedAt)} com ${payload.success} sucesso(s) e ${payload.failed} falha(s).
+                  </p>
                 </div>
               </div>
               <div style="padding:28px 32px;">
@@ -767,9 +769,8 @@ const buildTraySyncReportHtml = (
       <div style="max-width:1120px;margin:0 auto;">
         <div style="background:#ffffff;border-radius:28px;padding:30px 32px;box-shadow:0 30px 90px rgba(15,23,42,0.28);">
           <div style="display:flex;justify-content:space-between;gap:20px;align-items:flex-start;flex-wrap:wrap;">
-            <div>
-              <img src="${APP_LOGO_URL}" alt="Avantracking" style="height:56px;max-width:240px;" />
-              <p style="margin:16px 0 0;font-size:12px;letter-spacing:2px;text-transform:uppercase;color:#2563eb;font-weight:700;">
+            <div style="flex:1;min-width:0;">
+              <p style="margin:0;font-size:12px;letter-spacing:2px;text-transform:uppercase;color:#2563eb;font-weight:700;">
                 Relatorio de pedidos Tray ${metadata.trigger === 'automatic' ? 'automatico' : 'manual'}
               </p>
               <h1 style="margin:10px 0 0;font-size:34px;line-height:1.15;color:#0f172a;">
@@ -779,13 +780,16 @@ const buildTraySyncReportHtml = (
                 Sincronizacao da Tray finalizada com detalhamento dos pedidos incluidos e atualizados na plataforma.
               </p>
             </div>
-            <div style="display:flex;gap:12px;flex-wrap:wrap;">
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:14px;">
+              <img src="${APP_LOGO_URL}" alt="Avantracking" style="width:112px;max-width:112px;height:auto;display:block;" />
+              <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:flex-end;">
               <a href="${metadata.reportUrl}" style="display:inline-block;padding:14px 20px;border-radius:999px;background:#0f172a;color:#ffffff;text-decoration:none;font-weight:700;">
                 Abrir relatorio
               </a>
               <a href="${metadata.csvUrl}" style="display:inline-block;padding:14px 20px;border-radius:999px;background:#2563eb;color:#ffffff;text-decoration:none;font-weight:700;">
                 Baixar CSV
               </a>
+              </div>
             </div>
           </div>
           <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-top:28px;">
@@ -848,19 +852,19 @@ const buildTraySyncEmailHtml = (
           <td>
             <div style="background:#ffffff;border-radius:24px;overflow:hidden;border:1px solid #dbeafe;box-shadow:0 24px 70px rgba(15,23,42,0.35);">
               <div style="padding:28px 32px 18px;background:linear-gradient(135deg,#0f172a 0%,#1d4ed8 100%);">
-                <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:18px;">
-                  <div style="flex:1;min-width:0;">
-                    <p style="margin:0;font-size:12px;letter-spacing:2px;text-transform:uppercase;color:#bfdbfe;">
-                      Relatorio ${metadata.trigger === 'automatic' ? 'automatico' : 'manual'} de pedidos Tray
-                    </p>
-                    <h1 style="margin:10px 0 0;font-size:30px;line-height:1.15;color:#ffffff;">
-                      ${escapeHtml(metadata.companyName)}
-                    </h1>
-                    <p style="margin:12px 0 0;font-size:14px;line-height:1.7;color:#dbeafe;">
-                      Janela desde ${escapeHtml(payload.modified)}. Incluidos: ${payload.created}. Atualizados: ${payload.updated}. Ignorados: ${payload.skipped}.
-                    </p>
-                  </div>
-                  <img src="${APP_LOGO_URL}" alt="Avantracking" style="height:36px;display:block;max-width:132px;flex-shrink:0;object-fit:contain;" />
+                <div style="text-align:right;margin-bottom:12px;">
+                  <img src="${APP_LOGO_URL}" alt="Avantracking" style="width:112px;max-width:112px;height:auto;display:inline-block;" />
+                </div>
+                <div style="flex:1;min-width:0;">
+                  <p style="margin:0;font-size:12px;letter-spacing:2px;text-transform:uppercase;color:#bfdbfe;">
+                    Relatorio ${metadata.trigger === 'automatic' ? 'automatico' : 'manual'} de pedidos Tray
+                  </p>
+                  <h1 style="margin:10px 0 0;font-size:30px;line-height:1.15;color:#ffffff;">
+                    ${escapeHtml(metadata.companyName)}
+                  </h1>
+                  <p style="margin:12px 0 0;font-size:14px;line-height:1.7;color:#dbeafe;">
+                    Janela desde ${escapeHtml(payload.modified)}. Incluidos: ${payload.created}. Atualizados: ${payload.updated}. Ignorados: ${payload.skipped}.
+                  </p>
                 </div>
               </div>
               <div style="padding:28px 32px;">
@@ -950,10 +954,15 @@ const buildTraySyncEmailText = (
   ].join('\n');
 
 class SyncReportService {
-  private async resolveRecipients(companyId: string, userId?: string) {
+  private async resolveRecipients(input: {
+    companyId: string;
+    userId?: string;
+    fallbackEmail?: string | null;
+    fallbackName?: string | null;
+  }) {
     const users = await prisma.user.findMany({
       where: {
-        companyId,
+        companyId: input.companyId,
       },
       select: {
         email: true,
@@ -975,9 +984,17 @@ class SyncReportService {
       });
     }
 
-    if (uniqueRecipients.size === 0 && userId) {
+    const fallbackEmail = String(input.fallbackEmail || '').trim().toLowerCase();
+    if (fallbackEmail) {
+      uniqueRecipients.set(fallbackEmail, {
+        email: String(input.fallbackEmail).trim(),
+        name: String(input.fallbackName || input.fallbackEmail || fallbackEmail).trim(),
+      });
+    }
+
+    if (uniqueRecipients.size === 0 && input.userId) {
       const triggeringUser = await prisma.user.findUnique({
-        where: { id: userId },
+        where: { id: input.userId },
         select: {
           email: true,
           name: true,
@@ -993,12 +1010,31 @@ class SyncReportService {
       }
     }
 
+    const configuredRecipients = String(
+      process.env.SYNC_REPORT_RECIPIENTS ||
+        process.env.REPORT_RECIPIENTS ||
+        '',
+    )
+      .split(',')
+      .map((email) => email.trim())
+      .filter(Boolean);
+
+    for (const email of configuredRecipients) {
+      const normalizedEmail = email.toLowerCase();
+      uniqueRecipients.set(normalizedEmail, {
+        email,
+        name: email,
+      });
+    }
+
     return Array.from(uniqueRecipients.values());
   }
 
   async sendTrackingSyncReport(input: {
     companyId: string;
     userId: string;
+    userEmail?: string | null;
+    userName?: string | null;
     trigger: SyncTrigger;
     payload: TrackingSyncReportPayload;
     startedAt: string;
@@ -1035,9 +1071,17 @@ class SyncReportService {
       fs.writeFile(path.join(reportsDir, `${reportId}.csv`), reportCsv, 'utf8'),
     ]);
 
-    const recipients = await this.resolveRecipients(input.companyId, input.userId);
+    const recipients = await this.resolveRecipients({
+      companyId: input.companyId,
+      userId: input.userId,
+      fallbackEmail: input.userEmail,
+      fallbackName: input.userName,
+    });
 
     if (recipients.length === 0) {
+      console.warn(
+        `Nenhum destinatario encontrado para relatorio de sincronizacao da empresa ${input.companyId}.`,
+      );
       return {
         reportId,
         reportUrl,
@@ -1053,6 +1097,12 @@ class SyncReportService {
       textContent: emailText,
     });
 
+    console.log(
+      `Relatorio de sincronizacao enviado para ${recipients
+        .map((recipient) => recipient.email)
+        .join(', ')}`,
+    );
+
     return {
       reportId,
       reportUrl,
@@ -1064,6 +1114,8 @@ class SyncReportService {
   async sendTraySyncReport(input: {
     companyId: string;
     userId: string;
+    userEmail?: string | null;
+    userName?: string | null;
     trigger: SyncTrigger;
     payload: TraySyncReportPayload;
     startedAt: string;
@@ -1100,9 +1152,17 @@ class SyncReportService {
       fs.writeFile(path.join(reportsDir, `${reportId}.csv`), reportCsv, 'utf8'),
     ]);
 
-    const recipients = await this.resolveRecipients(input.companyId, input.userId);
+    const recipients = await this.resolveRecipients({
+      companyId: input.companyId,
+      userId: input.userId,
+      fallbackEmail: input.userEmail,
+      fallbackName: input.userName,
+    });
 
     if (recipients.length === 0) {
+      console.warn(
+        `Nenhum destinatario encontrado para relatorio Tray da empresa ${input.companyId}.`,
+      );
       return {
         reportId,
         reportUrl,
@@ -1117,6 +1177,12 @@ class SyncReportService {
       htmlContent: emailHtml,
       textContent: emailText,
     });
+
+    console.log(
+      `Relatorio de pedidos Tray enviado para ${recipients
+        .map((recipient) => recipient.email)
+        .join(', ')}`,
+    );
 
     return {
       reportId,

@@ -190,7 +190,7 @@ app.get('/tray/callback/auth', handleAuthCallback);
 
 // ✅ ROTAS DE COTAÇÃO DE FRETE (protegidas)
 app.post('/api/freight/quote/:orderId', authenticateToken, quoteOrderFreight);
-app.post('/api/freight/quote-batch', quoteBatchFreight);
+app.post('/api/freight/quote-batch', authenticateToken, quoteBatchFreight);
 app.post('/api/tray/checkout-quotes', authenticateToken, saveTrayCheckoutQuoteSnapshot);
 
 // ✅ ENDPOINT PARA MONITORAR RATE LIMIT (MOVIDO PARA ANTES DO FALLBACK)

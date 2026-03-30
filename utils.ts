@@ -6,6 +6,13 @@ export const toText = (value: unknown): string => {
   return String(value);
 };
 
+const normalizeFreightText = (value: unknown) =>
+  toText(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+
 export const normalizeTrackingHistory = (value: unknown) => {
   if (!Array.isArray(value)) return [];
 
@@ -21,7 +28,7 @@ export const normalizeTrackingHistory = (value: unknown) => {
 export const normalizeExcludedPlatformFreight = (
   freightType: string | null | undefined,
 ): string | null => {
-  const normalized = toText(freightType).trim().toLowerCase();
+  const normalized = normalizeFreightText(freightType);
 
   if (!normalized) return null;
 
@@ -40,6 +47,12 @@ export const normalizeExcludedPlatformFreight = (
 
   if (["shopee xpress", "retirada pelo comprador"].includes(normalized)) {
     return "Shopee Xpress";
+  }
+
+  if (
+    ["retirada normal na agencia", "retirada na agencia"].includes(normalized)
+  ) {
+    return "Retirada na Agencia";
   }
 
   if (
@@ -143,6 +156,20 @@ export const isOrderWithDeliveryFailure = (
 ): boolean =>
   order.status === OrderStatus.FAILURE ||
   getLatestDeliveryFailureEvent(order) !== null;
+
+export const isPendingDeliveryFailureOrder = (
+  order: Pick<Order, "status" | "trackingHistory" | "freightType">,
+): boolean => {
+  if (
+    order.status === OrderStatus.DELIVERED ||
+    order.status === OrderStatus.CANCELED ||
+    isExcludedPlatformFreight(order.freightType)
+  ) {
+    return false;
+  }
+
+  return isOrderWithDeliveryFailure(order);
+};
 
 export const mapIntelipostStatusToEnum = (status: string): OrderStatus => {
   const s = status ? status.toUpperCase() : '';
