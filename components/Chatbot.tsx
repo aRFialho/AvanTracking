@@ -16,7 +16,10 @@ const BOT_AVATAR_SRC = "/muricoca.png";
 const BOT_BUTTON_SIZE = 64;
 const BOT_WINDOW_GAP = 16;
 const BOT_MARGIN = 24;
-const BOT_STORAGE_KEY = "muricoca-launcher-position";
+const getDefaultLauncherPosition = (width: number, height: number) => ({
+  x: Math.max(BOT_MARGIN, width - BOT_BUTTON_SIZE - BOT_MARGIN),
+  y: Math.max(BOT_MARGIN, height - BOT_BUTTON_SIZE - BOT_MARGIN),
+});
 
 const clampLauncherPosition = (
   x: number,
@@ -198,25 +201,7 @@ export const Chatbot: React.FC = () => {
           return clampLauncherPosition(current.x, current.y, width, height);
         }
 
-        const savedPosition = window.localStorage.getItem(BOT_STORAGE_KEY);
-        if (savedPosition) {
-          try {
-            const parsed = JSON.parse(savedPosition);
-            return clampLauncherPosition(
-              Number(parsed.x || 0),
-              Number(parsed.y || 0),
-              width,
-              height,
-            );
-          } catch {
-            // ignore invalid localStorage payload
-          }
-        }
-
-        return {
-          x: Math.max(BOT_MARGIN, width - BOT_BUTTON_SIZE - BOT_MARGIN),
-          y: Math.max(BOT_MARGIN, height - BOT_BUTTON_SIZE - BOT_MARGIN),
-        };
+        return getDefaultLauncherPosition(width, height);
       });
     };
 
@@ -224,16 +209,6 @@ export const Chatbot: React.FC = () => {
     window.addEventListener("resize", updateViewport);
     return () => window.removeEventListener("resize", updateViewport);
   }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (launcherPosition.x <= 0 && launcherPosition.y <= 0) return;
-
-    window.localStorage.setItem(
-      BOT_STORAGE_KEY,
-      JSON.stringify(launcherPosition),
-    );
-  }, [launcherPosition]);
 
   const findResponse = (text: string): string => {
     const normalizedText = text.toLowerCase().trim();
@@ -527,9 +502,11 @@ export const Chatbot: React.FC = () => {
           src={BOT_AVATAR_SRC}
           alt={BOT_NAME}
           className={clsx(
-            "w-14 h-14 object-contain relative z-10 select-none muricoca-float transition-transform duration-300",
+            "w-14 h-14 object-contain relative z-10 select-none pointer-events-none muricoca-float transition-transform duration-300",
             isOpen ? "opacity-0" : "group-hover:scale-110 group-hover:rotate-2",
           )}
+          draggable={false}
+          onDragStart={(event) => event.preventDefault()}
           onError={(e) => {
             console.error("Erro ao carregar imagem do Muriçoca", e);
             setIsAvatarOk(false);

@@ -437,9 +437,7 @@ export const OrderList: React.FC<OrderListProps> = ({
       salesChannel: order.salesChannel,
       freightType: normalizeCarrierName(order.freightType),
       freightValue: formatCurrency(order.freightValue),
-      originalQuotedFreightValue: formatCurrency(
-        order.originalQuotedFreightValue ?? order.quotedFreightValue,
-      ),
+
       recalculatedFreightValue: formatCurrency(order.recalculatedFreightValue),
       estimatedDeliveryDate: formatDateOrDash(order.estimatedDeliveryDate),
       carrierEstimatedDeliveryDate: formatCarrierForecast(
@@ -475,7 +473,7 @@ export const OrderList: React.FC<OrderListProps> = ({
             <td>${escapeHtml(order.salesChannel)}</td>
             <td>${escapeHtml(order.freightType)}</td>
             <td>${escapeHtml(order.freightValue)}</td>
-            <td>${escapeHtml(order.originalQuotedFreightValue)}</td>
+
             <td>${escapeHtml(order.recalculatedFreightValue)}</td>
             <td>${escapeHtml(order.estimatedDeliveryDate)}</td>
             <td>${escapeHtml(order.carrierEstimatedDeliveryDate)}</td>
@@ -725,7 +723,7 @@ export const OrderList: React.FC<OrderListProps> = ({
                 <th>Marketplace</th>
                 <th>Transportadora</th>
                 <th>Frete Pago</th>
-                <th>Frete Cotado Original</th>
+
                 <th>Frete Recalculado</th>
                 <th>Prev. Entrega</th>
                 <th>Previsao Transportadora</th>
@@ -773,7 +771,7 @@ export const OrderList: React.FC<OrderListProps> = ({
       "Marketplace",
       "Transportadora",
       "Frete Pago",
-      "Frete Cotado Original",
+
       "Frete Recalculado",
       "Prev. Entrega",
       "Previsao Transportadora",
@@ -789,7 +787,7 @@ export const OrderList: React.FC<OrderListProps> = ({
       order.salesChannel,
       order.freightType,
       order.freightValue,
-      order.originalQuotedFreightValue,
+
       order.recalculatedFreightValue,
       order.estimatedDeliveryDate,
       order.carrierEstimatedDeliveryDate,
@@ -1231,9 +1229,7 @@ export const OrderList: React.FC<OrderListProps> = ({
                 <th className="px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]">
                   Frete Pago
                 </th>
-                <th className="px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]">
-                  Frete Cotado Original
-                </th>
+
                 <th className="px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]">
                   Frete Recalculado
                 </th>
@@ -1290,21 +1286,7 @@ export const OrderList: React.FC<OrderListProps> = ({
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">
                       {formatCurrency(order.freightValue)}
                     </td>
-                    <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
-                      <div className="flex flex-col">
-                        <span className="whitespace-nowrap">
-                          {formatCurrency(
-                            order.originalQuotedFreightValue ??
-                              order.quotedFreightValue,
-                          )}
-                        </span>
-                        <span className="text-[10px] text-slate-400 break-all">
-                          {order.originalQuotedCarrierName ||
-                            order.quotedCarrierName ||
-                            "Sem cotacao original"}
-                        </span>
-                      </div>
-                    </td>
+
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
                       <div className="flex flex-col">
                         <span className="whitespace-nowrap">
@@ -1387,9 +1369,10 @@ export const OrderList: React.FC<OrderListProps> = ({
       )}
 
       {isTraySyncModalOpen && onStartTraySync && isTrayAvailable && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <div className="glass-card w-full max-w-3xl rounded-xl p-6 shadow-2xl animate-in zoom-in-95 border border-slate-200 dark:border-white/10 bg-white dark:bg-dark-card">
-            <div className="flex justify-between items-center mb-6">
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="flex min-h-full items-center justify-center">
+            <div className="glass-card flex w-full max-w-3xl max-h-[calc(100vh-2rem)] flex-col overflow-hidden rounded-xl p-6 shadow-2xl animate-in zoom-in-95 border border-slate-200 dark:border-white/10 bg-white dark:bg-dark-card sm:max-h-[calc(100vh-4rem)]">
+            <div className="flex justify-between items-center mb-6 shrink-0">
               <div>
                 <h3 className="text-lg font-bold text-slate-800 dark:text-white">
                   Sincronizar Pedidos da Tray
@@ -1401,12 +1384,12 @@ export const OrderList: React.FC<OrderListProps> = ({
               <button
                 onClick={() => setIsTraySyncModalOpen(false)}
                 className="text-slate-500 hover:text-white"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
 
-            <div className="space-y-5">
+            <div className="min-h-0 flex-1 space-y-5 overflow-y-auto pr-1">
               <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 p-4">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
@@ -1595,7 +1578,9 @@ export const OrderList: React.FC<OrderListProps> = ({
                 </div>
               </div>
 
-              <div className="pt-2 flex gap-3">
+            </div>
+
+            <div className="pt-4 mt-4 flex gap-3 shrink-0 border-t border-slate-200 dark:border-white/10">
                 <button
                   type="button"
                   onClick={() => setIsTraySyncModalOpen(false)}
@@ -1620,7 +1605,7 @@ export const OrderList: React.FC<OrderListProps> = ({
                     "Buscar pedidos"
                   )}
                 </button>
-              </div>
+            </div>
             </div>
           </div>
         </div>

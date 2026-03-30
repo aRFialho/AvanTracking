@@ -6,6 +6,7 @@ import { importOrdersForCompany } from '../services/orderImportService';
 import { isExcludedPlatformFreight } from '../utils/orderExclusion';
 import { sswTrackingService } from '../services/sswTrackingService';
 import { syncReportService } from '../services/syncReportService';
+import { toUserFacingDatabaseErrorMessage } from '../utils/prismaError';
 
 const prisma = new PrismaClient() as any;
 const trackingService = new TrackingService();
@@ -1055,7 +1056,12 @@ export const syncSingleOrder = async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Erro ao sincronizar pedido:', error);
-    return res.status(500).json({ error: 'Erro ao sincronizar pedido' });
+    return res.status(500).json({
+      error: toUserFacingDatabaseErrorMessage(
+        error,
+        'Erro ao sincronizar pedido',
+      ),
+    });
   }
 };
 
@@ -1096,7 +1102,12 @@ export const syncAllOrders = async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Erro ao sincronizar todos os pedidos:', error);
-    return res.status(500).json({ error: 'Erro ao sincronizar pedidos' });
+    return res.status(500).json({
+      error: toUserFacingDatabaseErrorMessage(
+        error,
+        'Erro ao sincronizar pedidos',
+      ),
+    });
   }
 };
 

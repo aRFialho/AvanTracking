@@ -5,6 +5,7 @@ import type {
   TrackingSyncReportPayload,
 } from '../types/syncReport';
 import { normalizeExcludedPlatformFreight } from '../utils/orderExclusion';
+import { isDatabaseUnavailableError, toUserFacingDatabaseErrorMessage } from '../utils/prismaError';
 import { sswTrackingService } from './sswTrackingService';
 
 const prisma = new PrismaClient();
@@ -179,6 +180,11 @@ const isRouteStatus = (status: OrderStatus) => ROUTE_STATUSES.includes(status);
 
 const toIsoString = (value: Date | null | undefined) =>
   value instanceof Date ? value.toISOString() : null;
+
+const DATABASE_RETRY_DELAYS_MS = [1500, 5000];
+
+const wait = (ms: number) =>
+  new Promise((resolve) => setTimeout(resolve, ms));
 
 const buildEmptySnapshot = (): SyncReportSnapshot => ({
   totalTracked: 0,
@@ -696,7 +702,7 @@ export class TrackingService {
       console.error('Erro ao sincronizar rastreio:', error);
       return {
         success: false,
-        message: 'Erro ao sincronizar',
+        message: toUserFacingDatabaseErrorMessage(error, 'Erro ao sincronizar'),
         error,
         change: null,
       };
@@ -716,7 +722,7 @@ export class TrackingService {
       }) => void;
     },
   ) {
-    try {
+    const executeSync = async () => {
       const activeOrders = await prisma.order.findMany({
         where: {
           ...(companyId ? { companyId } : {}),
@@ -796,7 +802,35 @@ export class TrackingService {
       results.report.after = afterSnapshot;
 
       return results;
+    };
+
+    try {
+      return await executeSync();
     } catch (error) {
+      if (isDatabaseUnavailableError(error)) {
+        for (let index = 0; index < DATABASE_RETRY_DELAYS_MS.length; index += 1) {
+          const delayMs = DATABASE_RETRY_DELAYS_MS[index];
+          console.warn(
+            `Banco indisponivel na sincronizacao. Nova tentativa ${index + 2}/${DATABASE_RETRY_DELAYS_MS.length + 1} em ${delayMs}ms.`,
+          );
+
+          await prisma.$disconnect().catch(() => undefined);
+          await wait(delayMs);
+
+          try {
+            await prisma.$connect();
+            return await executeSync();
+          } catch (retryError) {
+            if (!isDatabaseUnavailableError(retryError)) {
+              console.error('Erro ao sincronizar pedidos:', retryError);
+              throw retryError;
+            }
+
+            error = retryError;
+          }
+        }
+      }
+
       console.error('Erro ao sincronizar pedidos:', error);
       throw error;
     }

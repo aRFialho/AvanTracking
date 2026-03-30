@@ -8,6 +8,7 @@ import type {
 import type { SyncTrigger } from '../types/syncReport';
 import { TrackingService } from './trackingService';
 import { syncReportService } from './syncReportService';
+import { toUserFacingDatabaseErrorMessage } from '../utils/prismaError';
 
 const trackingService = new TrackingService();
 const prisma = new PrismaClient();
@@ -195,8 +196,10 @@ class SyncJobService {
       job.status = 'failed';
       job.currentOrderNumber = null;
       job.finishedAt = new Date().toISOString();
-      job.error =
-        error instanceof Error ? error.message : 'Erro desconhecido durante a sincronização';
+      job.error = toUserFacingDatabaseErrorMessage(
+        error,
+        'Erro desconhecido durante a sincronizacao',
+      );
       this.touch(job);
       this.pushLog(job, 'error', `Sincronização interrompida: ${job.error}`);
       this.scheduleNext(job.companyId, job.userId);

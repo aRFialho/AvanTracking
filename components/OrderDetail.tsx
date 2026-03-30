@@ -143,7 +143,7 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({ order, onClose }) => {
                     <Truck className="w-4 h-4 text-accent" /> Analise de frete
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-white/70 dark:bg-black/10 p-3">
                       <p className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1">
                         Frete pago
@@ -156,26 +156,6 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({ order, onClose }) => {
                       </p>
                     </div>
 
-                    <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-white/70 dark:bg-black/10 p-3">
-                      <p className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1">
-                        Frete cotado original
-                      </p>
-                      <p className="text-lg font-semibold text-slate-800 dark:text-white">
-                        {formatCurrency(order.originalQuotedFreightValue ?? order.quotedFreightValue)}
-                      </p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 break-all">
-                        Transportadora: {order.originalQuotedCarrierName || order.quotedCarrierName || "-"}
-                      </p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 break-all">
-                        Quotation ID: {order.originalQuotedFreightQuotationId || "-"}
-                      </p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
-                        Capturado em: {formatDateTime(order.originalQuotedFreightDate ?? order.quotedFreightDate)}
-                      </p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
-                        Carrier coincide: {formatMatchLabel(order.freightCarrierMatchesOriginalQuote ?? order.freightCarrierMatchesQuote)}
-                      </p>
-                    </div>
 
                     <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-white/70 dark:bg-black/10 p-3">
                       <p className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1">
@@ -294,7 +274,7 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({ order, onClose }) => {
                           <span>{new Date(event.date).toLocaleString()}</span>
                           {event.city && (
                             <span>
-                              • {event.city}
+                              - {event.city}
                               {event.state ? `/${event.state}` : ""}
                             </span>
                           )}
