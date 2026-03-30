@@ -69,6 +69,57 @@ const formatCurrency = (value: number | null | undefined) => {
   return `R$ ${value.toFixed(2)}`;
 };
 
+const escapeHtml = (value: string) =>
+  value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
+const buildTrackingLoadingHtml = () => `<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Carregando rastreio...</title>
+  </head>
+  <body style="margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at top,#1d4ed8 0%,#0f172a 58%);font-family:'Segoe UI',Arial,sans-serif;color:#ffffff;">
+    <div style="width:min(420px,calc(100vw - 32px));border:1px solid rgba(191,219,254,0.28);border-radius:24px;padding:32px 28px;background:rgba(15,23,42,0.82);box-shadow:0 24px 80px rgba(15,23,42,0.35);text-align:center;">
+      <img src="${LOGO_URL}" alt="Avantracking" style="width:112px;max-width:112px;height:auto;display:block;margin:0 auto 20px;" />
+      <div style="width:44px;height:44px;margin:0 auto 18px;border-radius:999px;border:3px solid rgba(255,255,255,0.22);border-top-color:#60a5fa;animation:spin 1s linear infinite;"></div>
+      <h1 style="margin:0;font-size:22px;line-height:1.2;">Carregando rastreio...</h1>
+      <p style="margin:12px 0 0;font-size:14px;line-height:1.7;color:#dbeafe;">
+        Estamos buscando a URL correta do rastreio deste pedido.
+      </p>
+    </div>
+    <style>
+      @keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+      }
+    </style>
+  </body>
+</html>`;
+
+const buildTrackingErrorHtml = (message: string) => `<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Falha ao abrir rastreio</title>
+  </head>
+  <body style="margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0f172a;font-family:'Segoe UI',Arial,sans-serif;color:#ffffff;">
+    <div style="width:min(420px,calc(100vw - 32px));border:1px solid rgba(248,113,113,0.32);border-radius:24px;padding:32px 28px;background:rgba(15,23,42,0.92);box-shadow:0 24px 80px rgba(15,23,42,0.35);text-align:center;">
+      <img src="${LOGO_URL}" alt="Avantracking" style="width:112px;max-width:112px;height:auto;display:block;margin:0 auto 20px;" />
+      <h1 style="margin:0;font-size:22px;line-height:1.2;">Nao foi possivel abrir o rastreio</h1>
+      <p style="margin:12px 0 0;font-size:14px;line-height:1.7;color:#fecaca;">
+        ${escapeHtml(message)}
+      </p>
+    </div>
+  </body>
+</html>`;
+
 interface OrderListProps {
   orders: Order[];
   initialFilters?: any;
@@ -828,21 +879,12 @@ export const OrderList: React.FC<OrderListProps> = ({
 
     if (popup) {
       popup.opener = null;
-      popup.document.write(
-        "<title>Abrindo rastreio...</title><p style=\"font-family:Segoe UI,Arial,sans-serif;padding:16px\">Abrindo rastreio...</p>",
-      );
+      popup.document.open();
+      popup.document.write(buildTrackingLoadingHtml());
+      popup.document.close();
     }
 
     try {
-      if (order.trackingUrl) {
-        if (popup) {
-          popup.location.href = order.trackingUrl;
-        } else {
-          window.open(order.trackingUrl, "_blank", "noopener,noreferrer");
-        }
-        return;
-      }
-
       const response = await fetchWithAuth(
         `/api/orders/${order.id}/open-tracking?resolve=1`,
         {
@@ -865,12 +907,18 @@ export const OrderList: React.FC<OrderListProps> = ({
         window.open(data.trackingUrl, "_blank", "noopener,noreferrer");
       }
     } catch (error) {
-      popup?.close();
-      alert(
+      const message =
         error instanceof Error
           ? error.message
-          : "Nao foi possivel abrir o rastreio deste pedido.",
-      );
+          : "Nao foi possivel abrir o rastreio deste pedido.";
+
+      if (popup) {
+        popup.document.open();
+        popup.document.write(buildTrackingErrorHtml(message));
+        popup.document.close();
+      }
+
+      alert(message);
     }
   };
 

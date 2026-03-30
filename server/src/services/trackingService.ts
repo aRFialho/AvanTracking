@@ -18,8 +18,6 @@ const ROUTE_STATUSES: OrderStatus[] = [
 ];
 const FINALIZED_STATUSES: OrderStatus[] = [
   OrderStatus.DELIVERED,
-  OrderStatus.FAILURE,
-  OrderStatus.RETURNED,
   OrderStatus.CANCELED,
 ];
 
@@ -177,6 +175,42 @@ const resolveCarrierEstimatedDate = (
 };
 
 const isRouteStatus = (status: OrderStatus) => ROUTE_STATUSES.includes(status);
+
+const resolveStoredTrackingEventStatus = (event?: {
+  status?: string | null;
+  description?: string | null;
+} | null) => {
+  if (!event) return null;
+
+  return mapIntelipostStatusToEnum(
+    [event.status, event.description].filter(Boolean).join(' '),
+  );
+};
+
+const shouldSkipTerminalSync = (order: {
+  status: OrderStatus;
+  trackingEvents?: Array<{
+    status: string;
+    description: string;
+    eventDate: Date;
+  }>;
+}) => {
+  if (order.status === OrderStatus.CANCELED) {
+    return true;
+  }
+
+  if (order.status !== OrderStatus.DELIVERED) {
+    return false;
+  }
+
+  const latestStoredEvent = Array.isArray(order.trackingEvents)
+    ? order.trackingEvents
+        .slice()
+        .sort((left, right) => right.eventDate.getTime() - left.eventDate.getTime())[0]
+    : null;
+
+  return resolveStoredTrackingEventStatus(latestStoredEvent) === OrderStatus.DELIVERED;
+};
 
 const toIsoString = (value: Date | null | undefined) =>
   value instanceof Date ? value.toISOString() : null;
@@ -476,6 +510,12 @@ export class TrackingService {
     try {
       const order = await prisma.order.findUnique({
         where: { id: orderId },
+        include: {
+          trackingEvents: {
+            orderBy: { eventDate: 'desc' },
+            take: 5,
+          },
+        },
       });
 
       if (!order) {
@@ -492,7 +532,7 @@ export class TrackingService {
 
       const baseChange = this.buildChangeBase(order);
 
-      if (FINALIZED_STATUSES.includes(order.status)) {
+      if (shouldSkipTerminalSync(order)) {
         return {
           success: false,
           message: 'Pedido jÃƒÂ¡ finalizado',
@@ -730,22 +770,32 @@ export class TrackingService {
             notIn: ['ColetasME2', 'Shopee Xpress', 'Correios'],
           },
           status: {
-            notIn: FINALIZED_STATUSES,
+            not: OrderStatus.CANCELED,
+          },
+        },
+        include: {
+          trackingEvents: {
+            orderBy: { eventDate: 'desc' },
+            take: 5,
           },
         },
         orderBy: { createdAt: 'asc' },
       });
 
+      const eligibleOrders = activeOrders.filter(
+        (order) => !shouldSkipTerminalSync(order),
+      );
+
       const beforeSnapshot = await this.buildSnapshot(companyId);
       const changes: SyncOrderChangeReport[] = [];
       const results = {
-        total: activeOrders.length,
+        total: eligibleOrders.length,
         success: 0,
         failed: 0,
         errors: [] as string[],
         report: {
           companyId: companyId || '',
-          total: activeOrders.length,
+          total: eligibleOrders.length,
           success: 0,
           failed: 0,
           errors: [] as string[],
@@ -757,16 +807,16 @@ export class TrackingService {
 
       const syncDelayMs = Math.max(0, Number(process.env.SYNC_DELAY_MS ?? 100));
 
-      hooks?.onStart?.({ total: activeOrders.length });
+      hooks?.onStart?.({ total: eligibleOrders.length });
 
-      for (let index = 0; index < activeOrders.length; index += 1) {
-        const order = activeOrders[index];
+      for (let index = 0; index < eligibleOrders.length; index += 1) {
+        const order = eligibleOrders[index];
         const startedAt = Date.now();
 
         hooks?.onOrderStart?.({
           orderNumber: String(order.orderNumber),
           index: index + 1,
-          total: activeOrders.length,
+          total: eligibleOrders.length,
         });
 
         const result = await this.syncOrder(order.id, companyId);
