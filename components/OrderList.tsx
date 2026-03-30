@@ -433,6 +433,7 @@ export const OrderList: React.FC<OrderListProps> = ({
     filteredOrders.map((order) => ({
       orderNumber: order.orderNumber,
       invoiceNumber: order.invoiceNumber || "-",
+      trackingCode: order.trackingCode || "-",
       shippingDate: formatDateOrDash(order.shippingDate),
       salesChannel: order.salesChannel,
       freightType: normalizeCarrierName(order.freightType),
@@ -469,6 +470,7 @@ export const OrderList: React.FC<OrderListProps> = ({
           <tr>
             <td>${escapeHtml(order.orderNumber)}</td>
             <td>${escapeHtml(order.invoiceNumber)}</td>
+            <td>${escapeHtml(order.trackingCode)}</td>
             <td>${escapeHtml(order.shippingDate)}</td>
             <td>${escapeHtml(order.salesChannel)}</td>
             <td>${escapeHtml(order.freightType)}</td>
@@ -719,6 +721,7 @@ export const OrderList: React.FC<OrderListProps> = ({
               <tr>
                 <th>ID / Pedido</th>
                 <th>Nota Fiscal</th>
+                <th>Codigo de envio</th>
                 <th>Emissao</th>
                 <th>Marketplace</th>
                 <th>Transportadora</th>
@@ -767,6 +770,7 @@ export const OrderList: React.FC<OrderListProps> = ({
     const headers = [
       "ID / Pedido",
       "Nota Fiscal",
+      "Codigo de envio",
       "Emissao",
       "Marketplace",
       "Transportadora",
@@ -783,6 +787,7 @@ export const OrderList: React.FC<OrderListProps> = ({
     const rows = getExportRows().map((order) => [
       order.orderNumber,
       order.invoiceNumber,
+      order.trackingCode,
       order.shippingDate,
       order.salesChannel,
       order.freightType,
