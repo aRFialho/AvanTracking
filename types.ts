@@ -103,6 +103,7 @@ export interface Order {
   freightCarrierMatchesOriginalQuote?: boolean | null;
   freightCarrierMatchesRecalculatedQuote?: boolean | null;
   shippingDate: Date; // 'Envio data'
+  platformCreatedAt?: Date | string | null; // Data de criacao no marketplace/plataforma
   
   // Address
   address: string; // 'Endereço'

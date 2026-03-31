@@ -41,6 +41,7 @@ import {
   parseOptionalDate,
   isChannelManagedOrder,
   isPendingDeliveryFailureOrder,
+  resolvePlatformCreatedDate,
 } from "../utils";
 
 interface DashboardProps {
@@ -155,27 +156,50 @@ const isOrderOutsideTrayDeadline = (order: Order) => {
   );
 };
 
-const getOrderCycleStart = (order: Order) => {
-  let start = new Date(order.shippingDate).getTime();
+const normalizeTrackingEventText = (value: unknown) =>
+  String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .trim();
 
-  if (order.trackingHistory && order.trackingHistory.length > 0) {
-    const sortedHistory = [...order.trackingHistory].sort(
-      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
-    );
-    start = new Date(sortedHistory[0].date).getTime();
-  }
+const getTransportDocumentIssuedDate = (order: Order) => {
+  const trackingHistory = Array.isArray(order.trackingHistory)
+    ? order.trackingHistory
+    : [];
 
-  return start;
+  const matchingEvent = trackingHistory
+    .map((event) => ({
+      event,
+      combined: normalizeTrackingEventText(
+        `${event.status || ""} ${event.description || ""}`,
+      ),
+    }))
+    .filter(
+      ({ combined }) =>
+        combined.includes("DOCUMENTO DE TRANSPORTE EMITIDO") ||
+        combined.includes("CT-E AUTORIZADO") ||
+        combined.includes("CTE AUTORIZADO"),
+    )
+    .sort(
+      (left, right) =>
+        new Date(left.event.date).getTime() - new Date(right.event.date).getTime(),
+    )[0];
+
+  return matchingEvent ? new Date(matchingEvent.event.date).getTime() : null;
 };
 
-const getMeasuredOrderElapsedDays = (order: Order, now: number) => {
-  const start = getOrderCycleStart(order);
-  const end =
-    order.status === OrderStatus.DELIVERED
-      ? new Date(order.lastUpdate).getTime()
-      : now;
+const getDeliveredElapsedDaysFromTransportDocument = (order: Order) => {
+  if (order.status !== OrderStatus.DELIVERED) {
+    return null;
+  }
 
-  return (end - start) / DAY_IN_MS;
+  const start = getTransportDocumentIssuedDate(order);
+  if (start === null) {
+    return null;
+  }
+
+  return (new Date(order.lastUpdate).getTime() - start) / DAY_IN_MS;
 };
 
 const isEarlyDelivery = (order: Order) => {
@@ -250,7 +274,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       if (startDate || endDate) {
         const targetDate =
           dateType === "shipping"
-            ? new Date(o.shippingDate)
+            ? resolvePlatformCreatedDate(o)
             : parseOptionalDate(o.estimatedDeliveryDate);
         if (!targetDate) return false;
         if (startDate)
@@ -343,20 +367,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
       isPendingDeliveryFailureOrder(o),
     ).length;
 
-    // Average Time (First Tracking Update -> Delivered/LastUpdate)
+    // Average Time (Documento de Transporte Emitido -> Entregue)
     let totalDays = 0;
     let measurableCount = 0;
 
     // On Time Calculation Logic
     let deliveredOnTime = 0;
     let carrierMeasurableCount = 0;
-    const now = Date.now();
-
     filteredOrders.forEach((o) => {
       if (!isQualityMeasurableOrder(o)) return;
 
-      const diff = getMeasuredOrderElapsedDays(o, now);
-      if (diff >= 0) {
+      const diff = getDeliveredElapsedDaysFromTransportDocument(o);
+      if (diff !== null && diff >= 0) {
         totalDays += diff;
         measurableCount++;
       }
@@ -405,12 +427,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
     const currentMonth = now.getMonth();
     const prevMonth = currentMonth === 0 ? 11 : currentMonth - 1;
 
-    const currentMonthOrders = orders.filter(
-      (o) => new Date(o.shippingDate).getMonth() === currentMonth,
-    );
-    const prevMonthOrders = orders.filter(
-      (o) => new Date(o.shippingDate).getMonth() === prevMonth,
-    );
+    const currentMonthOrders = orders.filter((o) => {
+      const platformCreatedDate = resolvePlatformCreatedDate(o);
+      return platformCreatedDate?.getMonth() === currentMonth;
+    });
+    const prevMonthOrders = orders.filter((o) => {
+      const platformCreatedDate = resolvePlatformCreatedDate(o);
+      return platformCreatedDate?.getMonth() === prevMonth;
+    });
 
     const calcGrowth = (curr: number, prev: number) => {
       if (prev === 0) return curr > 0 ? 100 : 0;
@@ -481,9 +505,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
         early: number;
         totalTime: number;
         measurableCount: number;
+        averageTimeCount: number;
       }
     >();
-    const now = Date.now();
 
     filteredOrders.forEach((o) => {
       if (!isQualityMeasurableOrder(o)) return;
@@ -498,6 +522,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         early: 0,
         totalTime: 0,
         measurableCount: 0,
+        averageTimeCount: 0,
       };
 
       if (!isCarrierQualityMeasurableOrder(o) && !isOrderOutsideTrayDeadline(o)) {
@@ -505,11 +530,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
         return;
       }
 
-      const days = getMeasuredOrderElapsedDays(o, now);
+      const days = getDeliveredElapsedDaysFromTransportDocument(o);
       if (isCarrierQualityMeasurableOrder(o)) {
         current.measurableCount++;
         current.volume = current.measurableCount;
-        if (days >= 0) current.totalTime += days;
+      }
+
+      if (days !== null && days >= 0) {
+        current.totalTime += days;
+        current.averageTimeCount++;
       }
 
       if (o.status === OrderStatus.DELIVERED && isOrderDeliveredOnCarrierTime(o)) {
@@ -1151,9 +1180,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         Tempo Méd.
                       </p>
                       <p className="font-bold text-slate-800 dark:text-white">
-                        {carrier.measurableCount > 0
+                        {carrier.averageTimeCount > 0
                           ? (
-                              carrier.totalTime / carrier.measurableCount
+                              carrier.totalTime / carrier.averageTimeCount
                             ).toFixed(1)
                           : "-"}{" "}
                         d

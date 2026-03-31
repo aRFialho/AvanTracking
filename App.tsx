@@ -153,6 +153,9 @@ const MainApp: React.FC = () => {
 
     const normalizedOrder = {
       ...order,
+      platformCreatedAt:
+        parseDate((order as any).platformCreatedAt) ??
+        (order as any).platformCreatedAt,
       shippingDate:
         parseDate((order as any).shippingDate) ?? (order as any).shippingDate,
       maxShippingDeadline:

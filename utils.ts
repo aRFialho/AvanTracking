@@ -132,6 +132,35 @@ export const isPlatformDelayedOrder = (
   return Date.now() > estimatedDate.getTime();
 };
 
+export const resolvePlatformCreatedDate = (
+  order: Pick<Order, "shippingDate" | "trackingHistory"> & {
+    platformCreatedAt?: unknown;
+    createdAt?: unknown;
+  },
+) => {
+  const explicitPlatformDate = parseOptionalDate(order.platformCreatedAt);
+  if (explicitPlatformDate) {
+    return explicitPlatformDate;
+  }
+
+  const trackingHistory = normalizeTrackingHistory(order.trackingHistory);
+  if (trackingHistory.length > 0) {
+    const earliestTrackingEvent = trackingHistory.reduce((earliest, current) =>
+      new Date(current.date).getTime() < new Date(earliest.date).getTime()
+        ? current
+        : earliest,
+    );
+    const earliestTrackingDate = parseOptionalDate(earliestTrackingEvent.date);
+    if (earliestTrackingDate) {
+      return earliestTrackingDate;
+    }
+  }
+
+  return (
+    parseOptionalDate(order.shippingDate) || parseOptionalDate(order.createdAt)
+  );
+};
+
 export const formatDateOrDash = (value: unknown, locale = "pt-BR"): string => {
   const parsed = parseOptionalDate(value);
   return parsed ? parsed.toLocaleDateString(locale) : "-";
