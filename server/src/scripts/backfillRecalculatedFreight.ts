@@ -28,11 +28,6 @@ async function processCompany(company: {
     const orders = await prisma.order.findMany({
       where: {
         companyId: company.id,
-        OR: [
-          { recalculatedFreightDate: null },
-          { recalculatedFreightValue: null },
-          { recalculatedFreightDetails: null },
-        ],
       },
       orderBy: {
         id: 'asc',

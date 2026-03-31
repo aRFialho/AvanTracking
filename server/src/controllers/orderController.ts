@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { PrismaClient, OrderStatus } from '@prisma/client';
+import { OrderStatus } from '@prisma/client';
 import { syncJobService } from '../services/syncJobService';
 import { TrackingService } from '../services/trackingService';
 import { importOrdersForCompany } from '../services/orderImportService';
@@ -7,8 +7,10 @@ import { isExcludedPlatformFreight } from '../utils/orderExclusion';
 import { sswTrackingService } from '../services/sswTrackingService';
 import { syncReportService } from '../services/syncReportService';
 import { toUserFacingDatabaseErrorMessage } from '../utils/prismaError';
+import { resolvePlatformCreatedDate } from '../utils/orderDates';
+import { prisma as sharedPrisma } from '../lib/prisma';
 
-const prisma = new PrismaClient() as any;
+const prisma = sharedPrisma as any;
 const trackingService = new TrackingService();
 
 const safeString = (value: any): string | null => {
@@ -157,7 +159,7 @@ const getMovementDate = (order: any) => {
   return (
     latestTrackingEvent?.eventDate ||
     order.shippingDate ||
-    order.createdAt ||
+    resolvePlatformCreatedDate(order) ||
     order.lastUpdate
   );
 };
@@ -265,31 +267,72 @@ const extractQuoteCarrierName = (quoteDetails: any): string | null => {
     return null;
   }
 
+  const normalizeComparableText = (value: unknown) =>
+    String(value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, ' ')
+      .trim();
+
+  const isGenericServiceLabel = (value: unknown) => {
+    const normalized = normalizeComparableText(value);
+    if (!normalized) return false;
+
+    return [
+      'EMISSAO DE NOTA FISCAL',
+      'EMISSAO NOTA FISCAL',
+      'NOTA FISCAL',
+      'DOCUMENTO FISCAL',
+      'COTACAO DE FRETE',
+      'FRETE',
+    ].some((token) => normalized === token || normalized.includes(token));
+  };
+
   return (
     safeString(quoteDetails.selectedCarrierName) ||
-    safeString(quoteDetails.requestedCarrier) ||
-    safeString(quoteDetails.selectedServiceName) ||
-    safeString(quoteDetails.shipmentType) ||
-    safeString(quoteDetails.integrator) ||
-    safeString(quoteDetails.selectedOption?.taxe?.name) ||
     safeString(quoteDetails.selectedOption?.carrier_name) ||
     safeString(quoteDetails.selectedOption?.carrier) ||
     safeString(quoteDetails.selectedOption?.transportadora) ||
     safeString(quoteDetails.selectedOption?.shipping_company) ||
-    safeString(quoteDetails.selectedOption?.delivery_method?.name) ||
+    safeString(quoteDetails.selectedOption?.delivery_method?.carrier_name) ||
     safeString(quoteDetails.selectedOption?.shipment_integrator) ||
+    safeString(quoteDetails.selectedOption?.integrator) ||
     safeString(quoteDetails.selectedOption?.taxe?.name) ||
-    safeString(quoteDetails.selectedOption?.service_name) ||
-    safeString(quoteDetails.selectedOption?.service) ||
-    safeString(quoteDetails.selectedOption?.identifier) ||
-    safeString(quoteDetails.selectedOption?.name) ||
-    safeString(quoteDetails.raw?.taxe?.name) ||
     safeString(quoteDetails.raw?.shipment_integrator) ||
-    safeString(quoteDetails.raw?.service_name) ||
-    safeString(quoteDetails.raw?.name) ||
-    safeString(quoteDetails.serviceName) ||
-    safeString(quoteDetails.serviceCode) ||
     safeString(quoteDetails.carrierName) ||
+    safeString(quoteDetails.integrator) ||
+    safeString(quoteDetails.shipmentType) ||
+    (quoteDetails.matchedByCarrier ? safeString(quoteDetails.requestedCarrier) : null) ||
+    safeString(quoteDetails.selectedOption?.delivery_method?.name) ||
+    safeString(quoteDetails.raw?.taxe?.name) ||
+    (isGenericServiceLabel(quoteDetails.selectedServiceName)
+      ? null
+      : safeString(quoteDetails.selectedServiceName)) ||
+    (isGenericServiceLabel(quoteDetails.raw?.service_name)
+      ? null
+      : safeString(quoteDetails.raw?.service_name)) ||
+    (isGenericServiceLabel(quoteDetails.selectedOption?.service_name)
+      ? null
+      : safeString(quoteDetails.selectedOption?.service_name)) ||
+    (isGenericServiceLabel(quoteDetails.selectedOption?.service)
+      ? null
+      : safeString(quoteDetails.selectedOption?.service)) ||
+    (isGenericServiceLabel(quoteDetails.selectedOption?.identifier)
+      ? null
+      : safeString(quoteDetails.selectedOption?.identifier)) ||
+    (isGenericServiceLabel(quoteDetails.selectedOption?.name)
+      ? null
+      : safeString(quoteDetails.selectedOption?.name)) ||
+    (isGenericServiceLabel(quoteDetails.raw?.name)
+      ? null
+      : safeString(quoteDetails.raw?.name)) ||
+    (isGenericServiceLabel(quoteDetails.serviceName)
+      ? null
+      : safeString(quoteDetails.serviceName)) ||
+    (isGenericServiceLabel(quoteDetails.serviceCode)
+      ? null
+      : safeString(quoteDetails.serviceCode)) ||
     null
   );
 };
@@ -760,6 +803,7 @@ const formatOrderForResponse = (
     ...order,
     orderNumber: String(order.orderNumber),
     status: order.status as OrderStatus,
+    platformCreatedAt: resolvePlatformCreatedDate(order),
     carrierEstimatedDeliveryDate,
     trackingSourceLabel: resolveTrackingSourceLabel(order.apiRawPayload),
     quotedFreightValue: legacyQuotedValue,

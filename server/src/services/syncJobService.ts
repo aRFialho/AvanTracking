@@ -1,5 +1,4 @@
 import crypto from 'crypto';
-import { PrismaClient } from '@prisma/client';
 import type {
   SyncLogEntry,
   SyncJobStatus,
@@ -9,9 +8,9 @@ import type { SyncTrigger } from '../types/syncReport';
 import { TrackingService } from './trackingService';
 import { syncReportService } from './syncReportService';
 import { toUserFacingDatabaseErrorMessage } from '../utils/prismaError';
+import { prisma } from '../lib/prisma';
 
 const trackingService = new TrackingService();
-const prisma = new PrismaClient();
 const MAX_LOGS = 1000;
 const AUTO_SYNC_INTERVAL_MS = 0;
 const AUTO_SYNC_SCHEDULE_TIMES = [

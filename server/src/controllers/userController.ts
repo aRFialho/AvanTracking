@@ -1,11 +1,9 @@
 import crypto from 'crypto';
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcrypt';
 import { generateToken } from '../middleware/auth';
 import { sendAccessEmail } from '../services/accessEmailService';
-
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma';
 
 const INVITE_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000;

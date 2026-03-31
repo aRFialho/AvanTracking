@@ -1,4 +1,4 @@
-import { PrismaClient, OrderStatus } from '@prisma/client';
+import { OrderStatus } from '@prisma/client';
 import type {
   SyncOrderChangeReport,
   SyncReportSnapshot,
@@ -7,8 +7,7 @@ import type {
 import { normalizeExcludedPlatformFreight } from '../utils/orderExclusion';
 import { isDatabaseUnavailableError, toUserFacingDatabaseErrorMessage } from '../utils/prismaError';
 import { sswTrackingService } from './sswTrackingService';
-
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma';
 
 const INTELIPOST_API_URL = 'https://tracking-graphql.intelipost.com.br/';
 const DEFAULT_CLIENT_ID = '40115';

@@ -1,7 +1,8 @@
 import { PrismaClient } from '@prisma/client';
+import { prisma as sharedPrisma } from '../lib/prisma';
 
 // O banco de dados principal (geralmente Drossi, configurado no .env)
-export const mainPrisma = new PrismaClient();
+export const mainPrisma = sharedPrisma;
 
 // Cache de clientes Prisma por URL para não estourar conexões
 const tenantClients: Record<string, PrismaClient> = {};

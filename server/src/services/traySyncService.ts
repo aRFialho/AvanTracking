@@ -1,10 +1,8 @@
-import { PrismaClient } from '@prisma/client';
 import { TrayApiService } from './trayApiService';
 import { trayAuthService } from './trayAuthService';
 import { importOrdersForCompany } from './orderImportService';
 import type { TraySyncOrderReport } from '../types/syncReport';
-
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma';
 
 const TRAY_STATUS_OPTIONS = [
   'pedido cadastrado',

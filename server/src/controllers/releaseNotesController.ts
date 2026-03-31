@@ -1,11 +1,9 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import {
   buildReleaseNotesHtml,
   sendReleaseNotesEmail,
 } from '../services/releaseNotesService';
-
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma';
 const MASTER_ADMIN_EMAIL = 'admin@avantracking.com.br';
 
 const normalizeLines = (value: unknown) =>

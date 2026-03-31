@@ -1,5 +1,4 @@
 import crypto from 'crypto';
-import { PrismaClient } from '@prisma/client';
 import type {
   SyncLogEntry,
   SyncJobStatus,
@@ -12,8 +11,8 @@ import {
 import { trayAuthService } from './trayAuthService';
 import { syncReportService } from './syncReportService';
 import type { SyncTrigger } from '../types/syncReport';
+import { prisma } from '../lib/prisma';
 
-const prisma = new PrismaClient();
 const MAX_LOGS = 1000;
 const AUTO_TRAY_SYNC_INTERVAL_MS = 0;
 const AUTO_TRAY_SYNC_SCHEDULE_TIMES = [

@@ -1,9 +1,7 @@
 
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import { ensureDemoCompanyData } from '../services/demoCompanyService';
-
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma';
 
 const normalizeSswRequireCnpjs = (value: unknown) => {
   if (!Array.isArray(value)) return [];

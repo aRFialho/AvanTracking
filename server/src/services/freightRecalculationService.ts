@@ -63,16 +63,99 @@ export type ExtractedTrayOrderProducts = {
   productsHash: string | null;
 };
 
+const PRODUCT_COLLECTION_PATHS = [
+  'OrderItem',
+  'OrderItems',
+  'ProductSold',
+  'ProductsSold',
+  'products',
+  'items',
+  'order_items',
+  'orderItems',
+  'Order.OrderItem',
+  'Order.OrderItems',
+  'Order.ProductSold',
+  'Order.ProductsSold',
+  'Order.products',
+  'Order.items',
+  'order.order_items',
+  'order.orderItems',
+  'order.items',
+  'order.products',
+];
+
+const PRODUCT_COLLECTION_HINT = /(orderitem|orderitems|productsold|productssold|products|items|order_items|orderitems)/i;
+
+const getValueByPath = (source: any, path: string) =>
+  path.split('.').reduce((current, segment) => current?.[segment], source);
+
+const collectProductCollections = (
+  rawPayload: any,
+): Array<{ source: string; items: any[] }> => {
+  const collections = new Map<string, any[]>();
+
+  for (const path of PRODUCT_COLLECTION_PATHS) {
+    const value = getValueByPath(rawPayload, path);
+    if (Array.isArray(value) && value.length > 0) {
+      collections.set(path, value);
+    }
+  }
+
+  const visit = (node: any, path: string, visited: WeakSet<object>) => {
+    if (!node || typeof node !== 'object') {
+      return;
+    }
+
+    if (visited.has(node)) {
+      return;
+    }
+    visited.add(node);
+
+    if (Array.isArray(node)) {
+      if (node.length > 0 && PRODUCT_COLLECTION_HINT.test(path)) {
+        collections.set(path || 'root', node);
+      }
+
+      node.forEach((item, index) => visit(item, `${path}[${index}]`, visited));
+      return;
+    }
+
+    for (const [key, value] of Object.entries(node)) {
+      const nextPath = path ? `${path}.${key}` : key;
+      if (Array.isArray(value) && value.length > 0 && PRODUCT_COLLECTION_HINT.test(key)) {
+        collections.set(nextPath, value);
+      }
+
+      if (value && typeof value === 'object') {
+        visit(value, nextPath, visited);
+      }
+    }
+  };
+
+  visit(rawPayload, '', new WeakSet<object>());
+
+  return Array.from(collections.entries()).map(([source, items]) => ({
+    source,
+    items,
+  }));
+};
+
+const resolveProductId = (item: any) =>
+  safeString(
+    item?.product_id ??
+      item?.id_product ??
+      item?.Product?.id ??
+      item?.Product?.product_id ??
+      item?.product?.id ??
+      item?.product?.product_id ??
+      item?.product?.id_product ??
+      item?.id,
+  );
+
 export const extractTrayOrderProducts = (
   rawPayload: any,
 ): ExtractedTrayOrderProducts => {
-  const candidateCollections = [
-    { source: 'OrderItem', items: rawPayload?.OrderItem },
-    { source: 'OrderItems', items: rawPayload?.OrderItems },
-    { source: 'ProductsSold', items: rawPayload?.ProductsSold },
-    { source: 'products', items: rawPayload?.products },
-    { source: 'items', items: rawPayload?.items },
-  ].filter((entry) => Array.isArray(entry.items));
+  const candidateCollections = collectProductCollections(rawPayload);
 
   for (const collection of candidateCollections) {
     const auditProducts = (collection.items as any[])
@@ -81,20 +164,34 @@ export const extractTrayOrderProducts = (
           entry?.OrderItem ||
           entry?.ProductsSold ||
           entry?.ProductSold ||
+          entry?.item ||
           entry?.Product ||
+          entry?.product ||
           entry;
-        const productId = safeString(
-          item?.product_id ?? item?.id_product ?? item?.id ?? item?.Product?.id,
-        );
+        const productId = resolveProductId(item);
         const quantity =
-          safeInteger(item?.quantity ?? item?.qty ?? item?.amount ?? 1) || 1;
-        const directTotal = safeNumber(item?.total ?? item?.subtotal);
+          safeInteger(
+            item?.quantity ??
+              item?.qty ??
+              item?.amount ??
+              item?.quantity_sold ??
+              item?.sold_quantity ??
+              1,
+          ) || 1;
+        const directTotal = safeNumber(
+          item?.total ?? item?.subtotal ?? item?.total_price ?? item?.amount,
+        );
         const unitPrice =
           safeNumber(
             item?.price ??
               item?.sale_price ??
+              item?.price_sale ??
               item?.original_price ??
-              item?.unit_price,
+              item?.unit_price ??
+              item?.unit_value ??
+              item?.value ??
+              item?.Product?.price ??
+              item?.product?.price,
           ) ?? (directTotal !== null ? directTotal / quantity : null);
 
         if (!productId || unitPrice === null || quantity <= 0) {
@@ -149,24 +246,63 @@ export const buildRecalculatedDetails = (
     productsHash: string | null;
     products: FreightAuditProduct[];
   },
-) => ({
-  selectedOption,
-  selectedCarrierName:
+) => {
+  const normalizeComparableText = (value: unknown) =>
+    String(value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, ' ')
+      .trim();
+
+  const looksLikeGenericServiceLabel = (value: unknown) => {
+    const normalized = normalizeComparableText(value);
+    if (!normalized) return true;
+
+    return [
+      'EMISSAO DE NOTA FISCAL',
+      'EMISSAO NOTA FISCAL',
+      'NOTA FISCAL',
+      'DOCUMENTO FISCAL',
+      'COTACAO DE FRETE',
+      'FRETE',
+    ].some((token) => normalized === token || normalized.includes(token));
+  };
+
+  const selectedCarrierName =
+    safeString(selectedOption?.carrier_name) ||
+    safeString(selectedOption?.carrier) ||
+    safeString(selectedOption?.transportadora) ||
+    safeString(selectedOption?.shipping_company) ||
+    safeString(selectedOption?.delivery_method?.carrier_name) ||
+    safeString(selectedOption?.shipment_integrator) ||
+    safeString(selectedOption?.integrator) ||
     safeString(selectedOption?.taxe?.name) ||
-    safeString(selectedOption?.name) ||
+    (matchedByCarrier ? safeString(requestedCarrier) : null) ||
+    null;
+
+  const selectedServiceName =
+    safeString(selectedOption?.service_name) ||
+    safeString(selectedOption?.service) ||
     safeString(selectedOption?.identifier) ||
-    null,
-  selectedServiceName:
-    safeString(selectedOption?.name) ||
-    safeString(selectedOption?.identifier) ||
-    null,
-  matchedByCarrier,
-  selectionStrategy: matchedByCarrier ? 'carrier_match' : 'best_available_option',
-  requestedCarrier: safeString(requestedCarrier),
-  optionsCount: cotationOptions.length,
-  options: cotationOptions,
-  quoteRequest,
-});
+    (looksLikeGenericServiceLabel(selectedOption?.name)
+      ? null
+      : safeString(selectedOption?.name)) ||
+    safeString(selectedOption?.delivery_method?.name) ||
+    null;
+
+  return {
+    selectedOption,
+    selectedCarrierName,
+    selectedServiceName,
+    matchedByCarrier,
+    selectionStrategy: matchedByCarrier ? 'carrier_match' : 'best_available_option',
+    requestedCarrier: safeString(requestedCarrier),
+    optionsCount: cotationOptions.length,
+    options: cotationOptions,
+    quoteRequest,
+  };
+};
 
 const hasSelectedOption = (details: any) => {
   if (!details || typeof details !== 'object') {
@@ -186,6 +322,28 @@ const hasSelectedOption = (details: any) => {
   );
 };
 
+const normalizeComparableText = (value: unknown) =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, ' ')
+    .trim();
+
+const isInvalidStoredCarrierName = (value: unknown) => {
+  const normalized = normalizeComparableText(value);
+  if (!normalized) return true;
+
+  return [
+    'EMISSAO DE NOTA FISCAL',
+    'EMISSAO NOTA FISCAL',
+    'NOTA FISCAL',
+    'DOCUMENTO FISCAL',
+    'COTACAO DE FRETE',
+    'FRETE',
+  ].some((token) => normalized === token || normalized.includes(token));
+};
+
 export const needsFreightRecalculation = (order: {
   recalculatedFreightValue?: number | null;
   recalculatedFreightDate?: Date | string | null;
@@ -195,13 +353,17 @@ export const needsFreightRecalculation = (order: {
   const hasProductsSnapshot =
     Array.isArray(details?.quoteRequest?.products) &&
     details.quoteRequest.products.length > 0;
+  const hasValidStoredCarrierName = !isInvalidStoredCarrierName(
+    details?.selectedCarrierName,
+  );
 
   return (
     order?.recalculatedFreightValue === null ||
     order?.recalculatedFreightValue === undefined ||
     !order?.recalculatedFreightDate ||
     !hasSelectedOption(details) ||
-    !hasProductsSnapshot
+    !hasProductsSnapshot ||
+    !hasValidStoredCarrierName
   );
 };
 

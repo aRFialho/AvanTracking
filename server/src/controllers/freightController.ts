@@ -1,5 +1,4 @@
 ﻿import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import {
   buildProductsHash,
   needsFreightRecalculation,
@@ -9,8 +8,9 @@ import {
   safeNumber,
   safeString,
 } from '../services/freightRecalculationService';
+import { prisma as sharedPrisma } from '../lib/prisma';
 
-const prisma = new PrismaClient() as any;
+const prisma = sharedPrisma as any;
 
 const normalizeBoolean = (value: unknown): boolean | null => {
   if (value === null || value === undefined || value === '') return null;
@@ -194,22 +194,46 @@ export const backfillMissingFreightQuotes = async (req: Request, res: Response) 
       ? Math.min(Math.max(requestedLimit, 1), 1000)
       : 200;
 
-    const orders = await prisma.order.findMany({
-      where: {
-        companyId: req.user.companyId,
-        OR: [
-          { recalculatedFreightDate: null },
-          { recalculatedFreightValue: null },
-          { recalculatedFreightDetails: null },
-        ],
-      },
-      orderBy: {
-        createdAt: 'asc',
-      },
-      take: limit,
-    });
+    const batchSize = Math.min(Math.max(limit * 3, 100), 3000);
+    let cursor: string | null = null;
+    const orders: any[] = [];
+    const pendingOrders: any[] = [];
 
-    const pendingOrders = orders.filter((order: any) => needsFreightRecalculation(order));
+    while (pendingOrders.length < limit) {
+      const batch = await prisma.order.findMany({
+        where: {
+          companyId: req.user.companyId,
+        },
+        orderBy: {
+          id: 'asc',
+        },
+        take: batchSize,
+        ...(cursor
+          ? {
+              cursor: { id: cursor },
+              skip: 1,
+            }
+          : {}),
+      });
+
+      if (batch.length === 0) {
+        break;
+      }
+
+      cursor = batch[batch.length - 1].id;
+      orders.push(...batch);
+
+      for (const order of batch) {
+        if (!needsFreightRecalculation(order)) {
+          continue;
+        }
+
+        pendingOrders.push(order);
+        if (pendingOrders.length >= limit) {
+          break;
+        }
+      }
+    }
     const failures: Array<{ orderId: string; orderNumber: string; error: string }> = [];
     let updated = 0;
 

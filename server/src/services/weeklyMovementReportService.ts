@@ -1,10 +1,10 @@
 import fs from 'fs/promises';
 import path from 'path';
 import crypto from 'crypto';
-import { PrismaClient, OrderStatus } from '@prisma/client';
+import { OrderStatus } from '@prisma/client';
 import { sendBrevoEmail } from './emailTransportService';
-
-const prisma = new PrismaClient();
+import { resolvePlatformCreatedDate } from '../utils/orderDates';
+import { prisma } from '../lib/prisma';
 const APP_LOGO_URL =
   'https://res.cloudinary.com/dhqxp3tuo/image/upload/v1771249579/ChatGPT_Image_13_de_fev._de_2026_16_40_14_kldj3k.png';
 const WEEKLY_REPORT_HOUR = 15;
@@ -97,8 +97,10 @@ type WeeklyReportOrder = {
   estimatedDeliveryDate: Date | null;
   carrierEstimatedDeliveryDate: Date | null;
   createdAt: Date;
+  platformCreatedAt: Date | null;
   lastUpdate: Date;
   lastApiSync: Date | null;
+  apiRawPayload: unknown;
 };
 
 class WeeklyMovementReportService {
@@ -210,7 +212,7 @@ class WeeklyMovementReportService {
         'Envio',
         'Prev. entrega',
         'Prev. transportadora',
-        'Criado em',
+        'Criado na plataforma',
         'Ultima atualizacao',
         'Ultimo sync API',
       ],
@@ -228,7 +230,7 @@ class WeeklyMovementReportService {
         formatDateOnly(order.shippingDate),
         formatDateOnly(order.estimatedDeliveryDate),
         formatDateOnly(order.carrierEstimatedDeliveryDate),
-        formatDateTime(order.createdAt),
+        formatDateTime(order.platformCreatedAt),
         formatDateTime(order.lastUpdate),
         formatDateTime(order.lastApiSync),
       ]);
@@ -500,21 +502,28 @@ class WeeklyMovementReportService {
         estimatedDeliveryDate: true,
         carrierEstimatedDeliveryDate: true,
         createdAt: true,
+        apiRawPayload: true,
         lastUpdate: true,
         lastApiSync: true,
       },
       orderBy: [{ lastUpdate: 'desc' }],
     });
 
-    const movedOrders = orders.filter(
+    const normalizedOrders: WeeklyReportOrder[] = orders.map((order) => ({
+      ...order,
+      platformCreatedAt: resolvePlatformCreatedDate(order),
+    }));
+
+    const movedOrders = normalizedOrders.filter(
       (order) =>
-        order.createdAt >= periodStart ||
+        (Boolean(order.platformCreatedAt) &&
+          order.platformCreatedAt! >= periodStart) ||
         order.lastUpdate >= periodStart ||
         (order.lastApiSync && order.lastApiSync >= periodStart),
     );
 
-    const delayedOrders = orders.filter((order) => order.isDelayed).length;
-    const statusSummary = this.buildStatusSummary(orders);
+    const delayedOrders = normalizedOrders.filter((order) => order.isDelayed).length;
+    const statusSummary = this.buildStatusSummary(normalizedOrders);
     const reportId = crypto.randomUUID();
     const baseUrl = getPublicBaseUrl();
     const reportUrl = `${baseUrl}/reports/weekly-summary/${reportId}.html`;
@@ -525,7 +534,7 @@ class WeeklyMovementReportService {
       periodEnd,
       reportUrl,
       csvUrl,
-      totalOrders: orders.length,
+      totalOrders: normalizedOrders.length,
       delayedOrders,
       movedOrders,
       statusSummary,

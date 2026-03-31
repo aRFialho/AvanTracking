@@ -152,6 +152,12 @@ export class TrayFreightService {
 
   private getOptionComparableTexts(option: FreightCotationOption) {
     return [
+      (option as any).carrier_name,
+      (option as any).carrier,
+      (option as any).transportadora,
+      (option as any).shipping_company,
+      (option as any).shipment_integrator,
+      (option as any).integrator,
       option.name,
       option.identifier,
       option.taxe?.name,

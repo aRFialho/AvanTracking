@@ -1,6 +1,5 @@
 import path from "path";
 import express from "express";
-import { PrismaClient } from '@prisma/client';
 import orderRoutes from "./routes/orders";
 import userRoutes from "./routes/users";
 import companyRoutes from "./routes/companies";
@@ -29,8 +28,7 @@ import { traySyncJobService } from './services/traySyncJobService';
 import { syncJobService } from './services/syncJobService';
 import { weeklyMovementReportService } from './services/weeklyMovementReportService';
 import { monthlyMovementReportService } from './services/monthlyMovementReportService';
-
-const prisma = new PrismaClient();
+import { prisma } from './lib/prisma';
 const app = express();
 const port = process.env.PORT || 3000;
 

@@ -1,8 +1,7 @@
-import { PrismaClient, OrderStatus } from '@prisma/client';
+import { OrderStatus } from '@prisma/client';
 import { isExcludedPlatformFreight } from '../utils/orderExclusion';
 import type { TraySyncOrderReport } from '../types/syncReport';
-
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma';
 
 const mapStatus = (status: string): OrderStatus => {
   const statusMap: Record<string, OrderStatus> = {

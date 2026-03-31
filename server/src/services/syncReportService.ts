@@ -1,7 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import crypto from 'crypto';
-import { PrismaClient, OrderStatus } from '@prisma/client';
+import { OrderStatus } from '@prisma/client';
 import type {
   SyncOrderChangeReport,
   SyncTrigger,
@@ -10,8 +10,7 @@ import type {
   TraySyncReportPayload,
 } from '../types/syncReport';
 import { sendBrevoEmail } from './emailTransportService';
-
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma';
 const APP_LOGO_URL =
   'https://res.cloudinary.com/dhqxp3tuo/image/upload/v1771249579/ChatGPT_Image_13_de_fev._de_2026_16_40_14_kldj3k.png';
 
