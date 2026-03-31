@@ -18,7 +18,12 @@ import {
   getTraySyncStatus,
 } from './controllers/traySyncController';
 import { trayRateLimiter } from './services/rateLimiter';
-import { quoteOrderFreight, quoteBatchFreight, saveTrayCheckoutQuoteSnapshot } from './controllers/freightController';
+import {
+  backfillMissingFreightQuotes,
+  quoteOrderFreight,
+  quoteBatchFreight,
+  saveTrayCheckoutQuoteSnapshot,
+} from './controllers/freightController';
 import { authenticateToken } from './middleware/auth';
 import { traySyncJobService } from './services/traySyncJobService';
 import { syncJobService } from './services/syncJobService';
@@ -207,6 +212,7 @@ app.get('/tray/callback/auth', handleAuthCallback);
 // ✅ ROTAS DE COTAÇÃO DE FRETE (protegidas)
 app.post('/api/freight/quote/:orderId', authenticateToken, quoteOrderFreight);
 app.post('/api/freight/quote-batch', authenticateToken, quoteBatchFreight);
+app.post('/api/freight/backfill-missing', authenticateToken, backfillMissingFreightQuotes);
 app.post('/api/tray/checkout-quotes', authenticateToken, saveTrayCheckoutQuoteSnapshot);
 
 // ✅ ENDPOINT PARA MONITORAR RATE LIMIT (MOVIDO PARA ANTES DO FALLBACK)
