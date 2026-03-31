@@ -1,5 +1,6 @@
 import { createHash } from 'crypto';
 import { TrayFreightService } from './trayFreightService';
+import { TrayApiService } from './trayApiService';
 
 export const safeString = (value: unknown): string | null => {
   if (value === null || value === undefined) return null;
@@ -375,6 +376,12 @@ type RecalculateStoredOrderFreightArgs = {
   force?: boolean;
 };
 
+const resolveTrayOrderIdentifier = (order: any) =>
+  safeString(order?.apiRawPayload?.id) ||
+  safeString(order?.apiRawPayload?.Order?.id) ||
+  safeString(order?.orderNumber) ||
+  null;
+
 export const recalculateStoredOrderFreight = async ({
   prisma,
   order,
@@ -395,10 +402,29 @@ export const recalculateStoredOrderFreight = async ({
     throw new Error('Pedido sem CEP valido');
   }
 
-  const extractedProducts = extractTrayOrderProducts(order?.apiRawPayload);
+  let payloadForRecalculation = order?.apiRawPayload;
+  let extractedProducts = extractTrayOrderProducts(payloadForRecalculation);
+
+  if (extractedProducts.requestProducts.length === 0) {
+    const trayOrderIdentifier = resolveTrayOrderIdentifier(order);
+
+    if (trayOrderIdentifier) {
+      const trayApiService = new TrayApiService(companyId);
+      const completeOrderResponse = await trayApiService.getOrderComplete(
+        trayOrderIdentifier,
+      );
+      const completeOrderPayload = completeOrderResponse?.Order || null;
+
+      if (completeOrderPayload) {
+        payloadForRecalculation = completeOrderPayload;
+        extractedProducts = extractTrayOrderProducts(completeOrderPayload);
+      }
+    }
+  }
+
   if (extractedProducts.requestProducts.length === 0) {
     throw new Error(
-      'Pedido sem produtos validos para recotacao na Tray. A API /shippings/cotation exige product_id, price e quantity reais do pedido.',
+      'Pedido sem produtos validos para recotacao na Tray mesmo apos consultar o pedido completo. A API /shippings/cotation exige product_id, price e quantity reais do pedido.',
     );
   }
 
@@ -421,7 +447,7 @@ export const recalculateStoredOrderFreight = async ({
   const matchedOption = resolvedFreightService.getPreferredOptionForCarrier(
     cotationOptions,
     order?.freightType,
-    order?.apiRawPayload?.shipment,
+    payloadForRecalculation?.shipment,
   );
   const selectedOption =
     matchedOption || cheapestOption || fastestOption || cotationOptions[0] || null;
@@ -442,6 +468,7 @@ export const recalculateStoredOrderFreight = async ({
   await prisma.order.update({
     where: { id: order.id },
     data: {
+      apiRawPayload: payloadForRecalculation ?? order?.apiRawPayload ?? null,
       recalculatedFreightValue: quotedValue,
       recalculatedFreightDate: new Date(),
       recalculatedFreightDetails,

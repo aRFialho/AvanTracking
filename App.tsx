@@ -121,6 +121,42 @@ const formatCountdown = (target: Date | null, nowMs: number) => {
     .join(":");
 };
 
+const InitialDataLoader: React.FC = () => {
+  return (
+    <div className="h-screen w-full overflow-hidden bg-[radial-gradient(circle_at_top,#fef2f2_0%,#fff7ed_38%,#f8fafc_100%)] dark:bg-[radial-gradient(circle_at_top,#14213d_0%,#0b0c15_48%,#05060c_100%)] flex items-center justify-center px-6">
+      <div className="relative flex w-full max-w-sm flex-col items-center rounded-[32px] border border-white/70 bg-white/80 px-8 py-10 text-center shadow-[0_30px_80px_rgba(15,23,42,0.14)] backdrop-blur-xl dark:border-white/10 dark:bg-white/5">
+        <div className="absolute inset-0 rounded-[32px] bg-[linear-gradient(135deg,rgba(240,90,61,0.14),rgba(59,130,246,0.08),transparent_72%)] dark:bg-[linear-gradient(135deg,rgba(240,90,61,0.16),rgba(59,130,246,0.14),transparent_72%)]" />
+        <div className="relative mb-6 flex h-24 w-24 items-center justify-center">
+          <div className="absolute inset-0 rounded-full border border-[#f8b8a7] dark:border-[#365f8b]" />
+          <div className="absolute inset-[6px] animate-spin rounded-full border-2 border-transparent border-t-[#f05a3d] border-r-[#f59e0b]" />
+          <div className="absolute inset-[14px] rounded-full bg-white shadow-inner dark:bg-[#0f172a]" />
+          <img
+            src={LOGO_URL}
+            alt="Avantracking"
+            className="relative h-12 w-12 object-contain drop-shadow-[0_10px_24px_rgba(240,90,61,0.18)]"
+          />
+        </div>
+        <div className="relative space-y-2">
+          <p className="text-[11px] font-bold uppercase tracking-[0.28em] text-[#f05a3d]">
+            Avantracking
+          </p>
+          <h2 className="text-xl font-black tracking-tight text-slate-900 dark:text-white">
+            Carregando dados...
+          </h2>
+          <p className="text-sm leading-6 text-slate-500 dark:text-slate-400">
+            Estamos preparando o dashboard com pedidos, alertas e
+            sincronizacoes iniciais.
+          </p>
+        </div>
+        <div className="relative mt-6 flex items-center gap-2 text-xs font-medium text-slate-400 dark:text-slate-500">
+          <span className="h-2 w-2 animate-pulse rounded-full bg-[#f05a3d]" />
+          Aguarde um instante
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const MainApp: React.FC = () => {
   const { isAuthenticated, isLoading, user } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
@@ -138,6 +174,7 @@ const MainApp: React.FC = () => {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isSupportOpen, setIsSupportOpen] = useState(false);
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
+  const [isInitialDashboardLoading, setIsInitialDashboardLoading] = useState(true);
   const previousSyncStatusRef = useRef<SyncJobStatus["status"] | null>(null);
   const previousTraySyncStatusRef = useRef<SyncJobStatus["status"] | null>(null);
 
@@ -338,6 +375,41 @@ const MainApp: React.FC = () => {
       loadSyncStatus();
       loadTraySyncStatus();
     }
+  }, [
+    isAuthenticated,
+    isLoading,
+    loadOrdersFromDatabase,
+    loadSyncStatus,
+    loadTraySyncStatus,
+  ]);
+
+  useEffect(() => {
+    if (!isAuthenticated || isLoading) {
+      setIsInitialDashboardLoading(true);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadInitialDashboardData = async () => {
+      setIsInitialDashboardLoading(true);
+
+      await Promise.allSettled([
+        loadOrdersFromDatabase(),
+        loadSyncStatus(),
+        loadTraySyncStatus(),
+      ]);
+
+      if (!cancelled) {
+        setIsInitialDashboardLoading(false);
+      }
+    };
+
+    void loadInitialDashboardData();
+
+    return () => {
+      cancelled = true;
+    };
   }, [
     isAuthenticated,
     isLoading,
@@ -691,6 +763,10 @@ const MainApp: React.FC = () => {
         <Login />
       </>
     );
+  }
+
+  if (isInitialDashboardLoading) {
+    return <InitialDataLoader />;
   }
 
   return (
