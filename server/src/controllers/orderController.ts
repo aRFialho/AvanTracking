@@ -275,6 +275,20 @@ const extractQuoteCarrierName = (quoteDetails: any): string | null => {
       .replace(/[^A-Z0-9]+/g, ' ')
       .trim();
 
+  const isIntegratorLabel = (value: unknown) => {
+    const normalized = normalizeComparableText(value);
+    if (!normalized) return false;
+
+    return [
+      'INTELIPOST',
+      'FRETE FACIL',
+      'FRETEFACIL',
+      'MELHOR ENVIO',
+      'KANGU',
+      'FRENET',
+    ].some((token) => normalized === token || normalized.includes(token));
+  };
+
   const isGenericServiceLabel = (value: unknown) => {
     const normalized = normalizeComparableText(value);
     if (!normalized) return false;
@@ -289,50 +303,42 @@ const extractQuoteCarrierName = (quoteDetails: any): string | null => {
     ].some((token) => normalized === token || normalized.includes(token));
   };
 
+  const pickCarrierCandidate = (...candidates: unknown[]) => {
+    for (const candidate of candidates) {
+      const normalized = safeString(candidate);
+      if (!normalized) continue;
+      if (isIntegratorLabel(normalized)) continue;
+      if (isGenericServiceLabel(normalized)) continue;
+      return normalized;
+    }
+
+    return null;
+  };
+
   return (
-    safeString(quoteDetails.selectedCarrierName) ||
-    safeString(quoteDetails.selectedOption?.carrier_name) ||
-    safeString(quoteDetails.selectedOption?.carrier) ||
-    safeString(quoteDetails.selectedOption?.transportadora) ||
-    safeString(quoteDetails.selectedOption?.shipping_company) ||
-    safeString(quoteDetails.selectedOption?.delivery_method?.carrier_name) ||
-    safeString(quoteDetails.selectedOption?.shipment_integrator) ||
-    safeString(quoteDetails.selectedOption?.integrator) ||
-    safeString(quoteDetails.selectedOption?.taxe?.name) ||
-    safeString(quoteDetails.raw?.shipment_integrator) ||
-    safeString(quoteDetails.carrierName) ||
-    safeString(quoteDetails.integrator) ||
-    safeString(quoteDetails.shipmentType) ||
     (quoteDetails.matchedByCarrier ? safeString(quoteDetails.requestedCarrier) : null) ||
-    safeString(quoteDetails.selectedOption?.delivery_method?.name) ||
-    safeString(quoteDetails.raw?.taxe?.name) ||
-    (isGenericServiceLabel(quoteDetails.selectedServiceName)
-      ? null
-      : safeString(quoteDetails.selectedServiceName)) ||
-    (isGenericServiceLabel(quoteDetails.raw?.service_name)
-      ? null
-      : safeString(quoteDetails.raw?.service_name)) ||
-    (isGenericServiceLabel(quoteDetails.selectedOption?.service_name)
-      ? null
-      : safeString(quoteDetails.selectedOption?.service_name)) ||
-    (isGenericServiceLabel(quoteDetails.selectedOption?.service)
-      ? null
-      : safeString(quoteDetails.selectedOption?.service)) ||
-    (isGenericServiceLabel(quoteDetails.selectedOption?.identifier)
-      ? null
-      : safeString(quoteDetails.selectedOption?.identifier)) ||
-    (isGenericServiceLabel(quoteDetails.selectedOption?.name)
-      ? null
-      : safeString(quoteDetails.selectedOption?.name)) ||
-    (isGenericServiceLabel(quoteDetails.raw?.name)
-      ? null
-      : safeString(quoteDetails.raw?.name)) ||
-    (isGenericServiceLabel(quoteDetails.serviceName)
-      ? null
-      : safeString(quoteDetails.serviceName)) ||
-    (isGenericServiceLabel(quoteDetails.serviceCode)
-      ? null
-      : safeString(quoteDetails.serviceCode)) ||
+    pickCarrierCandidate(
+      quoteDetails.selectedCarrierName,
+      quoteDetails.selectedOption?.carrier_name,
+      quoteDetails.selectedOption?.carrier,
+      quoteDetails.selectedOption?.transportadora,
+      quoteDetails.selectedOption?.shipping_company,
+      quoteDetails.selectedOption?.delivery_method?.carrier_name,
+      quoteDetails.selectedOption?.taxe?.name,
+      quoteDetails.raw?.taxe?.name,
+      quoteDetails.carrierName,
+      quoteDetails.shipmentType,
+      quoteDetails.selectedOption?.delivery_method?.name,
+      quoteDetails.selectedServiceName,
+      quoteDetails.raw?.service_name,
+      quoteDetails.selectedOption?.service_name,
+      quoteDetails.selectedOption?.service,
+      quoteDetails.selectedOption?.identifier,
+      quoteDetails.selectedOption?.name,
+      quoteDetails.raw?.name,
+      quoteDetails.serviceName,
+      quoteDetails.serviceCode,
+    ) ||
     null
   );
 };

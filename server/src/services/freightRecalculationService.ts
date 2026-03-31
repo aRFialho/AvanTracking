@@ -256,6 +256,20 @@ export const buildRecalculatedDetails = (
       .replace(/[^A-Z0-9]+/g, ' ')
       .trim();
 
+  const looksLikeIntegratorLabel = (value: unknown) => {
+    const normalized = normalizeComparableText(value);
+    if (!normalized) return false;
+
+    return [
+      'INTELIPOST',
+      'FRETE FACIL',
+      'FRETEFACIL',
+      'MELHOR ENVIO',
+      'KANGU',
+      'FRENET',
+    ].some((token) => normalized === token || normalized.includes(token));
+  };
+
   const looksLikeGenericServiceLabel = (value: unknown) => {
     const normalized = normalizeComparableText(value);
     if (!normalized) return true;
@@ -270,17 +284,30 @@ export const buildRecalculatedDetails = (
     ].some((token) => normalized === token || normalized.includes(token));
   };
 
+  const pickCarrierCandidate = (...candidates: unknown[]) => {
+    for (const candidate of candidates) {
+      const normalized = safeString(candidate);
+      if (!normalized) continue;
+      if (looksLikeIntegratorLabel(normalized)) continue;
+      if (looksLikeGenericServiceLabel(normalized)) continue;
+      return normalized;
+    }
+
+    return null;
+  };
+
   const selectedCarrierName =
-    safeString(selectedOption?.carrier_name) ||
-    safeString(selectedOption?.carrier) ||
-    safeString(selectedOption?.transportadora) ||
-    safeString(selectedOption?.shipping_company) ||
-    safeString(selectedOption?.delivery_method?.carrier_name) ||
-    safeString(selectedOption?.shipment_integrator) ||
-    safeString(selectedOption?.integrator) ||
-    safeString(selectedOption?.taxe?.name) ||
     (matchedByCarrier ? safeString(requestedCarrier) : null) ||
-    null;
+    pickCarrierCandidate(
+      selectedOption?.carrier_name,
+      selectedOption?.carrier,
+      selectedOption?.transportadora,
+      selectedOption?.shipping_company,
+      selectedOption?.delivery_method?.carrier_name,
+      selectedOption?.taxe?.name,
+      selectedOption?.name,
+      selectedOption?.identifier,
+    );
 
   const selectedServiceName =
     safeString(selectedOption?.service_name) ||
@@ -342,6 +369,12 @@ const isInvalidStoredCarrierName = (value: unknown) => {
     'DOCUMENTO FISCAL',
     'COTACAO DE FRETE',
     'FRETE',
+    'INTELIPOST',
+    'FRETE FACIL',
+    'FRETEFACIL',
+    'MELHOR ENVIO',
+    'KANGU',
+    'FRENET',
   ].some((token) => normalized === token || normalized.includes(token));
 };
 
