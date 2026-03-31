@@ -50,6 +50,7 @@ type SortKey =
   | "freightType"
   | "freightValue"
   | "recalculatedFreightValue"
+  | "freightDifference"
   | "estimatedDeliveryDate"
   | "carrierEstimatedDeliveryDate"
   | "lastUpdate"
@@ -85,6 +86,19 @@ const formatCurrency = (value: number | null | undefined) => {
   }
 
   return `R$ ${value.toFixed(2)}`;
+};
+
+const getFreightDifference = (order: Order) => {
+  if (
+    order.freightValue === null ||
+    order.freightValue === undefined ||
+    order.recalculatedFreightValue === null ||
+    order.recalculatedFreightValue === undefined
+  ) {
+    return null;
+  }
+
+  return order.freightValue - order.recalculatedFreightValue;
 };
 
 const escapeHtml = (value: string) =>
@@ -415,6 +429,11 @@ export const OrderList: React.FC<OrderListProps> = ({
             left.recalculatedFreightValue,
             right.recalculatedFreightValue,
           );
+        case "freightDifference":
+          return compareNumber(
+            getFreightDifference(left),
+            getFreightDifference(right),
+          );
         case "estimatedDeliveryDate":
           return compareDate(
             left.estimatedDeliveryDate,
@@ -445,6 +464,7 @@ export const OrderList: React.FC<OrderListProps> = ({
       "shippingDate",
       "freightValue",
       "recalculatedFreightValue",
+      "freightDifference",
       "estimatedDeliveryDate",
       "carrierEstimatedDeliveryDate",
       "lastUpdate",
@@ -629,12 +649,13 @@ export const OrderList: React.FC<OrderListProps> = ({
       orderNumber: order.orderNumber,
       invoiceNumber: order.invoiceNumber || "-",
       trackingCode: order.trackingCode || "-",
-      shippingDate: formatDateOrDash(order.shippingDate),
       salesChannel: order.salesChannel,
       freightType: normalizeCarrierName(order.freightType),
       freightValue: formatCurrency(order.freightValue),
-
       recalculatedFreightValue: formatCurrency(order.recalculatedFreightValue),
+      recalculatedQuotedCarrierName:
+        order.recalculatedQuotedCarrierName || "Sem cotacao no pedido",
+      freightDifference: formatCurrency(getFreightDifference(order)),
       estimatedDeliveryDate: formatDateOrDash(order.estimatedDeliveryDate),
       carrierEstimatedDeliveryDate: formatCarrierForecast(
         order.carrierEstimatedDeliveryDate,
@@ -666,12 +687,12 @@ export const OrderList: React.FC<OrderListProps> = ({
             <td>${escapeHtml(order.orderNumber)}</td>
             <td>${escapeHtml(order.invoiceNumber)}</td>
             <td>${escapeHtml(order.trackingCode)}</td>
-            <td>${escapeHtml(order.shippingDate)}</td>
             <td>${escapeHtml(order.salesChannel)}</td>
             <td>${escapeHtml(order.freightType)}</td>
             <td>${escapeHtml(order.freightValue)}</td>
-
             <td>${escapeHtml(order.recalculatedFreightValue)}</td>
+            <td>${escapeHtml(order.recalculatedQuotedCarrierName)}</td>
+            <td>${escapeHtml(order.freightDifference)}</td>
             <td>${escapeHtml(order.estimatedDeliveryDate)}</td>
             <td>${escapeHtml(order.carrierEstimatedDeliveryDate)}</td>
             <td>${escapeHtml(order.latestMovement)}</td>
@@ -917,12 +938,12 @@ export const OrderList: React.FC<OrderListProps> = ({
                 <th>ID / Pedido</th>
                 <th>Nota Fiscal</th>
                 <th>Codigo de envio</th>
-                <th>Emissao</th>
                 <th>Marketplace</th>
                 <th>Transportadora</th>
                 <th>Frete Pago</th>
-
                 <th>Frete Recalculado</th>
+                <th>Carrier Recalculado</th>
+                <th>Diferenca Frete</th>
                 <th>Prev. Entrega</th>
                 <th>Previsao Transportadora</th>
                 <th>Ultima Movimentacao</th>
@@ -966,12 +987,12 @@ export const OrderList: React.FC<OrderListProps> = ({
       "ID / Pedido",
       "Nota Fiscal",
       "Codigo de envio",
-      "Emissao",
       "Marketplace",
       "Transportadora",
       "Frete Pago",
-
       "Frete Recalculado",
+      "Carrier Recalculado",
+      "Diferenca Frete",
       "Prev. Entrega",
       "Previsao Transportadora",
       "Ultima Movimentacao",
@@ -983,12 +1004,12 @@ export const OrderList: React.FC<OrderListProps> = ({
       order.orderNumber,
       order.invoiceNumber,
       order.trackingCode,
-      order.shippingDate,
       order.salesChannel,
       order.freightType,
       order.freightValue,
-
       order.recalculatedFreightValue,
+      order.recalculatedQuotedCarrierName,
+      order.freightDifference,
       order.estimatedDeliveryDate,
       order.carrierEstimatedDeliveryDate,
       order.latestMovement,
@@ -1453,7 +1474,7 @@ export const OrderList: React.FC<OrderListProps> = ({
       {/* 2. Detailed Data Table */}
       <div className="flex-1 overflow-hidden glass-card rounded-xl border border-slate-200 dark:border-dark-border shadow-sm relative bg-white dark:bg-dark-card">
         <div className="absolute inset-0 overflow-auto">
-          <table className="w-full text-sm text-left border-collapse">
+          <table className="w-full text-sm text-left border-collapse [&_thead_th:nth-child(3)]:hidden [&_tbody_td:nth-child(3)]:hidden">
             <thead className="text-xs text-slate-500 dark:text-slate-400 font-semibold uppercase bg-slate-50 dark:bg-dark-card sticky top-0 z-10 shadow-sm backdrop-blur-md">
               <tr>
                 <th className="px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]">
@@ -1525,6 +1546,16 @@ export const OrderList: React.FC<OrderListProps> = ({
                   >
                     <span>Frete Recalculado</span>
                     {renderSortIcon("recalculatedFreightValue")}
+                  </button>
+                </th>
+                <th className="px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]">
+                  <button
+                    type="button"
+                    onClick={() => handleSort("freightDifference")}
+                    className="inline-flex items-center gap-1 rounded-md transition-colors hover:text-slate-700 dark:hover:text-white"
+                  >
+                    <span>Diferenca Frete</span>
+                    {renderSortIcon("freightDifference")}
                   </button>
                 </th>
                 <th className="px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]">
@@ -1621,6 +1652,9 @@ export const OrderList: React.FC<OrderListProps> = ({
                       </div>
                     </td>
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                      {formatCurrency(getFreightDifference(order))}
+                    </td>
+                    <td className="px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">
                       {formatDateOrDash(order.estimatedDeliveryDate)}
                     </td>
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">
@@ -1670,7 +1704,7 @@ export const OrderList: React.FC<OrderListProps> = ({
               ) : (
                 <tr>
                   <td
-                    colSpan={13}
+                    colSpan={14}
                     className="px-6 py-12 text-center text-slate-400 dark:text-slate-500"
                   >
                     <Search className="w-12 h-12 mx-auto mb-3 opacity-20" />

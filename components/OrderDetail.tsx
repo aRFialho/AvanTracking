@@ -61,6 +61,19 @@ const formatCurrency = (value: number | null | undefined) => {
   return `R$ ${value.toFixed(2)}`;
 };
 
+const getFreightDifference = (order: Order) => {
+  if (
+    order.freightValue === null ||
+    order.freightValue === undefined ||
+    order.recalculatedFreightValue === null ||
+    order.recalculatedFreightValue === undefined
+  ) {
+    return null;
+  }
+
+  return order.freightValue - order.recalculatedFreightValue;
+};
+
 const formatMatchLabel = (value: boolean | null | undefined) => {
   if (value === null || value === undefined) return "-";
   return value ? "Sim" : "Nao";
@@ -168,6 +181,9 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({ order, onClose }) => {
                         Transportadora: {order.recalculatedQuotedCarrierName || "-"}
                       </p>
                       <p className="text-xs text-slate-500 dark:text-slate-400">
+                        Diferenca frete: {formatCurrency(getFreightDifference(order))}
+                      </p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
                         Recalculado em: {formatDateTime(order.recalculatedFreightDate)}
                       </p>
                       <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -201,8 +217,8 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({ order, onClose }) => {
                     <Calendar className="w-4 h-4 text-accent" /> Prazos
                   </div>
                   <p className="text-sm text-slate-700 dark:text-slate-200">
-                    <span className="text-slate-500 dark:text-slate-400">Envio:</span>{" "}
-                    {formatDateOrDash(order.shippingDate)}
+                    <span className="text-slate-500 dark:text-slate-400">Emissao:</span>{" "}
+                    {formatDateOrDash(order.platformCreatedAt || order.shippingDate)}
                   </p>
                   <p
                     className={clsx(
