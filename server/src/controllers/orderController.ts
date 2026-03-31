@@ -113,6 +113,23 @@ const parseCarrierForecastFromTrackingText = (text: string | null | undefined) =
   return parsedDate;
 };
 
+const isActiveDelayedByDate = (
+  status: OrderStatus,
+  targetDate: Date | null | undefined,
+) => {
+  if (!targetDate) return false;
+
+  const closedStatuses: OrderStatus[] = [
+    OrderStatus.DELIVERED,
+    OrderStatus.FAILURE,
+    OrderStatus.RETURNED,
+    OrderStatus.CANCELED,
+    OrderStatus.CHANNEL_LOGISTICS,
+  ];
+
+  return !closedStatuses.includes(status) && new Date() > targetDate;
+};
+
 const resolveCarrierEstimatedDateFromTrackingEvents = (trackingEvents: any[] | undefined) => {
   if (!Array.isArray(trackingEvents)) return null;
 
@@ -718,6 +735,10 @@ const formatOrderForResponse = (
   const recalculatedFreightValue = order.recalculatedFreightValue ?? null;
   const recalculatedFreightDate = order.recalculatedFreightDate ?? null;
   const recalculatedFreightDetails = order.recalculatedFreightDetails ?? null;
+  const isPlatformDelayed = isActiveDelayedByDate(
+    order.status as OrderStatus,
+    order.estimatedDeliveryDate,
+  );
   const originalQuotedCarrierName = extractQuoteCarrierName(
     originalQuotedFreightDetails,
   );
@@ -754,6 +775,7 @@ const formatOrderForResponse = (
     recalculatedFreightDate,
     recalculatedFreightDetails,
     recalculatedQuotedCarrierName,
+    isPlatformDelayed,
     freightCarrierMatchesQuote: freightCarrierMatchesOriginalQuote,
     freightCarrierMatchesOriginalQuote,
     freightCarrierMatchesRecalculatedQuote,
@@ -986,7 +1008,11 @@ export const searchExternalOrder = async (req: Request, res: Response) => {
     if (existingOrder && !shouldExcludeOrderFromPlatform(existingOrder)) {
       const syncResult = await trackingService.syncOrder(existingOrder.id, user.companyId);
 
-      if (!syncResult.success && syncResult.message !== 'Pedido jÃƒÂ¡ finalizado') {
+      if (
+        !syncResult.success &&
+        syncResult.message !== 'Pedido ja finalizado' &&
+        syncResult.message !== 'Pedido ja entregue'
+      ) {
         return res.status(400).json({
           error: syncResult.message || 'Nao foi possivel atualizar o pedido local.',
         });

@@ -50,6 +50,25 @@ const safeNumber = (value: any): number => {
   return Number.isNaN(num) ? 0 : num;
 };
 
+const isActiveDelayedByCarrier = (
+  status: OrderStatus,
+  carrierEstimatedDeliveryDate: Date | null,
+) => {
+  const closedStatuses: OrderStatus[] = [
+    OrderStatus.DELIVERED,
+    OrderStatus.FAILURE,
+    OrderStatus.RETURNED,
+    OrderStatus.CANCELED,
+    OrderStatus.CHANNEL_LOGISTICS,
+  ];
+
+  return Boolean(
+    carrierEstimatedDeliveryDate &&
+      !closedStatuses.includes(status) &&
+      new Date() > carrierEstimatedDeliveryDate,
+  );
+};
+
 const buildTrackingEventsData = (orderData: any, fallbackStatus: OrderStatus) => {
   const shippingDate = safeDate(orderData.shippingDate);
   const sourceHistory = Array.isArray(orderData.trackingHistory)
@@ -89,7 +108,10 @@ const buildTrackingEventsData = (orderData: any, fallbackStatus: OrderStatus) =>
   ];
 };
 
-const buildOrderData = (orderData: any, status: OrderStatus) => ({
+const buildOrderData = (orderData: any, status: OrderStatus) => {
+  const carrierEstimatedDeliveryDate = safeDate(orderData.carrierEstimatedDeliveryDate);
+
+  return {
   orderNumber: String(orderData.orderNumber),
   invoiceNumber: safeString(orderData.invoiceNumber),
   trackingCode: safeString(orderData.trackingCode),
@@ -137,11 +159,12 @@ const buildOrderData = (orderData: any, status: OrderStatus) => ({
   recipient: safeString(orderData.recipient),
   maxShippingDeadline: safeDate(orderData.maxShippingDeadline),
   estimatedDeliveryDate: safeDate(orderData.estimatedDeliveryDate),
-  carrierEstimatedDeliveryDate: safeDate(orderData.carrierEstimatedDeliveryDate),
+  carrierEstimatedDeliveryDate,
   status,
-  isDelayed: Boolean(orderData.isDelayed),
+  isDelayed: isActiveDelayedByCarrier(status, carrierEstimatedDeliveryDate),
   apiRawPayload: orderData.apiRawPayload ?? null,
-});
+  };
+};
 
 const buildTraySyncOrderReport = (
   orderId: string | null,

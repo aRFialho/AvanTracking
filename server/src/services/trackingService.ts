@@ -220,17 +220,6 @@ const extractEventLocationFromText = (text: string | null | undefined) => {
 
 const isRouteStatus = (status: OrderStatus) => ROUTE_STATUSES.includes(status);
 
-const resolveStoredTrackingEventStatus = (event?: {
-  status?: string | null;
-  description?: string | null;
-} | null) => {
-  if (!event) return null;
-
-  return mapIntelipostStatusToEnum(
-    [event.status, event.description].filter(Boolean).join(' '),
-  );
-};
-
 const shouldSkipTerminalSync = (order: {
   status: OrderStatus;
   trackingEvents?: Array<{
@@ -239,22 +228,11 @@ const shouldSkipTerminalSync = (order: {
     eventDate: Date;
   }>;
 }) => {
-  if (order.status === OrderStatus.CANCELED) {
-    return true;
-  }
-
-  if (order.status !== OrderStatus.DELIVERED) {
-    return false;
-  }
-
-  const latestStoredEvent = Array.isArray(order.trackingEvents)
-    ? order.trackingEvents
-        .slice()
-        .sort((left, right) => right.eventDate.getTime() - left.eventDate.getTime())[0]
-    : null;
-
-  return resolveStoredTrackingEventStatus(latestStoredEvent) === OrderStatus.DELIVERED;
+  return FINALIZED_STATUSES.includes(order.status);
 };
+
+const getTerminalSyncSkipMessage = (status: OrderStatus) =>
+  status === OrderStatus.DELIVERED ? 'Pedido ja entregue' : 'Pedido ja finalizado';
 
 const toIsoString = (value: Date | null | undefined) =>
   value instanceof Date ? value.toISOString() : null;
@@ -577,6 +555,18 @@ export class TrackingService {
       const baseChange = this.buildChangeBase(order);
 
       if (shouldSkipTerminalSync(order)) {
+        const terminalMessage = getTerminalSyncSkipMessage(order.status);
+        return {
+          success: false,
+          message: terminalMessage,
+          change: {
+            ...baseChange,
+            errorMessage: terminalMessage,
+          },
+        };
+      }
+
+      if (shouldSkipTerminalSync(order)) {
         return {
           success: false,
           message: 'Pedido jÃƒÂ¡ finalizado',
@@ -695,9 +685,15 @@ export class TrackingService {
       const estimatedDate = order.estimatedDeliveryDate;
 
       const isDelayed =
-        Boolean(estimatedDate) &&
-        new Date() > estimatedDate &&
-        newStatus !== OrderStatus.DELIVERED;
+        Boolean(carrierEstimatedDate) &&
+        ![
+          OrderStatus.DELIVERED,
+          OrderStatus.FAILURE,
+          OrderStatus.RETURNED,
+          OrderStatus.CANCELED,
+          OrderStatus.CHANNEL_LOGISTICS,
+        ].includes(newStatus) &&
+        new Date() > carrierEstimatedDate;
       const syncedAt = new Date();
       const currentFreightType = usingSsw
         ? trackingData.freightType || order.freightType || null

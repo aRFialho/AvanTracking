@@ -93,6 +93,45 @@ export const parseOptionalDate = (value: unknown): Date | null => {
   return parsed;
 };
 
+const normalizeDelayDate = (value: unknown) => {
+  const parsed = parseOptionalDate(value);
+  if (!parsed) return null;
+
+  parsed.setHours(23, 59, 59, 999);
+  return parsed;
+};
+
+const isClosedForDelay = (status: OrderStatus) =>
+  [
+    OrderStatus.DELIVERED,
+    OrderStatus.FAILURE,
+    OrderStatus.RETURNED,
+    OrderStatus.CANCELED,
+    OrderStatus.CHANNEL_LOGISTICS,
+  ].includes(status);
+
+export const isCarrierDelayedOrder = (
+  order: Pick<Order, "status" | "carrierEstimatedDeliveryDate">,
+) => {
+  const carrierDate = normalizeDelayDate(order.carrierEstimatedDeliveryDate);
+  if (!carrierDate || isClosedForDelay(order.status)) {
+    return false;
+  }
+
+  return Date.now() > carrierDate.getTime();
+};
+
+export const isPlatformDelayedOrder = (
+  order: Pick<Order, "status" | "estimatedDeliveryDate">,
+) => {
+  const estimatedDate = normalizeDelayDate(order.estimatedDeliveryDate);
+  if (!estimatedDate || isClosedForDelay(order.status)) {
+    return false;
+  }
+
+  return Date.now() > estimatedDate.getTime();
+};
+
 export const formatDateOrDash = (value: unknown, locale = "pt-BR"): string => {
   const parsed = parseOptionalDate(value);
   return parsed ? parsed.toLocaleDateString(locale) : "-";

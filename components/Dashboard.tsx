@@ -33,8 +33,10 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import {
+  isCarrierDelayedOrder,
   normalizeCarrierName,
   isOrderOnRoute,
+  isPlatformDelayedOrder,
   toText,
   parseOptionalDate,
   isChannelManagedOrder,
@@ -72,15 +74,14 @@ const CHART_COLORS = [
 
 const DAY_IN_MS = 86400000;
 
-const isActiveDelayedOrder = (order: Order) =>
-  order.isDelayed &&
-  order.status !== OrderStatus.DELIVERED &&
-  order.status !== OrderStatus.FAILURE &&
-  order.status !== OrderStatus.RETURNED &&
-  order.status !== OrderStatus.CANCELED;
+const isActiveCarrierDelayedOrder = (order: Order) =>
+  isCarrierDelayedOrder(order);
+
+const isActivePlatformDelayedOrder = (order: Order) =>
+  isPlatformDelayedOrder(order);
 
 const isQualityMeasurableOrder = (order: Order) =>
-  order.status === OrderStatus.DELIVERED || isActiveDelayedOrder(order);
+  order.status === OrderStatus.DELIVERED || isActiveCarrierDelayedOrder(order);
 
 const isOrderDeliveredOnTrayTime = (order: Order) => {
   if (order.status !== OrderStatus.DELIVERED) return false;
@@ -294,7 +295,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
       (o) => o.status === OrderStatus.SHIPPED,
     ).length;
     const onRoute = filteredOrders.filter((o) => isOrderOnRoute(o)).length;
-    const activeDelayed = filteredOrders.filter(isActiveDelayedOrder).length;
+    const activeDelayed = filteredOrders.filter(isActiveCarrierDelayedOrder).length;
+    const platformDelayed = filteredOrders.filter(isActivePlatformDelayedOrder).length;
 
     // No Sync: Count orders that have never been synced
     const noSync = filteredOrders.filter((o) => !o.lastApiSync).length;
@@ -341,9 +343,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
       isPendingDeliveryFailureOrder(o),
     ).length;
 
-    // Alertas (Sum of risky situations)
-    const alerts = activeDelayed + deliveryFailures + dueToday + riskOfDelay;
-
     // Average Time (First Tracking Update -> Delivered/LastUpdate)
     let totalDays = 0;
     let measurableCount = 0;
@@ -389,11 +388,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
       inTransit,
       onRoute,
       delayed: activeDelayed,
+      platformDelayed,
       dueToday,
       noForecast,
       avgDays,
       onTimePct,
-      alerts,
       noSync,
       riskOfDelay,
       deliveryFailures,
@@ -458,7 +457,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     const onTimeGrowth = calcGrowth(currOnTimePct, prevOnTimePct);
 
     // Delayed (Active)
-    const activeDelayed = orders.filter(isActiveDelayedOrder).length;
+    const activeDelayed = orders.filter(isActiveCarrierDelayedOrder).length;
 
     return {
       total: currentMonthOrders.length,
@@ -613,12 +612,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   // --- Navigation Handler ---
   const handleCardClick = (filterType: string, value?: string) => {
-    if (filterType === "alerts") {
-      onFilterRequest?.({ alertTab: "critical" });
-      onChangeView("alerts");
-      return;
-    }
-
     if (filterType === "risk_of_delay") {
       onFilterRequest?.({ alertTab: "risk" });
       onChangeView("alerts");
@@ -658,6 +651,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
           break;
         case "delayed":
           filters.onlyDelayed = true;
+          break;
+        case "platform_delayed":
+          filters.onlyPlatformDelayed = true;
           break;
         case "due_today":
           filters.dueToday = true;
@@ -729,7 +725,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         />
 
         <KpiCard
-          title="Atrasadas"
+          title="Atraso Transportadora"
           value={stats.delayed}
           icon={AlertTriangle}
           color="bg-red-500"
@@ -780,11 +776,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
           color="bg-green-500"
         />
         <KpiCard
-          title="Alertas"
-          value={stats.alerts}
+          title="Atraso Plataforma"
+          value={stats.platformDelayed}
           icon={Bell}
           color="bg-orange-500"
-          onClick={() => handleCardClick("alerts")}
+          onClick={() => handleCardClick("platform_delayed")}
         />
       </div>
 
@@ -945,35 +941,35 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </p>
             </div>
             <div className="p-6 flex-1 flex flex-col gap-6">
-              {/* Active Alerts Box */}
+              {/* Delay Summary Box */}
               <div className="bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/30 rounded-xl p-4">
                 <div className="flex justify-between items-center mb-4">
                   <div className="flex items-center gap-2 text-red-700 dark:text-red-400 font-bold">
-                    <AlertTriangle className="w-5 h-5" /> Alertas Ativos
+                    <AlertTriangle className="w-5 h-5" /> Atrasos Ativos
                   </div>
                   <span className="text-2xl font-bold text-red-700 dark:text-white">
-                    {stats.alerts}
+                    {stats.platformDelayed}
                   </span>
                 </div>
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between text-red-600 dark:text-red-300/80">
-                    <span>Previsão de entrega maior que prazo</span>
+                    <span>Atraso transportadora</span>
                     <span className="font-bold">
                       {monthSummary.activeDelayed}
                     </span>
                   </div>
                   <div className="flex justify-between text-red-600 dark:text-red-300/80">
-                    <span>Sem movimentação há 7 dias</span>
+                    <span>Atraso plataforma</span>
                     <span className="font-bold">
-                      {Math.floor(stats.alerts * 0.2)}
+                      {stats.platformDelayed}
                     </span>
                   </div>
                 </div>
                 <button
-                  onClick={() => onChangeView("alerts")}
+                  onClick={() => handleCardClick("platform_delayed")}
                   className="text-xs text-red-500 hover:text-red-400 mt-4 underline decoration-red-500/30 underline-offset-4"
                 >
-                  Ver todos ({stats.alerts} tipos)
+                  Ver pedidos em atraso plataforma ({stats.platformDelayed})
                 </button>
               </div>
 

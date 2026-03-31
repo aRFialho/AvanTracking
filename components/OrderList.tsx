@@ -27,7 +27,9 @@ import {
 import { clsx } from "clsx";
 import {
   normalizeCarrierName,
+  isCarrierDelayedOrder,
   isOrderOnRoute,
+  isPlatformDelayedOrder,
   toText,
   normalizeTrackingHistory,
   parseOptionalDate,
@@ -136,12 +138,9 @@ const buildTrackingErrorHtml = (message: string) => `<!DOCTYPE html>
   </body>
 </html>`;
 
-const isDelayedOrder = (order: Pick<Order, "isDelayed" | "status">) =>
-  Boolean(
-    order.isDelayed &&
-      order.status !== OrderStatus.DELIVERED &&
-      order.status !== OrderStatus.CHANNEL_LOGISTICS,
-  );
+const isDelayedOrder = (
+  order: Pick<Order, "status" | "carrierEstimatedDeliveryDate">,
+) => isCarrierDelayedOrder(order);
 
 const compareText = (left: unknown, right: unknown) =>
   toText(left).localeCompare(toText(right), "pt-BR", {
@@ -165,7 +164,9 @@ const compareDate = (
   right: string | Date | null | undefined,
 ) => getDateSortValue(left) - getDateSortValue(right);
 
-const getDisplayStatusLabel = (order: Pick<Order, "isDelayed" | "status">) => {
+const getDisplayStatusLabel = (
+  order: Pick<Order, "status" | "carrierEstimatedDeliveryDate">,
+) => {
   if (isDelayedOrder(order)) {
     return "Atrasado";
   }
@@ -235,6 +236,9 @@ export const OrderList: React.FC<OrderListProps> = ({
   const [onlyDelayed, setOnlyDelayed] = useState<boolean>(
     initialFilters?.onlyDelayed || false,
   );
+  const [onlyPlatformDelayed, setOnlyPlatformDelayed] = useState<boolean>(
+    initialFilters?.onlyPlatformDelayed || false,
+  );
   const [dueToday, setDueToday] = useState<boolean>(
     initialFilters?.dueToday || false,
   );
@@ -252,6 +256,7 @@ export const OrderList: React.FC<OrderListProps> = ({
       if (initialFilters.customStatus)
         setCustomStatusFilter(initialFilters.customStatus);
       setOnlyDelayed(!!initialFilters.onlyDelayed);
+      setOnlyPlatformDelayed(!!initialFilters.onlyPlatformDelayed);
       setDueToday(!!initialFilters.dueToday);
       setNoSync(!!initialFilters.noSync);
       setNoForecast(!!initialFilters.noForecast);
@@ -304,6 +309,7 @@ export const OrderList: React.FC<OrderListProps> = ({
 
       // 3. Special Filters
       if (onlyDelayed && !isDelayedOrder(o)) return false;
+      if (onlyPlatformDelayed && !isPlatformDelayedOrder(o)) return false;
 
       if (dueToday) {
         const today = new Date();
@@ -374,6 +380,12 @@ export const OrderList: React.FC<OrderListProps> = ({
     dateRangeEnd,
     isNoMovementView,
     noMovementDays,
+    onlyDelayed,
+    onlyPlatformDelayed,
+    dueToday,
+    noSync,
+    noForecast,
+    customStatusFilter,
   ]);
 
   const sortedOrders = useMemo(() => {
@@ -487,6 +499,7 @@ export const OrderList: React.FC<OrderListProps> = ({
     setDateRangeEnd("");
     setCustomStatusFilter(null);
     setOnlyDelayed(false);
+    setOnlyPlatformDelayed(false);
     setDueToday(false);
     setNoSync(false);
     setNoForecast(false);
@@ -1084,7 +1097,7 @@ export const OrderList: React.FC<OrderListProps> = ({
     const baseClass =
       "inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wider border";
 
-    if (isDelayedOrder({ status, isDelayed: delayed })) {
+    if (delayed) {
       return (
         <span
           className={clsx(

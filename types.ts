@@ -124,7 +124,8 @@ export interface Order {
   
   // Tracking State (Mutable)
   status: OrderStatus;
-  isDelayed: boolean; // Flag 'risco_atraso'
+  isDelayed: boolean; // Atraso pela previsao da transportadora
+  isPlatformDelayed?: boolean; // Atraso pela previsao original do pedido
   trackingHistory: TrackingEvent[];
   lastApiSync: Date | null;
   lastUpdate: Date;

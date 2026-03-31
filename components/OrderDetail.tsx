@@ -231,10 +231,10 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({ order, onClose }) => {
                   </div>
                   <div>
                     <h4 className="font-bold text-red-700 dark:text-red-400 text-sm">
-                      Risco de atraso detectado
+                      Atraso pela transportadora detectado
                     </h4>
                     <p className="text-xs text-red-600 dark:text-red-300 mt-1">
-                      A data atual excede a previsao de entrega e o pedido ainda nao consta como entregue.
+                      A data atual excede o prazo da transportadora e o pedido ainda nao consta como entregue.
                     </p>
                   </div>
                 </div>

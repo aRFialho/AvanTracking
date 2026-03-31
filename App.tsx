@@ -24,7 +24,9 @@ import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { LOGO_URL } from "./constants";
 import {
+  isCarrierDelayedOrder,
   getEffectiveOrderStatus,
+  isPlatformDelayedOrder,
   normalizeTrackingHistory,
   toText,
   isExcludedPlatformFreight,
@@ -178,16 +180,17 @@ const MainApp: React.FC = () => {
     } as Order;
 
     const effectiveStatus = getEffectiveOrderStatus(normalizedOrder);
-    const estimatedDeliveryDate = parseDate(normalizedOrder.estimatedDeliveryDate);
-    const isDelayed = estimatedDeliveryDate
-      ? effectiveStatus !== OrderStatus.DELIVERED &&
-        new Date() > estimatedDeliveryDate
-      : false;
-
-    return {
+    const orderWithEffectiveStatus = {
       ...normalizedOrder,
       status: effectiveStatus,
+    } as Order;
+    const isDelayed = isCarrierDelayedOrder(orderWithEffectiveStatus);
+    const isPlatformDelayed = isPlatformDelayedOrder(orderWithEffectiveStatus);
+
+    return {
+      ...orderWithEffectiveStatus,
       isDelayed,
+      isPlatformDelayed,
     };
   }, []);
 

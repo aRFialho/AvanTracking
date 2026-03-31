@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { clsx } from "clsx";
 import {
+  isCarrierDelayedOrder,
   normalizeCarrierName,
   parseOptionalDate,
   formatDateOrDash,
@@ -54,8 +55,8 @@ export const AlertsView: React.FC<AlertsViewProps> = ({
   }, [initialFilters?.alertTab]);
 
   const getDelayDays = (order: Order) => {
-    if (!order.isDelayed) return 0;
-    const targetDate = parseOptionalDate(order.estimatedDeliveryDate);
+    if (!isCarrierDelayedOrder(order)) return 0;
+    const targetDate = parseOptionalDate(order.carrierEstimatedDeliveryDate);
     if (!targetDate) return 0;
     const now = new Date();
     const diffTime = Math.abs(now.getTime() - targetDate.getTime());
@@ -86,7 +87,7 @@ export const AlertsView: React.FC<AlertsViewProps> = ({
   const criticalAlerts = useMemo(() => {
     return eligibleOrders
       .filter((order) => {
-        const hasDelay = order.isDelayed && order.status !== OrderStatus.DELIVERED;
+        const hasDelay = isCarrierDelayedOrder(order);
         const hasFailure =
           order.status === OrderStatus.FAILURE || order.status === OrderStatus.RETURNED;
 
@@ -291,7 +292,7 @@ export const AlertsView: React.FC<AlertsViewProps> = ({
                         <div className="flex items-center gap-3 mt-1 text-xs text-slate-500 dark:text-slate-500">
                           <span className="flex items-center gap-1">
                             <CalendarX className="w-3 h-3" /> Previsto:{" "}
-                            {formatDateOrDash(order.estimatedDeliveryDate)}
+                            {formatDateOrDash(order.carrierEstimatedDeliveryDate)}
                           </span>
                         </div>
                       </div>

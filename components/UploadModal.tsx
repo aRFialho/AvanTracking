@@ -141,10 +141,10 @@ export const UploadModal: React.FC<UploadModalProps> = ({ onUpload }) => {
       const maxDeadline = parseDate(getValue('Prazo máximo de envio'));
       const now = new Date();
 
-      // Risk Logic
-      const isDelayed = 
-        (now > estimatedDate) || 
-        (now > maxDeadline); 
+      // Platform forecast only; transportadora delay is calculated later from tracking
+      const isPlatformDelayed =
+        (now > estimatedDate) ||
+        (now > maxDeadline);
       
       // Removed duplicate declarations
       // const rawFreight = getValue('Frete tipo');
@@ -178,8 +178,10 @@ export const UploadModal: React.FC<UploadModalProps> = ({ onUpload }) => {
         recipient: getValue('Destinatário'),
         maxShippingDeadline: maxDeadline,
         estimatedDeliveryDate: estimatedDate,
+        carrierEstimatedDeliveryDate: null,
         status: initialStatus,
-        isDelayed: isDelayed,
+        isDelayed: false,
+        isPlatformDelayed,
         trackingHistory: [],
         lastApiSync: null,
         lastUpdate: new Date()
