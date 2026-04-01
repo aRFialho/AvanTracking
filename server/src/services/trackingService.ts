@@ -823,10 +823,19 @@ export class TrackingService {
             not: OrderStatus.CANCELED,
           },
         },
-        include: {
+        select: {
+          id: true,
+          orderNumber: true,
+          status: true,
+          freightType: true,
           trackingEvents: {
             orderBy: { eventDate: 'desc' },
             take: 5,
+            select: {
+              status: true,
+              description: true,
+              eventDate: true,
+            },
           },
         },
         orderBy: { createdAt: 'asc' },
