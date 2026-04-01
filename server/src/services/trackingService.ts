@@ -236,10 +236,15 @@ const getTerminalSyncSkipMessage = (status: OrderStatus) =>
 const toIsoString = (value: Date | null | undefined) =>
   value instanceof Date ? value.toISOString() : null;
 
-const DATABASE_RETRY_DELAYS_MS = [1500, 5000];
+const DATABASE_RETRY_DELAYS_MS = [5000, 15000, 30000, 60000];
 
 const wait = (ms: number) =>
   new Promise((resolve) => setTimeout(resolve, ms));
+
+const ensureDatabaseReady = async () => {
+  await prisma.$connect();
+  await prisma.$queryRawUnsafe('SELECT 1');
+};
 
 const buildEmptySnapshot = (): SyncReportSnapshot => ({
   totalTracked: 0,
@@ -900,6 +905,7 @@ export class TrackingService {
     };
 
     try {
+      await ensureDatabaseReady();
       return await executeSync();
     } catch (error) {
       if (isDatabaseUnavailableError(error)) {
@@ -909,11 +915,10 @@ export class TrackingService {
             `Banco indisponivel na sincronizacao. Nova tentativa ${index + 2}/${DATABASE_RETRY_DELAYS_MS.length + 1} em ${delayMs}ms.`,
           );
 
-          await prisma.$disconnect().catch(() => undefined);
           await wait(delayMs);
 
           try {
-            await prisma.$connect();
+            await ensureDatabaseReady();
             return await executeSync();
           } catch (retryError) {
             if (!isDatabaseUnavailableError(retryError)) {

@@ -128,6 +128,20 @@ const buildMetricBars = (
 
 class MonthlyMovementReportService {
   private timeout: NodeJS.Timeout | null = null;
+  private runningCycleKey: string | null = null;
+  private completedCycleKeys = new Set<string>();
+
+  private getClosedMonthCycleKey(referenceDate = new Date()) {
+    const closedMonthDate = new Date(
+      referenceDate.getFullYear(),
+      referenceDate.getMonth() - 1,
+      1,
+    );
+
+    return `${closedMonthDate.getFullYear()}-${String(
+      closedMonthDate.getMonth() + 1,
+    ).padStart(2, '0')}`;
+  }
 
   private resolveNextRun() {
     const now = new Date();
@@ -159,6 +173,10 @@ class MonthlyMovementReportService {
     this.scheduleNext();
   }
 
+  private normalizeEmail(email: string | null | undefined) {
+    return String(email || '').trim().toLowerCase();
+  }
+
   private async resolveRecipients(companyId: string) {
     const users = await prisma.user.findMany({
       where: { companyId },
@@ -172,7 +190,7 @@ class MonthlyMovementReportService {
     const recipients = new Map<string, { email: string; name: string }>();
 
     for (const user of users) {
-      const normalizedEmail = String(user.email || '').trim().toLowerCase();
+      const normalizedEmail = this.normalizeEmail(user.email);
       if (!normalizedEmail) continue;
 
       recipients.set(normalizedEmail, {
@@ -614,7 +632,10 @@ class MonthlyMovementReportService {
     ].join('\n');
   }
 
-  private async sendCompanyReport(companyId: string) {
+  private async sendCompanyReport(
+    companyId: string,
+    sentEmailsInCycle: Set<string>,
+  ) {
     const company = await prisma.company.findUnique({
       where: { id: companyId },
       select: {
@@ -625,7 +646,10 @@ class MonthlyMovementReportService {
 
     if (!company) return;
 
-    const recipients = await this.resolveRecipients(company.id);
+    const recipients = (await this.resolveRecipients(company.id)).filter(
+      (recipient) =>
+        !sentEmailsInCycle.has(this.normalizeEmail(recipient.email)),
+    );
     if (recipients.length === 0) return;
 
     const now = new Date();
@@ -737,10 +761,36 @@ class MonthlyMovementReportService {
       htmlContent: emailHtml,
       textContent: emailText,
     });
+
+    for (const recipient of recipients) {
+      const normalizedEmail = this.normalizeEmail(recipient.email);
+      if (normalizedEmail) {
+        sentEmailsInCycle.add(normalizedEmail);
+      }
+    }
   }
 
   async run() {
+    const cycleKey = this.getClosedMonthCycleKey();
+
+    if (this.runningCycleKey === cycleKey) {
+      console.log(
+        `Relatorio mensal do ciclo ${cycleKey} ja esta em execucao. Ignorando nova tentativa.`,
+      );
+      return;
+    }
+
+    if (this.completedCycleKeys.has(cycleKey)) {
+      console.log(
+        `Relatorio mensal do ciclo ${cycleKey} ja foi enviado nesta instancia. Ignorando nova tentativa.`,
+      );
+      return;
+    }
+
+    this.runningCycleKey = cycleKey;
+
     try {
+      const sentEmailsInCycle = new Set<string>();
       const companies = await prisma.company.findMany({
         where: {
           users: {
@@ -754,7 +804,7 @@ class MonthlyMovementReportService {
 
       for (const company of companies) {
         try {
-          await this.sendCompanyReport(company.id);
+          await this.sendCompanyReport(company.id, sentEmailsInCycle);
         } catch (error) {
           console.error(
             `Erro ao enviar relatorio mensal da empresa ${company.id}:`,
@@ -762,8 +812,12 @@ class MonthlyMovementReportService {
           );
         }
       }
+
+      this.completedCycleKeys.add(cycleKey);
     } catch (error) {
       console.error('Erro ao executar relatorio mensal:', error);
+    } finally {
+      this.runningCycleKey = null;
     }
   }
 }
