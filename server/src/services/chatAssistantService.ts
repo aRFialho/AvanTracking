@@ -24,6 +24,37 @@ const STATUS_LABELS: Record<OrderStatus, string> = {
   CHANNEL_LOGISTICS: 'Logistica do canal',
 };
 
+const OPTION_MATCH_STOPWORDS = new Set([
+  'da',
+  'de',
+  'do',
+  'das',
+  'dos',
+  'e',
+  'em',
+  'para',
+  'com',
+  'pela',
+  'pelos',
+  'pelas',
+  'por',
+  'transportadora',
+  'transportadoras',
+  'transporte',
+  'transportes',
+  'express',
+  'log',
+  'logistica',
+  'logistics',
+  'marketplace',
+  'marketplaces',
+  'canal',
+  'canais',
+  'pedidos',
+  'pedido',
+  'status',
+]);
+
 type MatchedFilter = {
   status?: OrderStatus;
   delayedKind?: 'carrier' | 'platform';
@@ -49,6 +80,109 @@ const normalizeText = (value: unknown) =>
     .toLowerCase()
     .replace(/\s+/g, ' ')
     .trim();
+
+const getMatchTokens = (value: unknown) =>
+  normalizeText(value)
+    .split(' ')
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 3 && !OPTION_MATCH_STOPWORDS.has(token));
+
+const scoreOptionMatch = (option: string, normalizedInput: string) => {
+  const normalizedOption = normalizeText(option);
+  if (!normalizedOption) {
+    return 0;
+  }
+
+  let score = 0;
+
+  if (normalizedInput === normalizedOption) {
+    score += 1000;
+  }
+
+  if (normalizedInput.includes(normalizedOption)) {
+    score += 700;
+  }
+
+  if (
+    normalizedInput.length >= 3 &&
+    normalizedOption.includes(normalizedInput)
+  ) {
+    score += 550;
+  }
+
+  const optionTokens = getMatchTokens(normalizedOption);
+  const inputTokens = getMatchTokens(normalizedInput);
+
+  let sharedTokens = 0;
+  let longestSharedTokenLength = 0;
+
+  for (const optionToken of optionTokens) {
+    const matchedToken = inputTokens.find(
+      (inputToken) =>
+        inputToken === optionToken ||
+        inputToken.includes(optionToken) ||
+        optionToken.includes(inputToken),
+    );
+
+    if (!matchedToken) {
+      continue;
+    }
+
+    sharedTokens += 1;
+    longestSharedTokenLength = Math.max(
+      longestSharedTokenLength,
+      Math.min(matchedToken.length, optionToken.length),
+    );
+  }
+
+  if (sharedTokens > 0) {
+    score += sharedTokens * 120 + longestSharedTokenLength * 10;
+
+    if (sharedTokens === optionTokens.length && optionTokens.length > 0) {
+      score += 180;
+    }
+  }
+
+  return score;
+};
+
+const hasStatusHint = (normalized: string) =>
+  STATUS_MATCHERS.some((matcher) =>
+    matcher.phrases.some((phrase) => normalized.includes(phrase)),
+  );
+
+const hasDelayHint = (normalized: string) =>
+  normalized.includes('atras') ||
+  normalized.includes('transportadora') ||
+  normalized.includes('plataforma');
+
+const hasNoMovementHint = (normalized: string) =>
+  normalized.includes('sem movimentacao') ||
+  normalized.includes('sem movimento') ||
+  normalized.includes('sem atualizacao');
+
+const hasPeriodHint = (normalized: string) =>
+  normalized.includes('hoje') ||
+  normalized.includes('ontem') ||
+  /(?:nos\s+)?(?:ultimos|uiltimos|ultimas|ultimas)\s+\d+\s*dias?/.test(normalized);
+
+const hasOperationalContextHint = (normalized: string) =>
+  normalized.includes('pedido') ||
+  normalized.includes('pedidos') ||
+  normalized.includes('nf') ||
+  normalized.includes('nfs') ||
+  normalized.includes('nota fiscal') ||
+  normalized.includes('transportadora') ||
+  normalized.includes('marketplace') ||
+  normalized.includes('canal');
+
+const hasFilterLikeIntent = (normalized: string) =>
+  (hasStatusHint(normalized) || hasDelayHint(normalized) || hasNoMovementHint(normalized)) &&
+  (hasPeriodHint(normalized) ||
+    hasOperationalContextHint(normalized) ||
+    normalized.includes('pela ') ||
+    normalized.includes('da ') ||
+    normalized.includes('do '));
 
 const escapeHtml = (value: string) =>
   value
@@ -138,7 +272,8 @@ const STATUS_MATCHERS: Array<{ phrases: string[]; status: OrderStatus; title: st
 const isStructuredIntent = (text: string) => {
   const normalized = normalizeText(text);
 
-  return [
+  return (
+    [
     'relatorio',
     'relatorio com',
     'me envie',
@@ -157,7 +292,8 @@ const isStructuredIntent = (text: string) => {
     'lista de pedidos',
     'listar pedidos',
     'mostrar pedidos',
-  ].some((term) => normalized.includes(term));
+    ].some((term) => normalized.includes(term)) || hasFilterLikeIntent(normalized)
+  );
 };
 
 const resolveIntentKind = (text: string) => {
@@ -205,7 +341,9 @@ const resolvePeriodFilter = (text: string) => {
     };
   }
 
-  const lastDaysMatch = normalized.match(/(?:nos|nos ultimos|ultimos)\s+(\d+)\s*dias?/);
+  const lastDaysMatch = normalized.match(
+    /(?:(?:nos|das|ha)\s+)?(?:ultimos|uiltimos|ultimas)\s+(\d+)\s*dias?/,
+  );
   if (lastDaysMatch) {
     const days = Number(lastDaysMatch[1]);
     if (Number.isFinite(days) && days > 0) {
@@ -536,12 +674,14 @@ class ChatAssistantService {
       .filter(Boolean)
       .sort((left, right) => right.length - left.length);
 
-    return (
-      matches.find((carrier) => {
-        const normalizedCarrier = normalizeText(carrier);
-        return normalizedCarrier && normalizedInput.includes(normalizedCarrier);
-      }) || null
-    );
+    const bestMatch = matches
+      .map((carrier) => ({
+        carrier,
+        score: scoreOptionMatch(carrier, normalizedInput),
+      }))
+      .sort((left, right) => right.score - left.score)[0];
+
+    return bestMatch && bestMatch.score >= 120 ? bestMatch.carrier : null;
   }
 
   private async resolveExactMarketplaceName(companyId: string, normalizedInput: string) {
@@ -557,12 +697,14 @@ class ChatAssistantService {
       .filter(Boolean)
       .sort((left, right) => right.length - left.length);
 
-    return (
-      matches.find((channel) => {
-        const normalizedChannel = normalizeText(channel);
-        return normalizedChannel && normalizedInput.includes(normalizedChannel);
-      }) || null
-    );
+    const bestMatch = matches
+      .map((channel) => ({
+        channel,
+        score: scoreOptionMatch(channel, normalizedInput),
+      }))
+      .sort((left, right) => right.score - left.score)[0];
+
+    return bestMatch && bestMatch.score >= 120 ? bestMatch.channel : null;
   }
 
   private async resolveFilters(companyId: string, input: string): Promise<MatchedFilter | null> {
@@ -582,7 +724,9 @@ class ChatAssistantService {
       normalized.includes('atraso transportadora') ||
       normalized.includes('atrasados transportadora') ||
       normalized.includes('atrasado transportadora') ||
-      normalized.includes('pedidos atrasados')
+      normalized.includes('pedidos atrasados') ||
+      normalized.includes('atrasados pela') ||
+      normalized.includes('atrasado pela')
     ) {
       filter.delayedKind = 'carrier';
     }

@@ -71,6 +71,62 @@ const normalizeKnowledgeText = (value: string) =>
     .replace(/\s+/g, " ")
     .trim();
 
+const hasStructuredStatusHint = (normalized: string) =>
+  [
+    "entregue",
+    "entregues",
+    "em transito",
+    "transito",
+    "saiu para entrega",
+    "falha na entrega",
+    "falhas na entrega",
+    "devolvido",
+    "devolvidos",
+    "cancelado",
+    "cancelados",
+    "pendente",
+    "pendentes",
+    "criado",
+    "criados",
+  ].some((term) => normalized.includes(term));
+
+const hasStructuredDelayHint = (normalized: string) =>
+  normalized.includes("atras") ||
+  normalized.includes("transportadora") ||
+  normalized.includes("plataforma");
+
+const hasStructuredNoMovementHint = (normalized: string) =>
+  normalized.includes("sem movimentacao") ||
+  normalized.includes("sem movimento") ||
+  normalized.includes("sem atualizacao");
+
+const hasStructuredPeriodHint = (normalized: string) =>
+  normalized.includes("hoje") ||
+  normalized.includes("ontem") ||
+  /(?:(?:nos|das|ha)\s+)?(?:ultimos|uiltimos|ultimas)\s+\d+\s*dias?/.test(
+    normalized,
+  );
+
+const hasStructuredContextHint = (normalized: string) =>
+  normalized.includes("pedido") ||
+  normalized.includes("pedidos") ||
+  normalized.includes("nf") ||
+  normalized.includes("nfs") ||
+  normalized.includes("nota fiscal") ||
+  normalized.includes("transportadora") ||
+  normalized.includes("marketplace") ||
+  normalized.includes("canal");
+
+const hasStructuredFilterLikeIntent = (normalized: string) =>
+  (hasStructuredStatusHint(normalized) ||
+    hasStructuredDelayHint(normalized) ||
+    hasStructuredNoMovementHint(normalized)) &&
+  (hasStructuredPeriodHint(normalized) ||
+    hasStructuredContextHint(normalized) ||
+    normalized.includes("pela ") ||
+    normalized.includes("da ") ||
+    normalized.includes("do "));
+
 const isUncertainAiResponse = (text: string) => {
   const normalized = normalizeKnowledgeText(text);
 
@@ -88,7 +144,8 @@ const isUncertainAiResponse = (text: string) => {
 const shouldUseStructuredChatRequest = (text: string) => {
   const normalized = normalizeKnowledgeText(text);
 
-  return [
+  return (
+    [
     "relatorio",
     "me envie",
     "me envia",
@@ -102,7 +159,9 @@ const shouldUseStructuredChatRequest = (text: string) => {
     "lista de pedidos",
     "listar pedidos",
     "mostrar pedidos",
-  ].some((term) => normalized.includes(term));
+    ].some((term) => normalized.includes(term)) ||
+    hasStructuredFilterLikeIntent(normalized)
+  );
 };
 
 const getConversationalResponse = (text: string) => {
