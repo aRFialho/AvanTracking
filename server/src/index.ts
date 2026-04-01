@@ -28,6 +28,7 @@ import { traySyncJobService } from './services/traySyncJobService';
 import { syncJobService } from './services/syncJobService';
 import { weeklyMovementReportService } from './services/weeklyMovementReportService';
 import { monthlyMovementReportService } from './services/monthlyMovementReportService';
+import { chatAssistantService } from './services/chatAssistantService';
 import { prisma } from './lib/prisma';
 const app = express();
 const port = process.env.PORT || 3000;
@@ -48,6 +49,16 @@ app.post("/api/chat", authenticateToken, async (req, res) => {
 
     if (!input.trim()) {
       return res.status(400).json({ error: "Mensagem vazia." });
+    }
+
+    const structuredResult = await chatAssistantService.tryHandleStructuredRequest({
+      companyId: req.user?.companyId,
+      userId: req.user?.id,
+      text: input,
+    });
+
+    if (structuredResult.handled && structuredResult.text) {
+      return res.json({ text: structuredResult.text });
     }
 
     const history = messages
