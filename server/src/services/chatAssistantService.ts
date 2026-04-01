@@ -153,6 +153,7 @@ const hasStatusHint = (normalized: string) =>
 
 const hasDelayHint = (normalized: string) =>
   normalized.includes('atras') ||
+  normalized.includes('em atraso') ||
   normalized.includes('transportadora') ||
   normalized.includes('plataforma');
 
@@ -715,7 +716,9 @@ class ChatAssistantService {
     if (
       normalized.includes('atraso plataforma') ||
       normalized.includes('atrasados plataforma') ||
-      normalized.includes('atrasado plataforma')
+      normalized.includes('atrasado plataforma') ||
+      normalized.includes('em atraso da plataforma') ||
+      normalized.includes('em atraso plataforma')
     ) {
       filter.delayedKind = 'platform';
     }
@@ -724,11 +727,16 @@ class ChatAssistantService {
       normalized.includes('atraso transportadora') ||
       normalized.includes('atrasados transportadora') ||
       normalized.includes('atrasado transportadora') ||
+      normalized.includes('atrasado') ||
+      normalized.includes('atrasados') ||
+      normalized.includes('em atraso') ||
       normalized.includes('pedidos atrasados') ||
       normalized.includes('atrasados pela') ||
       normalized.includes('atrasado pela')
     ) {
+      if (filter.delayedKind !== 'platform') {
       filter.delayedKind = 'carrier';
+      }
     }
 
     if (
