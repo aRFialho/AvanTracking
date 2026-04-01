@@ -128,6 +128,7 @@ const buildMetricBars = (
 
 class MonthlyMovementReportService {
   private timeout: NodeJS.Timeout | null = null;
+  private scheduleInitialized = false;
   private runningCycleKey: string | null = null;
   private completedCycleKeys = new Set<string>();
 
@@ -170,6 +171,11 @@ class MonthlyMovementReportService {
   }
 
   async initializeSchedule() {
+    if (this.scheduleInitialized) {
+      return;
+    }
+
+    this.scheduleInitialized = true;
     this.scheduleNext();
   }
 
@@ -774,16 +780,10 @@ class MonthlyMovementReportService {
     const cycleKey = this.getClosedMonthCycleKey();
 
     if (this.runningCycleKey === cycleKey) {
-      console.log(
-        `Relatorio mensal do ciclo ${cycleKey} ja esta em execucao. Ignorando nova tentativa.`,
-      );
       return;
     }
 
     if (this.completedCycleKeys.has(cycleKey)) {
-      console.log(
-        `Relatorio mensal do ciclo ${cycleKey} ja foi enviado nesta instancia. Ignorando nova tentativa.`,
-      );
       return;
     }
 
