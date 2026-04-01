@@ -9,6 +9,7 @@ const APP_LOGO_URL =
   'https://res.cloudinary.com/dhqxp3tuo/image/upload/v1771249579/ChatGPT_Image_13_de_fev._de_2026_16_40_14_kldj3k.png';
 const MONTHLY_REPORT_HOUR = 8;
 const MONTHLY_REPORT_DAY = 1;
+const MAX_TIMEOUT_MS = 2_147_483_647;
 
 const STATUS_LABELS: Record<OrderStatus, string> = {
   PENDING: 'Pendente',
@@ -166,8 +167,13 @@ class MonthlyMovementReportService {
     const delayMs = Math.max(1000, nextRun.getTime() - Date.now());
 
     this.timeout = setTimeout(() => {
+      if (Date.now() < nextRun.getTime()) {
+        this.scheduleNext();
+        return;
+      }
+
       void this.run().finally(() => this.scheduleNext());
-    }, delayMs);
+    }, Math.min(delayMs, MAX_TIMEOUT_MS));
   }
 
   async initializeSchedule() {
