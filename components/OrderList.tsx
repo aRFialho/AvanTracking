@@ -214,6 +214,7 @@ export const OrderList: React.FC<OrderListProps> = ({
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [isFetchingSingle, setIsFetchingSingle] = useState(false);
   const [showFilters, setShowFilters] = useState(true);
+  const [showTopPanel, setShowTopPanel] = useState(true);
   const [isTraySyncModalOpen, setIsTraySyncModalOpen] = useState(false);
   const [isTraySyncing, setIsTraySyncing] = useState(false);
   const [traySyncDays, setTraySyncDays] = useState<TraySyncFilters["days"]>(90);
@@ -1232,7 +1233,27 @@ export const OrderList: React.FC<OrderListProps> = ({
   };
 
   return (
-    <div className="space-y-4 h-full flex flex-col relative">
+    <div className="space-y-4 relative lg:h-full lg:min-h-0 lg:flex lg:flex-col">
+      <div className="flex justify-end shrink-0">
+        <button
+          type="button"
+          onClick={() => setShowTopPanel((current) => !current)}
+          className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-600 shadow-sm transition-colors hover:border-slate-300 hover:text-slate-900 dark:border-white/10 dark:bg-dark-card dark:text-slate-300 dark:hover:border-white/20 dark:hover:text-white"
+        >
+          {showTopPanel ? (
+            <>
+              <ChevronUp className="h-3.5 w-3.5" />
+              Recolher painel superior
+            </>
+          ) : (
+            <>
+              <ChevronDown className="h-3.5 w-3.5" />
+              Expandir painel superior
+            </>
+          )}
+        </button>
+      </div>
+      <div className={clsx("space-y-4 shrink-0", !showTopPanel && "hidden")}>
       {/* 1. Filter Control Bar (Collapsible) */}
       <div className="glass-card rounded-xl border border-slate-200 dark:border-dark-border shadow-sm shrink-0 overflow-hidden transition-all duration-300">
         <div
@@ -1407,7 +1428,7 @@ export const OrderList: React.FC<OrderListProps> = ({
         )}
       </div>
 
-      <div className="flex justify-end">
+      <div className={clsx("flex justify-end", !showFilters && "hidden")}>
         <div className="w-full flex flex-col gap-3 sm:max-w-xl sm:flex-row sm:justify-end">
           <div className="flex flex-col gap-2 sm:flex-row">
             <button
@@ -1470,11 +1491,12 @@ export const OrderList: React.FC<OrderListProps> = ({
           </button>
         </div>
       </div>
+      </div>
 
       {/* 2. Detailed Data Table */}
-      <div className="flex-1 overflow-hidden glass-card rounded-xl border border-slate-200 dark:border-dark-border shadow-sm relative bg-white dark:bg-dark-card">
-        <div className="absolute inset-0 overflow-auto">
-          <table className="w-full text-sm text-left border-collapse [&_thead_th:nth-child(3)]:hidden [&_tbody_td:nth-child(3)]:hidden">
+      <div className="glass-card relative min-h-[420px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-dark-border dark:bg-dark-card sm:min-h-[560px] lg:min-h-0 lg:flex-1">
+        <div className="absolute inset-0 overflow-x-auto overflow-y-auto">
+          <table className="min-w-[1600px] text-sm text-left border-collapse [&_thead_th:nth-child(3)]:hidden [&_tbody_td:nth-child(3)]:hidden">
             <thead className="text-xs text-slate-500 dark:text-slate-400 font-semibold uppercase bg-slate-50 dark:bg-dark-card sticky top-0 z-10 shadow-sm backdrop-blur-md">
               <tr>
                 <th className="px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]">

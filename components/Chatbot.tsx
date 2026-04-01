@@ -1,22 +1,24 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { Fragment, useEffect, useRef, useState } from "react";
 import {
-  MessageCircle,
-  X,
-  Send,
-  Loader2,
   Bot,
-  User,
+  Loader2,
+  MessageCircle,
+  Send,
   Sparkles,
+  User,
+  X,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { fetchWithAuth } from "../utils/authFetch";
 
-const BOT_NAME = "Muriçoca";
+const BOT_NAME = "Muricoca";
 const BOT_AVATAR_SRC = "/muricoca.png";
 const BOT_ANIMATED_AVATAR_SRC = "/muricoca_animated.mp4";
 const BOT_BUTTON_SIZE = 64;
 const BOT_WINDOW_GAP = 16;
 const BOT_MARGIN = 24;
+const URL_REGEX = /(https?:\/\/[^\s]+)/g;
+
 const getDefaultLauncherPosition = (width: number, height: number) => ({
   x: Math.max(BOT_MARGIN, width - BOT_BUTTON_SIZE - BOT_MARGIN),
   y: Math.max(BOT_MARGIN, height - BOT_BUTTON_SIZE - BOT_MARGIN),
@@ -44,125 +46,22 @@ interface Message {
 }
 
 interface KnowledgeItem {
+  id: string;
   keywords: string[];
-  response: string;
+  responses: string[];
 }
-
-// --- KNOWLEDGE BASE ---
-const KNOWLEDGE_BASE: KnowledgeItem[] = [
-  {
-    keywords: [
-      "dashboard",
-      "grafico",
-      "kpi",
-      "ranking",
-      "resumo",
-      "tela inicial",
-      "metricas",
-      "indicadores",
-    ],
-    response:
-      "## 📊 Dashboard Executivo\n\nO Dashboard é sua central de controle. Aqui você encontra:\n\n* KPIs em Tempo Real: Cards com total de NFs, entregues, em trânsito e atrasadas.\n* Gráfico de Status: Uma visão visual da distribuição dos seus pedidos.\n* Ranking de Transportadoras: Uma lista detalhada classificando parceiros por volume e pontualidade.\n* Resumo Mensal: Comparativo de crescimento vs mês anterior.",
-  },
-  {
-    keywords: [
-      "importar",
-      "csv",
-      "excel",
-      "planilha",
-      "upload",
-      "carregar",
-      "layout",
-      "dados",
-    ],
-    response:
-      "## 📤 Importação de Dados\n\nPara carregar seus pedidos:\n\n1. Acesse o menu Importar CSV.\n2. Arraste seu arquivo .csv ou .xlsx.\n3. O sistema valida e processa os dados automaticamente.\n\nImportante:\n- O sistema ignora pedidos com status 'CANCELADO' automaticamente.\n- O layout deve conter colunas como: *Pedido, Nome do Cliente, Data, Status, Frete tipo, etc*.",
-  },
-  {
-    keywords: [
-      "api",
-      "busca",
-      "consultar",
-      "único",
-      "rastrear",
-      "intelipost",
-      "externa",
-    ],
-    response:
-      "## 🌐 Consulta via API\n\nVocê pode consultar dados em tempo real direto da Intelipost:\n\n1. Vá no menu Pedidos.\n2. Clique no botão 'Buscar API' (canto superior direito).\n3. Digite o número do pedido.\n\nIsso buscará a última atualização oficial e adicionará/atualizará o pedido na sua lista.",
-  },
-  {
-    keywords: [
-      "alerta",
-      "risco",
-      "atraso",
-      "problema",
-      "monitoramento",
-      "critico",
-    ],
-    response:
-      "## ⚠️ Monitoramento de Riscos\n\nO módulo de Alertas foca apenas no que precisa de atenção:\n\n* Detecção Automática: Identifica pedidos onde *Data Atual > Previsão de Entrega*.\n* Filtros de Gravidade: Use a régua para filtrar atrasos críticos (ex: +5 dias, +10 dias).\n* Ação: Clique em 'Detalhes' para ver onde o pedido parou.",
-  },
-  {
-    keywords: ["sync", "sincronizar", "atualizar", "tempo", "automático"],
-    response:
-      "## 🔄 Sincronização\n\nO sistema mantém os dados atualizados de duas formas:\n\n1. Automática: Ocorre a cada 4 horas em segundo plano.\n2. Manual: Clique no botão 'Sincronizar' no rodapé da barra lateral para forçar uma atualização imediata de todos os pedidos ativos.",
-  },
-  {
-    keywords: [
-      "pedido",
-      "lista",
-      "filtro",
-      "detalhe",
-      "histórico",
-      "rastreamento",
-    ],
-    response:
-      "## 📦 Gerenciamento de Pedidos\n\nNa tela de Pedidos, você tem controle total:\n\n* Filtros Avançados: Por Status, Transportadora, Marketplace e Data de Previsão.\n* Detalhes Completos: Clique no ícone de 'olho' 👁️ para ver endereço, valores e o histórico completo de eventos de rastreamento.\n* Busca: Pesquise por Nome, CPF ou Número do Pedido.",
-  },
-  {
-    keywords: ["admin", "usuario", "senha", "acesso", "permissão", "criar"],
-    response:
-      "## 🛡️ Painel Administrativo\n\nExclusivo para usuários com perfil ADMIN:\n\n* Gerenciar Usuários: Crie novos acessos ou remova usuários antigos.\n* Controle de Acesso: Defina quem é 'ADMIN' (acesso total) ou 'USER' (apenas visualização).\n* Status: Ative ou inative contas instantaneamente.",
-  },
-  {
-    keywords: [
-      "logistica do canal",
-      "canal",
-      "shopee",
-      "mercado livre",
-      "coletas",
-      "me2",
-      "priority",
-    ],
-    response:
-      "## 🚚 Logística do Canal\n\nStatus como 'Logística do Canal' aparecem quando o frete é gerenciado pelo marketplace (ex: Shopee Xpress, Mercado Envios/Coletas).\n\nNesses casos, a transportadora é definida pelo canal de venda e o rastreamento externo pode ser limitado, pois a responsabilidade é do marketplace.",
-  },
-  {
-    keywords: [
-      "ola",
-      "oi",
-      "ajuda",
-      "bom dia",
-      "boa tarde",
-      "boa noite",
-      "começar",
-      "iniciar",
-      "help",
-    ],
-    response:
-      "👋 Olá! Eu sou a Muriçoca.\n\nEstou aqui para tirar suas dúvidas sobre o Avantracking. Você pode me perguntar sobre:\n\n* 📊 Dashboard e KPIs\n* 📤 Importação de planilhas\n* ⚠️ Alertas de risco\n* 📦 Pedidos e Rastreamento\n* 🔄 Sincronização\n\nComo posso ajudar hoje?",
-  },
-];
 
 const SUPPORT_FALLBACK_MESSAGE =
   "Nao consegui identificar essa funcionalidade com seguranca.\n\nEntre em contato com o desenvolvedor da plataforma para orientacao ou correcao.";
+
+const DEFAULT_WELCOME_MESSAGE = `Ola! Eu sou a ${BOT_NAME}.\n\nPosso te ajudar com Dashboard, Pedidos, Alertas, Falhas na Entrega, Importacao, sincronizacao, Tray, frete recalculado, suporte, administracao e release notes.\n\nSe quiser dados reais da operacao, voce tambem pode pedir contagens e relatorios como:\n- quantos pedidos estao entregues\n- me envie um relatorio com pedidos atrasados\n- me envie um relatorio com pedidos da Jadlog`;
 
 const normalizeKnowledgeText = (value: string) =>
   value
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
+    .replace(/\s+/g, " ")
     .trim();
 
 const isUncertainAiResponse = (text: string) => {
@@ -179,11 +78,106 @@ const isUncertainAiResponse = (text: string) => {
   ].some((term) => normalized.includes(term));
 };
 
+const shouldUseStructuredChatRequest = (text: string) => {
+  const normalized = normalizeKnowledgeText(text);
+
+  return [
+    "relatorio",
+    "me envie",
+    "me envia",
+    "gere",
+    "gerar",
+    "quantos",
+    "quantidade",
+    "qtd",
+    "total de pedidos",
+    "numero de pedidos",
+    "lista de pedidos",
+    "listar pedidos",
+    "mostrar pedidos",
+  ].some((term) => normalized.includes(term));
+};
+
+const getConversationalResponse = (text: string) => {
+  const normalized = normalizeKnowledgeText(text);
+
+  const asksHowAreYou =
+    normalized.includes("tudo bem") ||
+    normalized.includes("como voce esta") ||
+    normalized.includes("como vc esta") ||
+    normalized.includes("como vai");
+  const hasGreeting =
+    normalized.includes("oi") ||
+    normalized.includes("ola") ||
+    normalized.includes("bom dia") ||
+    normalized.includes("boa tarde") ||
+    normalized.includes("boa noite");
+
+  if (asksHowAreYou && hasGreeting) {
+    return "Oi! Tudo bem por aqui, obrigado por perguntar. E voce, como esta?\n\nSe quiser, ja me diga no que posso te ajudar no Avantracking.";
+  }
+
+  if (asksHowAreYou) {
+    return "Tudo bem por aqui, obrigado por perguntar. E voce, como esta?\n\nSe quiser, ja pode me contar sua duvida sobre a plataforma.";
+  }
+
+  if (hasGreeting) {
+    return "Oi! Que bom falar com voce.\n\nComo voce esta? Se quiser, ja me diga sua duvida sobre Dashboard, Pedidos, Sync, Tray, frete recalculado, alertas ou qualquer outra funcao do Avantracking.";
+  }
+
+  if (
+    normalized.includes("obrigado") ||
+    normalized.includes("obrigada") ||
+    normalized.includes("valeu")
+  ) {
+    return "Eu que agradeco. Se quiser, posso continuar te ajudando com a plataforma.";
+  }
+
+  if (
+    normalized.includes("perfeito") ||
+    normalized.includes("boa") ||
+    normalized.includes("show") ||
+    normalized.includes("otimo")
+  ) {
+    return "Fico feliz em ajudar. Se quiser, seguimos no proximo ponto.";
+  }
+
+  return null;
+};
+
+const renderRichText = (text: string) =>
+  text.split("\n").map((line, lineIndex, lines) => {
+    const parts = line.split(URL_REGEX);
+
+    return (
+      <Fragment key={`${line}-${lineIndex}`}>
+        {parts.map((part, index) =>
+          /^https?:\/\//.test(part) ? (
+            <a
+              key={`${part}-${index}`}
+              href={part}
+              target="_blank"
+              rel="noreferrer"
+              className="break-all font-medium text-blue-600 underline decoration-blue-300 underline-offset-2 dark:text-cyan-300"
+            >
+              {part}
+            </a>
+          ) : (
+            <Fragment key={`${part}-${index}`}>{part}</Fragment>
+          ),
+        )}
+        {lineIndex < lines.length - 1 ? <br /> : null}
+      </Fragment>
+    );
+  });
+
 const ENHANCED_KNOWLEDGE_BASE: KnowledgeItem[] = [
   {
+    id: "dashboard",
     keywords: [
       "dashboard",
       "grafico",
+      "grafico de status",
       "kpi",
       "ranking",
       "resumo",
@@ -192,15 +186,19 @@ const ENHANCED_KNOWLEDGE_BASE: KnowledgeItem[] = [
       "indicadores",
       "cards",
     ],
-    response:
+    responses: [
       "Dashboard Executivo\n\nNo Dashboard voce acompanha os indicadores principais da operacao.\n- cards com totais e visoes de status\n- graficos de distribuicao dos pedidos\n- ranking de transportadoras\n- atalhos para abrir a tela de pedidos com filtros aplicados",
+      "Dashboard\n\nEssa e a visao mais resumida da operacao.\n- cards com totais e indicadores\n- graficos de distribuicao dos pedidos\n- ranking de transportadoras\n- clique nos cards para abrir a lista de pedidos ja filtrada",
+    ],
   },
   {
+    id: "orders",
     keywords: [
       "pedidos",
       "pedido",
       "lista",
       "filtro",
+      "filtros",
       "detalhe",
       "historico",
       "rastreamento",
@@ -208,11 +206,15 @@ const ENHANCED_KNOWLEDGE_BASE: KnowledgeItem[] = [
       "exportar",
       "abrir rastreio",
       "status atrasado",
+      "tela pedidos",
     ],
-    response:
+    responses: [
       "Posso te ajudar melhor com Pedidos se voce me confirmar o foco.\n\nMe diga se a sua duvida e sobre:\n1. passo a passo para usar filtros\n2. ordenacao nas colunas\n3. exportacao HTML ou CSV\n4. abrir detalhes do pedido\n5. abrir rastreio\n6. entender algum status ou comportamento da lista",
+      "Sobre a tela Pedidos, consigo te orientar de forma mais direta se voce me disser o foco.\n\nPode ser, por exemplo:\n1. filtros e busca\n2. exportacao\n3. ordenar colunas\n4. detalhes do pedido\n5. abrir rastreio\n6. entender os status",
+    ],
   },
   {
+    id: "api-search",
     keywords: [
       "buscar api",
       "api",
@@ -223,10 +225,13 @@ const ENHANCED_KNOWLEDGE_BASE: KnowledgeItem[] = [
       "codigo de rastreio",
       "intelipost",
     ],
-    response:
+    responses: [
       "Consulta de pedido via API\n\nNa tela Pedidos voce pode buscar um pedido individual pela API.\n1. clique em Buscar API\n2. informe numero do pedido, nota fiscal ou codigo de rastreio\n3. o sistema tenta localizar o pedido e atualizar ou adicionar na lista",
+      "Busca externa por API\n\nSe voce quiser localizar ou atualizar um pedido especifico:\n1. abra Pedidos\n2. clique em Buscar API\n3. informe pedido, NF ou rastreio\n4. o sistema consulta e tenta atualizar a base local",
+    ],
   },
   {
+    id: "no-movement",
     keywords: [
       "sem movimentacao",
       "sem atualizacao",
@@ -234,10 +239,13 @@ const ENHANCED_KNOWLEDGE_BASE: KnowledgeItem[] = [
       "sem movimento",
       "dias sem movimentacao",
     ],
-    response:
+    responses: [
       "Pedidos sem movimentacao\n\nEssa tela destaca pedidos ativos que ficaram dias sem atualizacao.\n- pedidos finalizados ficam fora dessa lista\n- voce pode ajustar a faixa de dias para localizar casos mais criticos\n- essa visao ajuda a agir antes de virar atraso ou falha",
+      "Sem Movimentacao\n\nEssa visao serve para achar pedidos que pararam de receber evento.\n- considera pedidos ativos\n- permite ajustar a faixa de dias\n- ajuda a localizar casos que merecem cobranca preventiva",
+    ],
   },
   {
+    id: "alerts",
     keywords: [
       "alerta",
       "alertas",
@@ -246,11 +254,16 @@ const ENHANCED_KNOWLEDGE_BASE: KnowledgeItem[] = [
       "monitoramento",
       "critico",
       "problema",
+      "atraso plataforma",
+      "atraso transportadora",
     ],
-    response:
+    responses: [
       "Alertas de Risco\n\nA tela de Alertas foca no que exige atencao imediata.\n- ajuda a localizar pedidos atrasados e situacoes criticas\n- facilita a priorizacao do acompanhamento\n- permite abrir detalhes para entender onde o pedido parou",
+      "Alertas\n\nUse essa tela para priorizar o que ja merece acao.\n- concentra pedidos com risco e atraso\n- facilita a analise dos casos mais urgentes\n- permite abrir o detalhe do pedido para investigar a causa",
+    ],
   },
   {
+    id: "delivery-failures",
     keywords: [
       "falha na entrega",
       "falhas na entrega",
@@ -258,10 +271,13 @@ const ENHANCED_KNOWLEDGE_BASE: KnowledgeItem[] = [
       "tentativa de entrega",
       "entrega falhou",
     ],
-    response:
+    responses: [
       "Falhas na Entrega\n\nEssa tela mostra pedidos com problema real de entrega.\n- pedidos ja entregues nao devem entrar na contagem pendente\n- fretes de retirada na agencia podem ser ignorados nessa analise\n- a visao ajuda a acompanhar novas falhas e agir com a transportadora",
+      "Falhas na Entrega\n\nAqui ficam os pedidos com insucesso de entrega que ainda merecem acompanhamento.\n- entregue nao entra como pendencia\n- retirada na agencia pode ser desconsiderada dependendo da regra\n- a tela ajuda a separar falha real de ruido operacional",
+    ],
   },
   {
+    id: "import",
     keywords: [
       "importar",
       "csv",
@@ -272,10 +288,13 @@ const ENHANCED_KNOWLEDGE_BASE: KnowledgeItem[] = [
       "layout",
       "dados",
     ],
-    response:
+    responses: [
       "Importacao de Dados\n\nPara importar pedidos:\n1. acesse Importar CSV\n2. envie um arquivo CSV ou XLSX\n3. o sistema valida e processa a carga\n\nRegras importantes:\n- pedidos cancelados sao ignorados\n- o arquivo deve trazer dados do pedido, cliente, frete, datas e endereco",
+      "Importacao\n\nPara subir uma planilha:\n1. abra Importar CSV\n2. envie o arquivo\n3. aguarde a validacao e o processamento\n\nO ideal e que o arquivo traga dados de pedido, cliente, frete, datas e endereco.",
+    ],
   },
   {
+    id: "sync",
     keywords: [
       "sync",
       "sincronizar",
@@ -287,11 +306,16 @@ const ENHANCED_KNOWLEDGE_BASE: KnowledgeItem[] = [
       "automatico",
       "relatorio de sincronizacao",
       "relatorio sync",
+      "sync da tray",
+      "sync de rastreio",
     ],
-    response:
-      "Posso te ajudar melhor com sincronizacao de pedidos se voce me confirmar o foco.\n\nMe diga se a sua duvida e sobre:\n1. passo a passo para sincronizar manualmente\n2. como funciona o sync automatico\n3. diferenca entre sync de rastreio e sync da Tray\n4. relatorio de sincronizacao\n5. pedido que nao sincronizou\n6. alguma funcionalidade especifica da sincronizacao",
+    responses: [
+      "Sincronizacao\n\nPosso te ajudar melhor se voce me confirmar o foco.\n1. passo a passo para sincronizar manualmente\n2. como funciona o sync automatico\n3. diferenca entre sync de rastreio e sync da Tray\n4. relatorio de sincronizacao\n5. pedido que nao sincronizou\n6. alguma funcionalidade especifica da sincronizacao",
+      "Sincronizacao de pedidos\n\nConsigo te orientar melhor se voce me disser qual parte da sincronizacao quer entender.\n\nPode ser:\n1. sync manual\n2. sync automatico\n3. sync de rastreio\n4. sync da Tray\n5. relatorio de sync\n6. erro ou comportamento inesperado",
+    ],
   },
   {
+    id: "tray",
     keywords: [
       "tray",
       "integracao tray",
@@ -299,10 +323,13 @@ const ENHANCED_KNOWLEDGE_BASE: KnowledgeItem[] = [
       "oauth tray",
       "loja tray",
     ],
-    response:
+    responses: [
       "Integracao Tray\n\nA integracao com a Tray permite:\n- autorizar a loja na tela de Integracao\n- acompanhar o status da integracao\n- sincronizar pedidos da Tray\n- reaproveitar dados da Tray em recursos como recotacao de frete",
+      "Tray\n\nCom a integracao da Tray voce consegue autorizar a loja, acompanhar o status da conexao, sincronizar pedidos e usar os dados da plataforma em recursos como recotacao de frete.",
+    ],
   },
   {
+    id: "freight",
     keywords: [
       "frete",
       "recalculado",
@@ -310,11 +337,15 @@ const ENHANCED_KNOWLEDGE_BASE: KnowledgeItem[] = [
       "cotacao",
       "quote",
       "frete recalculado atual",
+      "diferenca frete",
     ],
-    response:
+    responses: [
       "Frete recalculado\n\nA plataforma suporta recotacao de frete por pedido e em lote.\n- o calculo depende de CEP valido e itens reais do pedido\n- a comparacao entre frete pago e frete recalculado ajuda a encontrar divergencias\n- a cotacao usa os dados da integracao quando eles estao disponiveis",
+      "Recotacao de frete\n\nEsse recurso compara o frete pago com uma nova cotacao.\n- depende de CEP e itens reais do pedido\n- ajuda a enxergar diferenca de frete\n- usa os dados disponiveis da integracao quando necessario",
+    ],
   },
   {
+    id: "release-notes",
     keywords: [
       "release notes",
       "patch notes",
@@ -322,10 +353,13 @@ const ENHANCED_KNOWLEDGE_BASE: KnowledgeItem[] = [
       "ultima atualizacao",
       "release",
     ],
-    response:
+    responses: [
       "Release Notes e Ultimas Atualizacoes\n\nA plataforma possui historico de atualizacoes publicadas.\n- administradores podem montar e enviar release notes por e-mail\n- a tela Ultimas Atualizacoes mostra o historico enviado\n- cada item exibe versao, resumo, novidades, ajustes e a previa do template",
+      "Ultimas Atualizacoes\n\nAdministradores conseguem montar release notes, enviar por e-mail e acompanhar o historico na tela de atualizacoes com versao, resumo, novidades e ajustes.",
+    ],
   },
   {
+    id: "admin",
     keywords: [
       "admin",
       "administracao",
@@ -337,20 +371,26 @@ const ENHANCED_KNOWLEDGE_BASE: KnowledgeItem[] = [
       "acesso",
       "senha",
     ],
-    response:
+    responses: [
       "Painel Administrativo\n\nNo painel administrativo ou de integracao voce pode:\n- gerenciar usuarios\n- definir perfil ADMIN ou USER\n- cadastrar e gerenciar empresas\n- configurar integracoes da empresa atual\n- enviar release notes\n\nAlgumas acoes exigem permissao de administrador.",
+      "Administracao\n\nSe voce tiver permissao de ADMIN, consegue gerenciar usuarios, empresas, integracoes da empresa ativa e recursos administrativos como envio de release notes.",
+    ],
   },
   {
+    id: "company-switch",
     keywords: [
       "trocar empresa",
       "empresa atual",
       "alternar empresa",
       "mudar empresa",
     ],
-    response:
+    responses: [
       "Troca de empresa\n\nUsuarios com acesso administrativo podem alternar a empresa ativa quando houver mais de uma empresa disponivel.\n- a troca muda o contexto da operacao\n- pedidos, integracoes e configuracoes passam a refletir a empresa selecionada",
+      "Empresa ativa\n\nQuando voce troca a empresa ativa, todo o contexto muda junto: pedidos, integracoes, relatorios e configuracoes passam a refletir a empresa selecionada.",
+    ],
   },
   {
+    id: "channel-logistics",
     keywords: [
       "logistica do canal",
       "canal",
@@ -362,10 +402,13 @@ const ENHANCED_KNOWLEDGE_BASE: KnowledgeItem[] = [
       "retirada",
       "agencia",
     ],
-    response:
+    responses: [
       "Logistica do Canal e fretes especiais\n\nQuando o frete e administrado pelo marketplace, o pedido pode aparecer como Logistica do Canal.\n- isso e comum em operacoes como Shopee Xpress, Mercado Envios e Coletas ME2\n- em alguns cenarios a plataforma ignora fretes de retirada na agencia em visoes especificas\n- o rastreio pode ser limitado quando a responsabilidade fica com o canal",
+      "Logistica do Canal\n\nEsse status costuma aparecer quando a entrega e controlada pelo proprio marketplace.\n- Shopee Xpress e Mercado Envios sao exemplos comuns\n- o rastreio pode ficar mais limitado\n- alguns fretes especiais podem ser tratados de forma diferente em visoes especificas",
+    ],
   },
   {
+    id: "access",
     keywords: [
       "login",
       "esqueci a senha",
@@ -373,23 +416,24 @@ const ENHANCED_KNOWLEDGE_BASE: KnowledgeItem[] = [
       "convite",
       "acesso por link",
     ],
-    response:
+    responses: [
       "Acesso e senha\n\nA plataforma possui fluxo de login e definicao de senha.\n- o usuario pode solicitar redefinicao de senha\n- convites podem ser concluidos por link de acesso\n- algumas rotas e configuracoes so ficam disponiveis apos autenticacao",
+      "Login e senha\n\nSe a duvida for de acesso, a plataforma trabalha com autenticacao, redefinicao de senha e convite por link quando aplicavel.",
+    ],
   },
   {
+    id: "support",
     keywords: [
-      "ola",
-      "oi",
-      "ajuda",
-      "bom dia",
-      "boa tarde",
-      "boa noite",
-      "comecar",
-      "iniciar",
-      "help",
+      "suporte",
+      "contato",
+      "ajuda rapida",
+      "faq",
+      "falar com o suporte",
     ],
-    response:
-      "Ola! Eu sou a Muricoca.\n\nPosso te ajudar com as funcoes do Avantracking, como Dashboard, Pedidos, Alertas, Falhas na Entrega, Importacao, Sync, Tray, Frete recalculado, Administracao e Release Notes.\n\nSe eu nao entender sua duvida, vou te orientar a entrar em contato com o desenvolvedor da plataforma.",
+    responses: [
+      "Suporte\n\nSe voce precisar abrir um atendimento, use o botao Suporte no canto superior direito.\n- a tela preenche contexto da conta automaticamente\n- voce descreve o caso\n- a solicitacao e enviada com os dados da conta para agilizar o retorno",
+      "Ajuda e suporte\n\nA tela de Suporte serve para registrar duvidas, bugs e pedidos com o contexto da conta ativa, email de login e tela em uso.",
+    ],
   },
 ];
 
@@ -399,7 +443,7 @@ export const Chatbot: React.FC = () => {
     {
       id: "0",
       role: "model",
-      text: `Ola! Eu sou a ${BOT_NAME}.\n\nPosso te ajudar com Dashboard, Pedidos, Importacao, Alertas, Falhas na Entrega, Sync, Tray, Frete recalculado, Administracao e Release Notes.\n\nSe eu nao entender sua duvida, vou te orientar a entrar em contato com o desenvolvedor da plataforma.`,
+      text: DEFAULT_WELCOME_MESSAGE,
     },
   ]);
   const [input, setInput] = useState("");
@@ -409,6 +453,7 @@ export const Chatbot: React.FC = () => {
   const [launcherPosition, setLauncherPosition] = useState({ x: 0, y: 0 });
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const knowledgeCursorRef = useRef<Record<string, number>>({});
   const dragStateRef = useRef({
     pointerId: -1,
     startX: 0,
@@ -450,7 +495,7 @@ export const Chatbot: React.FC = () => {
     return () => window.removeEventListener("resize", updateViewport);
   }, []);
 
-  const findResponse = (text: string): string | null => {
+  const findKnowledgeItem = (text: string): KnowledgeItem | null => {
     const normalizedText = normalizeKnowledgeText(text);
     let bestMatch: KnowledgeItem | null = null;
     let bestScore = 0;
@@ -463,8 +508,7 @@ export const Chatbot: React.FC = () => {
           return total;
         }
 
-        const keywordWeight = Math.max(1, normalizedKeyword.split(" ").length * 2);
-        return total + keywordWeight;
+        return total + Math.max(1, normalizedKeyword.split(" ").length * 2);
       }, 0);
 
       if (score > bestScore) {
@@ -473,7 +517,14 @@ export const Chatbot: React.FC = () => {
       }
     }
 
-    return bestMatch && bestScore > 0 ? bestMatch.response : null;
+    return bestMatch && bestScore > 0 ? bestMatch : null;
+  };
+
+  const getKnowledgeResponse = (item: KnowledgeItem) => {
+    const currentIndex = knowledgeCursorRef.current[item.id] || 0;
+    const response = item.responses[currentIndex % item.responses.length];
+    knowledgeCursorRef.current[item.id] = currentIndex + 1;
+    return response;
   };
 
   const askAI = async (
@@ -492,9 +543,7 @@ export const Chatbot: React.FC = () => {
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
       const msg =
-        typeof data?.error === "string"
-          ? data.error
-          : `HTTP ${response.status}`;
+        typeof data?.error === "string" ? data.error : `HTTP ${response.status}`;
       throw new Error(msg);
     }
     if (typeof data?.text !== "string" || !data.text.trim()) {
@@ -507,7 +556,7 @@ export const Chatbot: React.FC = () => {
     e?.preventDefault();
     if (!input.trim() || isLoading) return;
 
-    const userText = input;
+    const userText = input.trim();
     setInput("");
 
     const userMsg: Message = {
@@ -515,15 +564,33 @@ export const Chatbot: React.FC = () => {
       role: "user",
       text: userText,
     };
+
     setMessages((prev) => [...prev, userMsg]);
     setIsLoading(true);
 
-    const quickResponse = findResponse(userText);
-
-    if (quickResponse) {
+    const conversationalResponse = getConversationalResponse(userText);
+    if (conversationalResponse) {
       setMessages((prev) => [
         ...prev,
-        { id: Date.now().toString(), role: "model", text: quickResponse },
+        { id: `${Date.now()}-smalltalk`, role: "model", text: conversationalResponse },
+      ]);
+      setIsLoading(false);
+      return;
+    }
+
+    const shouldUseStructuredRequest = shouldUseStructuredChatRequest(userText);
+    const knowledgeItem = shouldUseStructuredRequest
+      ? null
+      : findKnowledgeItem(userText);
+
+    if (knowledgeItem) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `${Date.now()}-knowledge`,
+          role: "model",
+          text: getKnowledgeResponse(knowledgeItem),
+        },
       ]);
       setIsLoading(false);
       return;
@@ -535,7 +602,7 @@ export const Chatbot: React.FC = () => {
       setMessages((prev) => [
         ...prev,
         {
-          id: Date.now().toString(),
+          id: `${Date.now()}-ai`,
           role: "model",
           text: isUncertainAiResponse(aiText)
             ? SUPPORT_FALLBACK_MESSAGE
@@ -546,7 +613,7 @@ export const Chatbot: React.FC = () => {
       setMessages((prev) => [
         ...prev,
         {
-          id: Date.now().toString(),
+          id: `${Date.now()}-fallback`,
           role: "model",
           text: SUPPORT_FALLBACK_MESSAGE,
         },
@@ -630,98 +697,98 @@ export const Chatbot: React.FC = () => {
     >
       {isOpen && (
         <div
-          className="pointer-events-auto w-[320px] md:w-[380px] h-[500px] bg-white dark:bg-[#151725] rounded-2xl shadow-2xl border border-slate-200 dark:border-white/10 flex flex-col overflow-hidden animate-in slide-in-from-bottom-10 fade-in duration-300"
+          className="pointer-events-auto flex h-[500px] w-[320px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl animate-in slide-in-from-bottom-10 fade-in duration-300 dark:border-white/10 dark:bg-[#151725] md:w-[380px]"
           style={{
             position: "absolute",
             [shouldOpenAbove ? "bottom" : "top"]: BOT_BUTTON_SIZE + BOT_WINDOW_GAP,
             [shouldOpenToLeft ? "right" : "left"]: 0,
           }}
         >
-          <div className="p-4 bg-gradient-to-r from-blue-600 to-purple-600 flex items-center justify-between shrink-0">
+          <div className="flex shrink-0 items-center justify-between bg-gradient-to-r from-blue-600 to-purple-600 p-4">
             <div className="flex items-center gap-2 text-white">
-              <div className="p-1.5 bg-white/20 rounded-full backdrop-blur-sm">
-                <Sparkles className="w-4 h-4" />
+              <div className="rounded-full bg-white/20 p-1.5 backdrop-blur-sm">
+                <Sparkles className="h-4 w-4" />
               </div>
               <div>
-                <h3 className="font-bold text-sm">{BOT_NAME}</h3>
-                <p className="text-[10px] opacity-80 flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 bg-green-400 rounded-full"></span>{" "}
+                <h3 className="text-sm font-bold">{BOT_NAME}</h3>
+                <p className="flex items-center gap-1 text-[10px] opacity-80">
+                  <span className="h-1.5 w-1.5 rounded-full bg-green-400"></span>
                   Online
                 </p>
               </div>
             </div>
             <button
               onClick={() => setIsOpen(false)}
-              className="text-white/80 hover:text-white hover:bg-white/10 p-1.5 rounded-lg transition-colors"
+              className="rounded-lg p-1.5 text-white/80 transition-colors hover:bg-white/10 hover:text-white"
             >
-              <X className="w-5 h-5" />
+              <X className="h-5 w-5" />
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50 dark:bg-[#0B0C15]">
+          <div className="flex-1 space-y-4 overflow-y-auto bg-slate-50 p-4 dark:bg-[#0B0C15]">
             {messages.map((msg) => (
               <div
                 key={msg.id}
                 className={clsx(
-                  "flex gap-3 max-w-[90%]",
+                  "flex max-w-[90%] gap-3",
                   msg.role === "user" ? "ml-auto flex-row-reverse" : "",
                 )}
               >
                 <div
                   className={clsx(
-                    "w-8 h-8 rounded-full flex items-center justify-center shrink-0 border",
+                    "flex h-8 w-8 shrink-0 items-center justify-center rounded-full border",
                     msg.role === "user"
-                      ? "bg-slate-200 dark:bg-white/10 border-slate-300 dark:border-white/5"
-                      : "bg-blue-100 dark:bg-blue-900/20 border-blue-200 dark:border-blue-900/30",
+                      ? "border-slate-300 bg-slate-200 dark:border-white/5 dark:bg-white/10"
+                      : "border-blue-200 bg-blue-100 dark:border-blue-900/30 dark:bg-blue-900/20",
                   )}
                 >
                   {msg.role === "user" ? (
-                    <User className="w-4 h-4 text-slate-600 dark:text-slate-300" />
+                    <User className="h-4 w-4 text-slate-600 dark:text-slate-300" />
                   ) : isAvatarOk ? (
                     <img
                       src={BOT_AVATAR_SRC}
                       alt={BOT_NAME}
-                      className="w-5 h-5 object-contain"
+                      className="h-5 w-5 object-contain"
                       onError={() => setIsAvatarOk(false)}
                     />
                   ) : (
-                    <Bot className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                    <Bot className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                   )}
                 </div>
 
                 <div
                   className={clsx(
-                    "p-3 rounded-2xl text-sm shadow-sm",
+                    "rounded-2xl p-3 text-sm shadow-sm",
                     msg.role === "user"
-                      ? "bg-blue-600 text-white rounded-tr-none"
-                      : "bg-white dark:bg-[#1A1D2D] text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-white/5 rounded-tl-none",
+                      ? "rounded-tr-none bg-blue-600 text-white"
+                      : "rounded-tl-none border border-slate-200 bg-white text-slate-700 dark:border-white/5 dark:bg-[#1A1D2D] dark:text-slate-200",
                   )}
                 >
                   <div className="whitespace-pre-wrap leading-relaxed">
-                    {msg.text}
+                    {renderRichText(msg.text)}
                   </div>
                 </div>
               </div>
             ))}
 
             {isLoading && (
-              <div className="flex gap-3 max-w-[85%]">
-                <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center shrink-0 overflow-hidden">
+              <div className="flex max-w-[85%] gap-3">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-blue-100 dark:bg-blue-900/20">
                   {isAvatarOk ? (
                     <img
                       src={BOT_AVATAR_SRC}
                       alt={BOT_NAME}
-                      className="w-5 h-5 object-contain"
+                      className="h-5 w-5 object-contain"
                       onError={() => setIsAvatarOk(false)}
                     />
                   ) : (
-                    <Bot className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                    <Bot className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                   )}
                 </div>
-                <div className="bg-white dark:bg-[#1A1D2D] p-3 rounded-2xl rounded-tl-none border border-slate-200 dark:border-white/5 flex items-center gap-2">
-                  <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
+                <div className="flex items-center gap-2 rounded-2xl rounded-tl-none border border-slate-200 bg-white p-3 dark:border-white/5 dark:bg-[#1A1D2D]">
+                  <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
                   <span className="text-xs text-slate-400">
-                    Consultando a Muriçoca...
+                    Consultando a Muricoca...
                   </span>
                 </div>
               </div>
@@ -731,22 +798,22 @@ export const Chatbot: React.FC = () => {
 
           <form
             onSubmit={handleSend}
-            className="p-3 bg-white dark:bg-[#151725] border-t border-slate-200 dark:border-white/5"
+            className="border-t border-slate-200 bg-white p-3 dark:border-white/5 dark:bg-[#151725]"
           >
             <div className="relative flex items-center gap-2">
               <input
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="Ex: Como importar csv?"
-                className="w-full bg-slate-100 dark:bg-black/20 border border-slate-200 dark:border-white/10 rounded-xl pl-4 pr-12 py-3 text-sm focus:outline-none focus:border-blue-500 dark:text-white transition-colors"
+                placeholder="Ex: quantos pedidos estao atrasados?"
+                className="w-full rounded-xl border border-slate-200 bg-slate-100 py-3 pl-4 pr-12 text-sm transition-colors focus:border-blue-500 focus:outline-none dark:border-white/10 dark:bg-black/20 dark:text-white"
               />
               <button
                 type="submit"
                 disabled={isLoading || !input.trim()}
-                className="absolute right-2 p-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:hover:bg-blue-600 transition-colors"
+                className="absolute right-2 rounded-lg bg-blue-600 p-1.5 text-white transition-colors hover:bg-blue-700 disabled:opacity-50 disabled:hover:bg-blue-600"
               >
-                <Send className="w-4 h-4" />
+                <Send className="h-4 w-4" />
               </button>
             </div>
           </form>
@@ -755,10 +822,8 @@ export const Chatbot: React.FC = () => {
 
       <button
         className={clsx(
-          "pointer-events-auto h-16 w-16 rounded-full shadow-lg flex items-center justify-center transition-all duration-300 hover:scale-110 active:scale-95 group relative overflow-hidden touch-none",
-          isOpen
-            ? "bg-slate-800 text-white"
-            : "bg-white border border-white",
+          "pointer-events-auto group relative flex h-16 w-16 items-center justify-center overflow-hidden rounded-full shadow-lg transition-all duration-300 hover:scale-110 active:scale-95 touch-none",
+          isOpen ? "bg-slate-800 text-white" : "border border-white bg-white",
         )}
         style={{
           cursor: dragStateRef.current.pointerId === -1 ? "grab" : "grabbing",
@@ -769,13 +834,13 @@ export const Chatbot: React.FC = () => {
         onPointerCancel={handlePointerCancel}
       >
         {!isOpen && (
-          <div className="absolute inset-0 bg-blue-500/10 dark:bg-blue-400/10 rounded-full animate-pulse opacity-70"></div>
+          <div className="absolute inset-0 rounded-full bg-blue-500/10 opacity-70 animate-pulse dark:bg-blue-400/10"></div>
         )}
 
         {!isOpen && (
           <div
             className={clsx(
-              "absolute inset-[4px] overflow-hidden rounded-full relative z-10 muricoca-float transition-transform duration-300 bg-white",
+              "muricoca-float absolute inset-[4px] relative z-10 overflow-hidden rounded-full bg-white transition-transform duration-300",
               "group-hover:scale-110 group-hover:rotate-2",
             )}
           >
@@ -783,14 +848,14 @@ export const Chatbot: React.FC = () => {
               <video
                 src={BOT_ANIMATED_AVATAR_SRC}
                 poster={BOT_AVATAR_SRC}
-                className="h-full w-full object-cover select-none pointer-events-none"
+                className="pointer-events-none h-full w-full select-none object-cover"
                 autoPlay
                 muted
                 loop
                 playsInline
                 preload="auto"
                 onError={(event) => {
-                  console.error("Erro ao carregar video da Muriçoca", event);
+                  console.error("Erro ao carregar video da Muricoca", event);
                   setIsAnimatedAvatarOk(false);
                 }}
               />
@@ -798,11 +863,11 @@ export const Chatbot: React.FC = () => {
               <img
                 src={BOT_AVATAR_SRC}
                 alt={BOT_NAME}
-                className="h-full w-full object-cover select-none pointer-events-none"
+                className="pointer-events-none h-full w-full select-none object-cover"
                 draggable={false}
                 onDragStart={(event) => event.preventDefault()}
                 onError={(event) => {
-                  console.error("Erro ao carregar imagem do Muriçoca", event);
+                  console.error("Erro ao carregar imagem da Muricoca", event);
                   setIsAvatarOk(false);
                 }}
                 style={{ display: isAvatarOk ? "block" : "none" }}
@@ -812,12 +877,12 @@ export const Chatbot: React.FC = () => {
         )}
 
         {!isAvatarOk && !isOpen && (
-          <MessageCircle className="w-7 h-7 relative z-10 text-blue-600 dark:text-blue-400" />
+          <MessageCircle className="relative z-10 h-7 w-7 text-blue-600 dark:text-blue-400" />
         )}
 
         {isOpen && (
           <div className="absolute inset-0 flex items-center justify-center">
-            <X className="w-7 h-7 relative z-10" />
+            <X className="relative z-10 h-7 w-7" />
           </div>
         )}
       </button>

@@ -186,6 +186,9 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({ order, onClose }) => {
                       <p className="text-xs text-slate-500 dark:text-slate-400">
                         Recalculado em: {formatDateTime(order.recalculatedFreightDate)}
                       </p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 break-all">
+                        Id da cotacao intelipost: {order.originalQuotedFreightQuotationId || "-"}
+                      </p>
                       <p className="text-xs text-slate-500 dark:text-slate-400">
                         Carrier coincide: {formatMatchLabel(order.freightCarrierMatchesRecalculatedQuote)}
                       </p>
