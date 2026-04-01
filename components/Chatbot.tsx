@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { clsx } from "clsx";
 import { fetchWithAuth } from "../utils/authFetch";
+import { useAuth } from "../contexts/AuthContext";
 
 const BOT_NAME = "Muricoca";
 const BOT_AVATAR_SRC = "/muricoca.png";
@@ -55,6 +56,12 @@ const SUPPORT_FALLBACK_MESSAGE =
   "Nao consegui identificar essa funcionalidade com seguranca.\n\nEntre em contato com o desenvolvedor da plataforma para orientacao ou correcao.";
 
 const DEFAULT_WELCOME_MESSAGE = `Ola! Eu sou a ${BOT_NAME}.\n\nPosso te ajudar com Dashboard, Pedidos, Alertas, Falhas na Entrega, Importacao, sincronizacao, Tray, frete recalculado, suporte, administracao e release notes.\n\nSe quiser dados reais da operacao, voce tambem pode pedir contagens e relatorios como:\n- quantos pedidos estao entregues\n- me envie um relatorio com pedidos atrasados\n- me envie um relatorio com pedidos da Jadlog`;
+
+const getUserCallName = (name: string | null | undefined) => {
+  const trimmed = String(name || "").trim();
+  if (!trimmed) return null;
+  return trimmed.split(/\s+/)[0] || null;
+};
 
 const normalizeKnowledgeText = (value: string) =>
   value
@@ -140,6 +147,19 @@ const getConversationalResponse = (text: string) => {
     normalized.includes("otimo")
   ) {
     return "Fico feliz em ajudar. Se quiser, seguimos no proximo ponto.";
+  }
+
+  if (
+    normalized.includes("tudo certo") ||
+    normalized.includes("tudo bem tambem") ||
+    normalized.includes("tudo bem tambem") ||
+    normalized.includes("tambem estou bem") ||
+    normalized.includes("to bem") ||
+    normalized.includes("estou bem") ||
+    normalized.includes("tudo tranquilo") ||
+    normalized.includes("tudo joia")
+  ) {
+    return "Que bom! Qual e a sua duvida? Se quiser, pode me perguntar sobre pedidos, sincronizacao, frete, alertas, Tray ou qualquer outra funcao da plataforma.";
   }
 
   return null;
@@ -438,6 +458,7 @@ const ENHANCED_KNOWLEDGE_BASE: KnowledgeItem[] = [
 ];
 
 export const Chatbot: React.FC = () => {
+  const { user } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -454,6 +475,7 @@ export const Chatbot: React.FC = () => {
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const knowledgeCursorRef = useRef<Record<string, number>>({});
+  const userCallName = getUserCallName(user?.name);
   const dragStateRef = useRef({
     pointerId: -1,
     startX: 0,
@@ -467,11 +489,48 @@ export const Chatbot: React.FC = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
+  const personalizeGreeting = (text: string) => {
+    if (!userCallName) return text;
+    return `Ola ${userCallName}!\n\n${text}`;
+  };
+
+  const personalizeReply = (text: string) => {
+    if (!userCallName) return text;
+
+    const trimmed = text.trim();
+    if (!trimmed) return trimmed;
+
+    if (
+      trimmed.startsWith(`${userCallName},`) ||
+      trimmed.startsWith(`Ola ${userCallName}`) ||
+      trimmed.startsWith(`Oi ${userCallName}`)
+    ) {
+      return trimmed;
+    }
+
+    return `${userCallName}, ${trimmed}`;
+  };
+
   useEffect(() => {
     if (isOpen) {
       scrollToBottom();
     }
   }, [messages, isOpen]);
+
+  useEffect(() => {
+    setMessages((current) => {
+      if (current.length !== 1 || current[0]?.id !== "0") {
+        return current;
+      }
+
+      return [
+        {
+          ...current[0],
+          text: personalizeGreeting(DEFAULT_WELCOME_MESSAGE),
+        },
+      ];
+    });
+  }, [userCallName]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -572,7 +631,11 @@ export const Chatbot: React.FC = () => {
     if (conversationalResponse) {
       setMessages((prev) => [
         ...prev,
-        { id: `${Date.now()}-smalltalk`, role: "model", text: conversationalResponse },
+        {
+          id: `${Date.now()}-smalltalk`,
+          role: "model",
+          text: personalizeReply(conversationalResponse),
+        },
       ]);
       setIsLoading(false);
       return;
@@ -589,7 +652,7 @@ export const Chatbot: React.FC = () => {
         {
           id: `${Date.now()}-knowledge`,
           role: "model",
-          text: getKnowledgeResponse(knowledgeItem),
+          text: personalizeReply(getKnowledgeResponse(knowledgeItem)),
         },
       ]);
       setIsLoading(false);
@@ -604,9 +667,11 @@ export const Chatbot: React.FC = () => {
         {
           id: `${Date.now()}-ai`,
           role: "model",
-          text: isUncertainAiResponse(aiText)
-            ? SUPPORT_FALLBACK_MESSAGE
-            : aiText,
+          text: personalizeReply(
+            isUncertainAiResponse(aiText)
+              ? SUPPORT_FALLBACK_MESSAGE
+              : aiText,
+          ),
         },
       ]);
     } catch {
@@ -615,7 +680,7 @@ export const Chatbot: React.FC = () => {
         {
           id: `${Date.now()}-fallback`,
           role: "model",
-          text: SUPPORT_FALLBACK_MESSAGE,
+          text: personalizeReply(SUPPORT_FALLBACK_MESSAGE),
         },
       ]);
     } finally {

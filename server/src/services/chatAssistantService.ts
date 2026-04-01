@@ -30,7 +30,11 @@ type MatchedFilter = {
   noMovementDays?: number;
   carrierName?: string | null;
   salesChannel?: string | null;
-  title: string;
+  period?: {
+    label: string;
+    start: Date;
+    endExclusive: Date;
+  } | null;
 };
 
 type StructuredResult = {
@@ -177,6 +181,130 @@ const resolveIntentKind = (text: string) => {
   return 'count' as const;
 };
 
+const resolvePeriodFilter = (text: string) => {
+  const normalized = normalizeText(text);
+  const now = new Date();
+
+  if (normalized.includes('ontem')) {
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+    const endExclusive = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    return {
+      label: 'ontem',
+      start,
+      endExclusive,
+    };
+  }
+
+  if (normalized.includes('hoje')) {
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const endExclusive = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+    return {
+      label: 'hoje',
+      start,
+      endExclusive,
+    };
+  }
+
+  const lastDaysMatch = normalized.match(/(?:nos|nos ultimos|ultimos)\s+(\d+)\s*dias?/);
+  if (lastDaysMatch) {
+    const days = Number(lastDaysMatch[1]);
+    if (Number.isFinite(days) && days > 0) {
+      const start = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+      return {
+        label: `nos ultimos ${days} dias`,
+        start,
+        endExclusive: now,
+      };
+    }
+  }
+
+  return null;
+};
+
+const buildStatusEventFilter = (status: OrderStatus, period: NonNullable<MatchedFilter['period']>) => {
+  const containsAny = (...values: string[]) =>
+    values.map((value) => ({
+      contains: value,
+      mode: 'insensitive' as const,
+    }));
+
+  if (status === OrderStatus.DELIVERED) {
+    return {
+      some: {
+        eventDate: {
+          gte: period.start,
+          lt: period.endExclusive,
+        },
+        OR: [
+          { status: { in: ['DELIVERED', 'ENTREGUE'] } },
+          ...containsAny('DELIVERED').map((item) => ({ status: item })),
+          ...containsAny('ENTREGUE').map((item) => ({ description: item })),
+        ],
+      },
+    };
+  }
+
+  if (status === OrderStatus.SHIPPED) {
+    return {
+      some: {
+        eventDate: {
+          gte: period.start,
+          lt: period.endExclusive,
+        },
+        OR: [
+          ...containsAny('SHIPPED', 'TRANSIT').map((item) => ({ status: item })),
+          ...containsAny('EM TRANSITO', 'TRANSITO').map((item) => ({
+            description: item,
+          })),
+        ],
+      },
+    };
+  }
+
+  if (status === OrderStatus.DELIVERY_ATTEMPT) {
+    return {
+      some: {
+        eventDate: {
+          gte: period.start,
+          lt: period.endExclusive,
+        },
+        OR: [
+          ...containsAny('DELIVERY_ATTEMPT', 'TO_BE_DELIVERED').map((item) => ({
+            status: item,
+          })),
+          ...containsAny('SAIU PARA ENTREGA', 'ROTA').map((item) => ({
+            description: item,
+          })),
+        ],
+      },
+    };
+  }
+
+  if (status === OrderStatus.FAILURE) {
+    return {
+      some: {
+        eventDate: {
+          gte: period.start,
+          lt: period.endExclusive,
+        },
+        OR: [
+          ...containsAny('FAILURE', 'FALHA').map((item) => ({ status: item })),
+          ...containsAny('FALHA').map((item) => ({ description: item })),
+        ],
+      },
+    };
+  }
+
+  return {
+    some: {
+      eventDate: {
+        gte: period.start,
+        lt: period.endExclusive,
+      },
+    },
+  };
+};
+
 const buildWhereClause = (companyId: string, filter: MatchedFilter) => {
   const now = new Date();
   const where: any = { companyId };
@@ -212,11 +340,34 @@ const buildWhereClause = (companyId: string, filter: MatchedFilter) => {
     where.salesChannel = filter.salesChannel;
   }
 
+  if (filter.period) {
+    if (filter.status) {
+      where.trackingEvents = buildStatusEventFilter(filter.status, filter.period);
+    } else {
+      where.lastUpdate = {
+        gte: filter.period.start,
+        lt: filter.period.endExclusive,
+      };
+    }
+  }
+
   return where;
 };
 
 const buildFilterLabel = (filter: MatchedFilter) => {
-  const details: string[] = [filter.title];
+  let baseLabel = 'pedidos';
+
+  if (filter.delayedKind === 'platform') {
+    baseLabel = 'pedidos em atraso da plataforma';
+  } else if (filter.delayedKind === 'carrier') {
+    baseLabel = 'pedidos atrasados pela transportadora';
+  } else if (filter.noMovementDays) {
+    baseLabel = `pedidos sem movimentacao ha ${filter.noMovementDays} dias`;
+  } else if (filter.status) {
+    baseLabel = `pedidos com status ${STATUS_LABELS[filter.status] || filter.status}`;
+  }
+
+  const details: string[] = [baseLabel];
 
   if (filter.carrierName) {
     details.push(`da transportadora ${filter.carrierName}`);
@@ -224,6 +375,10 @@ const buildFilterLabel = (filter: MatchedFilter) => {
 
   if (filter.salesChannel) {
     details.push(`do marketplace ${filter.salesChannel}`);
+  }
+
+  if (filter.period) {
+    details.push(filter.period.label);
   }
 
   return details.join(' ');
@@ -412,13 +567,15 @@ class ChatAssistantService {
 
   private async resolveFilters(companyId: string, input: string): Promise<MatchedFilter | null> {
     const normalized = normalizeText(input);
+    const filter: MatchedFilter = {};
+    filter.period = resolvePeriodFilter(input);
 
     if (
       normalized.includes('atraso plataforma') ||
       normalized.includes('atrasados plataforma') ||
       normalized.includes('atrasado plataforma')
     ) {
-      return { delayedKind: 'platform', title: 'pedidos em atraso da plataforma' };
+      filter.delayedKind = 'platform';
     }
 
     if (
@@ -427,7 +584,7 @@ class ChatAssistantService {
       normalized.includes('atrasado transportadora') ||
       normalized.includes('pedidos atrasados')
     ) {
-      return { delayedKind: 'carrier', title: 'pedidos atrasados pela transportadora' };
+      filter.delayedKind = 'carrier';
     }
 
     if (
@@ -436,38 +593,38 @@ class ChatAssistantService {
       normalized.includes('sem atualizacao')
     ) {
       const daysMatch = normalized.match(/(\d+)\s*dias?/);
-      return {
-        noMovementDays: daysMatch ? Number(daysMatch[1]) : 5,
-        title: `pedidos sem movimentacao ha ${daysMatch ? Number(daysMatch[1]) : 5} dias`,
-      };
+      filter.noMovementDays = daysMatch ? Number(daysMatch[1]) : 5;
     }
 
     for (const matcher of STATUS_MATCHERS) {
       if (matcher.phrases.some((phrase) => normalized.includes(phrase))) {
-        return { status: matcher.status, title: matcher.title };
+        filter.status = matcher.status;
+        break;
       }
     }
 
     const carrierName = await this.resolveExactCarrierName(companyId, normalized);
     if (carrierName) {
-      return {
-        carrierName,
-        title: 'pedidos filtrados por transportadora',
-      };
+      filter.carrierName = carrierName;
     }
 
     const salesChannel = await this.resolveExactMarketplaceName(companyId, normalized);
     if (salesChannel) {
-      return {
-        salesChannel,
-        title: 'pedidos filtrados por marketplace',
-      };
+      filter.salesChannel = salesChannel;
+    }
+
+    if (
+      filter.status ||
+      filter.delayedKind ||
+      filter.noMovementDays ||
+      filter.carrierName ||
+      filter.salesChannel
+    ) {
+      return filter;
     }
 
     if (normalized.includes('todos os pedidos') || normalized === 'relatorio') {
-      return {
-        title: 'todos os pedidos',
-      };
+      return {};
     }
 
     return null;
