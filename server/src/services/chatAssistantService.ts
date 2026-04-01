@@ -24,6 +24,18 @@ const STATUS_LABELS: Record<OrderStatus, string> = {
   CHANNEL_LOGISTICS: 'Logistica do canal',
 };
 
+const STATUS_SUMMARY_ORDER: OrderStatus[] = [
+  OrderStatus.PENDING,
+  OrderStatus.CREATED,
+  OrderStatus.SHIPPED,
+  OrderStatus.DELIVERY_ATTEMPT,
+  OrderStatus.DELIVERED,
+  OrderStatus.FAILURE,
+  OrderStatus.RETURNED,
+  OrderStatus.CANCELED,
+  OrderStatus.CHANNEL_LOGISTICS,
+];
+
 const OPTION_MATCH_STOPWORDS = new Set([
   'da',
   'de',
@@ -156,6 +168,36 @@ const hasDelayHint = (normalized: string) =>
   normalized.includes('em atraso') ||
   normalized.includes('transportadora') ||
   normalized.includes('plataforma');
+
+const hasGenericDelayTerm = (normalized: string) =>
+  normalized.includes('atrasado') ||
+  normalized.includes('atrasados') ||
+  normalized.includes('em atraso') ||
+  normalized.includes('pedidos atrasados');
+
+const hasExplicitPlatformDelayHint = (normalized: string) =>
+  normalized.includes('atraso plataforma') ||
+  normalized.includes('atrasados plataforma') ||
+  normalized.includes('atrasado plataforma') ||
+  normalized.includes('em atraso da plataforma') ||
+  normalized.includes('em atraso plataforma') ||
+  (normalized.includes('plataforma') && hasGenericDelayTerm(normalized));
+
+const hasExplicitCarrierDelayHint = (normalized: string) =>
+  normalized.includes('atraso transportadora') ||
+  normalized.includes('atrasados transportadora') ||
+  normalized.includes('atrasado transportadora') ||
+  normalized.includes('atrasados pela') ||
+  normalized.includes('atrasado pela') ||
+  normalized.includes('atrasados por') ||
+  normalized.includes('atrasado por') ||
+  (normalized.includes('transportadora') && hasGenericDelayTerm(normalized));
+
+const isAmbiguousDelayRequest = (normalized: string, carrierName?: string | null) =>
+  hasGenericDelayTerm(normalized) &&
+  !hasExplicitPlatformDelayHint(normalized) &&
+  !hasExplicitCarrierDelayHint(normalized) &&
+  !carrierName;
 
 const hasNoMovementHint = (normalized: string) =>
   normalized.includes('sem movimentacao') ||
@@ -656,7 +698,68 @@ const buildAmbiguousPrompt = () =>
     '- pedidos de um marketplace especifico',
   ].join('\n');
 
+const buildDelayClarificationPrompt = () =>
+  [
+    'Posso consultar os pedidos atrasados para voce, mas preciso confirmar o tipo de atraso.',
+    '',
+    'Voce quer ver:',
+    '- atraso da plataforma',
+    '- atraso da transportadora',
+    '',
+    'Se quiser, ja pode responder por exemplo:',
+    '- pedidos atrasados da plataforma',
+    '- pedidos atrasados da transportadora',
+  ].join('\n');
+
 class ChatAssistantService {
+  private async buildCarrierStatusSummary(companyId: string, filter: MatchedFilter) {
+    if (!filter.carrierName) {
+      return null;
+    }
+
+    const summaryBaseFilter: MatchedFilter = {
+      carrierName: filter.carrierName,
+      salesChannel: filter.salesChannel || null,
+      period: filter.period || null,
+    };
+
+    const statusRows = await prisma.order.groupBy({
+      by: ['status'],
+      where: buildWhereClause(companyId, summaryBaseFilter),
+      _count: {
+        _all: true,
+      },
+    });
+
+    const countsByStatus = new Map<OrderStatus, number>(
+      statusRows.map((row) => [row.status as OrderStatus, row._count._all]),
+    );
+
+    const carrierDelayedCount = await prisma.order.count({
+      where: buildWhereClause(companyId, {
+        ...summaryBaseFilter,
+        delayedKind: 'carrier',
+      }),
+    });
+
+    const platformDelayedCount = await prisma.order.count({
+      where: buildWhereClause(companyId, {
+        ...summaryBaseFilter,
+        delayedKind: 'platform',
+      }),
+    });
+
+    return [
+      `Resumo por status da transportadora ${filter.carrierName}:`,
+      `- Atraso Transportadora: ${carrierDelayedCount}`,
+      `- Atraso Plataforma: ${platformDelayedCount}`,
+      ...STATUS_SUMMARY_ORDER.map(
+        (status) =>
+          `- ${STATUS_LABELS[status] || status}: ${countsByStatus.get(status) || 0}`,
+      ),
+    ].join('\n');
+  }
+
   private async resolveExactCarrierName(companyId: string, normalizedInput: string) {
     const carriers = await prisma.order.findMany({
       where: {
@@ -713,29 +816,13 @@ class ChatAssistantService {
     const filter: MatchedFilter = {};
     filter.period = resolvePeriodFilter(input);
 
-    if (
-      normalized.includes('atraso plataforma') ||
-      normalized.includes('atrasados plataforma') ||
-      normalized.includes('atrasado plataforma') ||
-      normalized.includes('em atraso da plataforma') ||
-      normalized.includes('em atraso plataforma')
-    ) {
+    if (hasExplicitPlatformDelayHint(normalized)) {
       filter.delayedKind = 'platform';
     }
 
-    if (
-      normalized.includes('atraso transportadora') ||
-      normalized.includes('atrasados transportadora') ||
-      normalized.includes('atrasado transportadora') ||
-      normalized.includes('atrasado') ||
-      normalized.includes('atrasados') ||
-      normalized.includes('em atraso') ||
-      normalized.includes('pedidos atrasados') ||
-      normalized.includes('atrasados pela') ||
-      normalized.includes('atrasado pela')
-    ) {
+    if (hasExplicitCarrierDelayHint(normalized)) {
       if (filter.delayedKind !== 'platform') {
-      filter.delayedKind = 'carrier';
+        filter.delayedKind = 'carrier';
       }
     }
 
@@ -758,6 +845,14 @@ class ChatAssistantService {
     const carrierName = await this.resolveExactCarrierName(companyId, normalized);
     if (carrierName) {
       filter.carrierName = carrierName;
+    }
+
+    if (
+      !filter.delayedKind &&
+      carrierName &&
+      hasGenericDelayTerm(normalized)
+    ) {
+      filter.delayedKind = 'carrier';
     }
 
     const salesChannel = await this.resolveExactMarketplaceName(companyId, normalized);
@@ -815,6 +910,19 @@ class ChatAssistantService {
 
     const filter = await this.resolveFilters(company.id, input.text);
     if (!filter) {
+      const normalizedInput = normalizeText(input.text);
+      const inferredCarrier = await this.resolveExactCarrierName(
+        company.id,
+        normalizedInput,
+      );
+
+      if (isAmbiguousDelayRequest(normalizedInput, inferredCarrier)) {
+        return {
+          handled: true,
+          text: buildDelayClarificationPrompt(),
+        };
+      }
+
       return {
         handled: true,
         text: buildAmbiguousPrompt(),
@@ -888,10 +996,16 @@ class ChatAssistantService {
       ),
     ]);
 
+    const carrierStatusSummary = await this.buildCarrierStatusSummary(
+      company.id,
+      filter,
+    );
+
     return {
       handled: true,
       text: [
         `Preparei um relatorio com ${count} ${filterLabel} na empresa ${company.name}.`,
+        ...(carrierStatusSummary ? ['', carrierStatusSummary] : []),
         '',
         `Relatorio HTML: ${htmlUrl}`,
         `CSV: ${csvUrl}`,

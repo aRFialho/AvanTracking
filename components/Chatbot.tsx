@@ -166,6 +166,7 @@ const shouldUseStructuredChatRequest = (text: string) => {
 
 const getConversationalResponse = (text: string) => {
   const normalized = normalizeKnowledgeText(text);
+  const compact = normalized.replace(/[?!.,;]/g, "").trim();
 
   const asksHowAreYou =
     normalized.includes("tudo bem") ||
@@ -213,6 +214,15 @@ const getConversationalResponse = (text: string) => {
     normalized.includes("tudo bem tambem") ||
     normalized.includes("tudo bem tambem") ||
     normalized.includes("tambem estou bem") ||
+    normalized.includes("bem e voce") ||
+    normalized.includes("bem e vc") ||
+    normalized.includes("estou bem e voce") ||
+    normalized.includes("estou bem e vc") ||
+    compact === "bem" ||
+    compact === "to bem" ||
+    compact === "estou bem" ||
+    compact === "tudo certo" ||
+    compact === "tudo tranquilo" ||
     normalized.includes("to bem") ||
     normalized.includes("estou bem") ||
     normalized.includes("tudo tranquilo") ||
