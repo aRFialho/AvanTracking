@@ -20,6 +20,7 @@ import {
   Mail,
   Send,
   Sparkles,
+  Filter,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { fetchWithAuth } from "../utils/authFetch";
@@ -77,6 +78,34 @@ interface PatchNotesFormData {
   newFeatures: string;
   adjustments: string;
 }
+
+const CLEAR_STATUS_OPTIONS = [
+  { value: "ALL", label: "Todos os status" },
+  { value: "PENDING", label: "Pendente" },
+  { value: "CREATED", label: "Criado" },
+  { value: "SHIPPED", label: "Em transito" },
+  { value: "DELIVERY_ATTEMPT", label: "Saiu para entrega" },
+  { value: "DELIVERED", label: "Entregue" },
+  { value: "FAILURE", label: "Falha na entrega" },
+  { value: "RETURNED", label: "Devolvido" },
+  { value: "CANCELED", label: "Cancelado" },
+  { value: "CHANNEL_LOGISTICS", label: "Logistica do canal" },
+] as const;
+
+const CLEAR_PERIOD_OPTIONS = [
+  { value: "ALL", label: "Todos" },
+  { value: "7_DAYS", label: "7 dias" },
+  { value: "15_DAYS", label: "15 dias" },
+  { value: "30_DAYS", label: "30 dias" },
+  { value: "CUSTOM", label: "Personalizado" },
+] as const;
+
+const normalizeIntegrationSearchText = (value: string) =>
+  value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
 
 const escapeHtml = (value: string) =>
   value
@@ -187,6 +216,7 @@ export const AdminPanel: React.FC = () => {
   });
   const [isCheckingTrayStatus, setIsCheckingTrayStatus] = useState(false);
   const [currentCompany, setCurrentCompany] = useState<Company | null>(null);
+  const [integrationSearch, setIntegrationSearch] = useState("");
   const [trayIntegrationEnabled, setTrayIntegrationEnabled] = useState(true);
   const [intelipostIntegrationEnabled, setIntelipostIntegrationEnabled] =
     useState(true);
@@ -223,9 +253,13 @@ export const AdminPanel: React.FC = () => {
 
   // Limpeza de DB States
   const [isClearModalOpen, setIsClearModalOpen] = useState(false);
-  const [clearType, setClearType] = useState<"ALL" | "DELIVERED_7_DAYS">("ALL");
+  const [clearType, setClearType] = useState<"ALL" | "DELIVERED_7_DAYS" | "FILTERED">("ALL");
   const [clearCompanyId, setClearCompanyId] = useState("");
   const [clearPassword, setClearPassword] = useState("");
+  const [clearStatus, setClearStatus] = useState<"ALL" | "PENDING" | "CREATED" | "SHIPPED" | "DELIVERY_ATTEMPT" | "DELIVERED" | "FAILURE" | "RETURNED" | "CANCELED" | "CHANNEL_LOGISTICS">("ALL");
+  const [clearPeriod, setClearPeriod] = useState<"ALL" | "7_DAYS" | "15_DAYS" | "30_DAYS" | "CUSTOM">("ALL");
+  const [clearCustomStartDate, setClearCustomStartDate] = useState("");
+  const [clearCustomEndDate, setClearCustomEndDate] = useState("");
   const [isClearing, setIsClearing] = useState(false);
 
   // Form State (User)
@@ -836,6 +870,10 @@ export const AdminPanel: React.FC = () => {
           type: clearType,
           password: clearPassword,
           companyId: clearCompanyId,
+          status: clearStatus,
+          period: clearPeriod,
+          customStartDate: clearCustomStartDate,
+          customEndDate: clearCustomEndDate,
         }),
       });
 
@@ -846,15 +884,30 @@ export const AdminPanel: React.FC = () => {
 
       const result = await response.json();
       alert(result.message || "Operação realizada com sucesso!");
-      setIsClearModalOpen(false);
-      setClearCompanyId("");
-      setClearPassword("");
+      resetClearDatabaseModal();
     } catch (error: any) {
       alert(error.message);
     } finally {
       setIsClearing(false);
     }
   };
+
+  const resetClearDatabaseModal = () => {
+    setIsClearModalOpen(false);
+    setClearCompanyId("");
+    setClearPassword("");
+    setClearStatus("ALL");
+    setClearPeriod("ALL");
+    setClearCustomStartDate("");
+    setClearCustomEndDate("");
+  };
+
+  const clearModalActionLabel =
+    clearType === "ALL"
+      ? "APAGAR TODOS OS PEDIDOS"
+      : clearType === "DELIVERED_7_DAYS"
+        ? "APAGAR PEDIDOS ENTREGUES HA MAIS DE 7 DIAS"
+        : "APAGAR PEDIDOS FILTRADOS POR STATUS E PERIODO";
 
   if (loading)
     return (
@@ -880,6 +933,28 @@ export const AdminPanel: React.FC = () => {
   const filteredRecipientIds = filteredRecipientUsers.map(
     (userItem) => userItem.id,
   );
+
+  const normalizedIntegrationSearch = normalizeIntegrationSearchText(
+    integrationSearch,
+  );
+  const integrationCardMatches = (...terms: string[]) => {
+    if (!normalizedIntegrationSearch) {
+      return true;
+    }
+
+    return terms.some((term) =>
+      normalizeIntegrationSearchText(term).includes(normalizedIntegrationSearch),
+    );
+  };
+  const hasVisibleIntegrations =
+    integrationCardMatches("tray integracao principal pedidos loja autorizacao") ||
+    integrationCardMatches("intelipost tracking externo client id rastreio") ||
+    integrationCardMatches("ssw require tracking nf cnpj rastreio") ||
+    integrationCardMatches("excecao de transportadora regras importacao ignorar") ||
+    integrationCardMatches("bling erp implementacao futuro") ||
+    integrationCardMatches("sysemp shopping de precos implementacao futuro") ||
+    integrationCardMatches("correios implementacao futuro") ||
+    integrationCardMatches("magazord implementacao futuro");
 
   const IntegrationToggle: React.FC<{
     enabled: boolean;
@@ -1399,19 +1474,38 @@ export const AdminPanel: React.FC = () => {
                   </p>
                 </div>
 
-                <div className="rounded-2xl border border-slate-200 bg-white/80 px-4 py-3 text-sm text-slate-600 shadow-sm dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
+                <div className="rounded-2xl border border-slate-200 bg-white/80 px-4 py-3 text-sm text-slate-600 shadow-sm dark:border-white/10 dark:bg-white/5 dark:text-slate-300 min-w-[280px]">
                   <p className="font-semibold text-slate-700 dark:text-white">
                     Empresa atual: {currentCompany?.name || "Nao vinculada"}
                   </p>
                   <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                     As configuracoes abaixo sao compartilhadas por todos os usuarios desta empresa.
                   </p>
+                  <div className="mt-3">
+                    <label className="block text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400 mb-2">
+                      Buscar integracao
+                    </label>
+                    <input
+                      type="text"
+                      value={integrationSearch}
+                      onChange={(e) => setIntegrationSearch(e.target.value)}
+                      placeholder="Tray, Intelipost, SSW, Correios..."
+                      className="w-full bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white focus:border-blue-500 outline-none"
+                    />
+                  </div>
                 </div>
               </div>
             </div>
           </div>
 
+          {!hasVisibleIntegrations && (
+            <div className="glass-card rounded-2xl border border-slate-200 dark:border-white/10 p-6 text-sm text-slate-500 dark:text-slate-400">
+              Nenhuma integracao encontrada para a busca informada.
+            </div>
+          )}
+
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+            {integrationCardMatches("tray integracao principal pedidos loja autorizacao") && (
             <div className="glass-card rounded-2xl overflow-hidden border border-slate-200 dark:border-white/10">
               <div className="p-5 border-b border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-white/5">
                 <div className="flex items-start justify-between gap-4">
@@ -1498,7 +1592,7 @@ export const AdminPanel: React.FC = () => {
                   </p>
                   {trayStatus.updatedAt && trayIntegrationEnabled && (
                     <p className="mt-1 text-[11px] text-slate-400">
-                      Ultima validacao: {new Date(trayStatus.updatedAt).toLocaleString()}
+                      Ultima validacao: {new Date(String(trayStatus.updatedAt)).toLocaleString()}
                     </p>
                   )}
                 </div>
@@ -1528,7 +1622,9 @@ export const AdminPanel: React.FC = () => {
                 </div>
               </div>
             </div>
+            )}
 
+            {integrationCardMatches("intelipost tracking externo client id rastreio") && (
             <div className="glass-card rounded-2xl overflow-hidden border border-slate-200 dark:border-white/10">
               <div className="p-5 border-b border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-white/5">
                 <div className="flex items-start justify-between gap-4">
@@ -1591,7 +1687,9 @@ export const AdminPanel: React.FC = () => {
                 </div>
               </div>
             </div>
+            )}
 
+            {integrationCardMatches("ssw require tracking nf cnpj rastreio") && (
             <div className="glass-card rounded-2xl overflow-hidden border border-slate-200 dark:border-white/10">
               <div className="p-5 border-b border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-white/5">
                 <div className="flex items-start justify-between gap-4">
@@ -1680,7 +1778,9 @@ export const AdminPanel: React.FC = () => {
                 </div>
               </div>
             </div>
+            )}
 
+            {integrationCardMatches("excecao de transportadora regras importacao ignorar") && (
             <div className="glass-card rounded-2xl overflow-hidden border border-slate-200 dark:border-white/10">
               <div className="p-5 border-b border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-white/5">
                 <div className="flex items-start justify-between gap-4">
@@ -1738,9 +1838,11 @@ export const AdminPanel: React.FC = () => {
                 </div>
               </div>
             </div>
+            )}
           </div>
 
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+            {integrationCardMatches("bling erp implementacao futuro") && (
             <div className="glass-card rounded-2xl overflow-hidden border border-dashed border-slate-300 dark:border-white/10">
               <div className="p-5">
                 <div className="flex items-start justify-between gap-4">
@@ -1763,7 +1865,9 @@ export const AdminPanel: React.FC = () => {
                 </div>
               </div>
             </div>
+            )}
 
+            {integrationCardMatches("sysemp shopping de precos implementacao futuro") && (
             <div className="glass-card rounded-2xl overflow-hidden border border-dashed border-slate-300 dark:border-white/10">
               <div className="p-5">
                 <div className="flex items-start justify-between gap-4">
@@ -1786,11 +1890,62 @@ export const AdminPanel: React.FC = () => {
                 </div>
               </div>
             </div>
+            )}
+
+            {integrationCardMatches("correios implementacao futuro") && (
+            <div className="glass-card rounded-2xl overflow-hidden border border-dashed border-slate-300 dark:border-white/10">
+              <div className="p-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Em implementacao</p>
+                    <img
+                      src="/correios.png"
+                      alt="Correios"
+                      className="mt-3 h-8 w-auto object-contain"
+                    />
+                    <h4 className="mt-2 text-lg font-bold text-slate-800 dark:text-white">Correios</h4>
+                    <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+                      Card reservado para futura integracao com servicos e rastreio dos Correios.
+                    </p>
+                  </div>
+                  <div className="flex flex-col items-end gap-2">
+                    <IntegrationToggle enabled={false} disabled={true} />
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Em implementacao</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            )}
+
+            {integrationCardMatches("magazord implementacao futuro") && (
+            <div className="glass-card rounded-2xl overflow-hidden border border-dashed border-slate-300 dark:border-white/10">
+              <div className="p-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Em implementacao</p>
+                    <img
+                      src="/magazord.png"
+                      alt="Magazord"
+                      className="mt-3 h-8 w-auto object-contain"
+                    />
+                    <h4 className="mt-2 text-lg font-bold text-slate-800 dark:text-white">Magazord</h4>
+                    <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+                      Espaco preparado para futura integracao com a plataforma Magazord.
+                    </p>
+                  </div>
+                  <div className="flex flex-col items-end gap-2">
+                    <IntegrationToggle enabled={false} disabled={true} />
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Em implementacao</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            )}
           </div>
         </div>
       )}
 
-      {false && activeTab === "integration" && (
+      {activeTab === "integration" && false && (
         <div className="glass-card rounded-xl overflow-hidden border border-slate-200 dark:border-white/10">
           <div className="p-4 border-b border-slate-200 dark:border-white/10 bg-slate-50/50 dark:bg-white/5 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
@@ -2033,7 +2188,7 @@ export const AdminPanel: React.FC = () => {
               </p>
               {trayStatus.updatedAt && (
                 <p className="mt-1 text-[11px] text-slate-400">
-                  Última validação: {new Date(trayStatus.updatedAt).toLocaleString()}
+                  Última validação: {new Date(String(trayStatus.updatedAt)).toLocaleString()}
                 </p>
               )}
             </div>
@@ -2066,6 +2221,10 @@ export const AdminPanel: React.FC = () => {
               setClearType("DELIVERED_7_DAYS");
               setClearCompanyId(companies[0]?.id || "");
               setClearPassword("");
+              setClearStatus("DELIVERED");
+              setClearPeriod("7_DAYS");
+              setClearCustomStartDate("");
+              setClearCustomEndDate("");
               setIsClearModalOpen(true);
             }}
             className="flex-1 bg-yellow-500/10 text-yellow-600 border border-yellow-500/20 px-4 py-3 rounded-lg text-sm font-medium hover:bg-yellow-500/20 transition-colors flex items-center justify-center gap-2"
@@ -2079,12 +2238,33 @@ export const AdminPanel: React.FC = () => {
               setClearType("ALL");
               setClearCompanyId(companies[0]?.id || "");
               setClearPassword("");
+              setClearStatus("ALL");
+              setClearPeriod("ALL");
+              setClearCustomStartDate("");
+              setClearCustomEndDate("");
               setIsClearModalOpen(true);
             }}
             className="flex-1 bg-red-500/10 text-red-600 border border-red-500/20 px-4 py-3 rounded-lg text-sm font-medium hover:bg-red-500/20 transition-colors flex items-center justify-center gap-2"
           >
             <Trash2 className="w-4 h-4" />
             Limpar banco de dados de pedidos (TUDO)
+          </button>
+
+          <button
+            onClick={() => {
+              setClearType("FILTERED");
+              setClearCompanyId(companies[0]?.id || "");
+              setClearPassword("");
+              setClearStatus("ALL");
+              setClearPeriod("ALL");
+              setClearCustomStartDate("");
+              setClearCustomEndDate("");
+              setIsClearModalOpen(true);
+            }}
+            className="flex-1 bg-orange-500/10 text-orange-600 border border-orange-500/20 px-4 py-3 rounded-lg text-sm font-medium hover:bg-orange-500/20 transition-colors flex items-center justify-center gap-2"
+          >
+            <Filter className="w-4 h-4" />
+            Excluir pedidos específicos
           </button>
         </div>
       </div>
@@ -2121,7 +2301,6 @@ export const AdminPanel: React.FC = () => {
                   className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white focus:border-blue-500 outline-none"
                 />
               </div>
-
               <div>
                 <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
                   Email
@@ -2136,7 +2315,6 @@ export const AdminPanel: React.FC = () => {
                   className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white focus:border-blue-500 outline-none"
                 />
               </div>
-
               <div>
                 <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
                   Empresa
@@ -2303,11 +2481,7 @@ export const AdminPanel: React.FC = () => {
                 Atenção: Ação Destrutiva
               </h3>
               <button
-                onClick={() => {
-                  setIsClearModalOpen(false);
-                  setClearCompanyId("");
-                  setClearPassword("");
-                }}
+                onClick={resetClearDatabaseModal}
                 className="text-slate-500 hover:text-white"
               >
                 <X className="w-5 h-5" />
@@ -2323,6 +2497,12 @@ export const AdminPanel: React.FC = () => {
               </strong>{" "}
               do banco de dados. Esta ação não pode ser desfeita.
             </div>
+
+            {clearType === "FILTERED" && (
+              <div className="mb-4 rounded-lg border border-red-200 bg-red-50/70 px-3 py-2 text-xs font-medium text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300">
+                Filtro atual: {clearModalActionLabel}
+              </div>
+            )}
 
             <form onSubmit={handleClearDatabase} className="space-y-4">
               <div>
@@ -2344,6 +2524,103 @@ export const AdminPanel: React.FC = () => {
                 </select>
               </div>
 
+              {clearType === "FILTERED" && (
+                <>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                        Status
+                      </label>
+                      <select
+                        value={clearStatus}
+                        onChange={(e) =>
+                          setClearStatus(
+                            e.target.value as
+                              | "ALL"
+                              | "PENDING"
+                              | "CREATED"
+                              | "SHIPPED"
+                              | "DELIVERY_ATTEMPT"
+                              | "DELIVERED"
+                              | "FAILURE"
+                              | "RETURNED"
+                              | "CANCELED"
+                              | "CHANNEL_LOGISTICS",
+                          )
+                        }
+                        className="w-full bg-slate-50 dark:bg-white/5 border border-red-200 dark:border-red-900/30 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white focus:border-red-500 outline-none"
+                      >
+                        {CLEAR_STATUS_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                        Periodo
+                      </label>
+                      <select
+                        value={clearPeriod}
+                        onChange={(e) =>
+                          setClearPeriod(
+                            e.target.value as
+                              | "ALL"
+                              | "7_DAYS"
+                              | "15_DAYS"
+                              | "30_DAYS"
+                              | "CUSTOM",
+                          )
+                        }
+                        className="w-full bg-slate-50 dark:bg-white/5 border border-red-200 dark:border-red-900/30 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white focus:border-red-500 outline-none"
+                      >
+                        {CLEAR_PERIOD_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {clearPeriod === "CUSTOM" && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                          Data inicial
+                        </label>
+                        <input
+                          type="date"
+                          required
+                          value={clearCustomStartDate}
+                          onChange={(e) => setClearCustomStartDate(e.target.value)}
+                          className="w-full bg-slate-50 dark:bg-white/5 border border-red-200 dark:border-red-900/30 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white focus:border-red-500 outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                          Data final
+                        </label>
+                        <input
+                          type="date"
+                          required
+                          value={clearCustomEndDate}
+                          onChange={(e) => setClearCustomEndDate(e.target.value)}
+                          className="w-full bg-slate-50 dark:bg-white/5 border border-red-200 dark:border-red-900/30 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white focus:border-red-500 outline-none"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="rounded-lg border border-orange-200 bg-orange-50/70 px-3 py-2 text-xs text-orange-700 dark:border-orange-500/20 dark:bg-orange-500/10 dark:text-orange-300">
+                    O periodo considera a ultima atualizacao do pedido no sistema.
+                  </div>
+                </>
+              )}
+
               <div>
                 <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
                   Digite a senha de segurança para confirmar:
@@ -2364,11 +2641,7 @@ export const AdminPanel: React.FC = () => {
               <div className="pt-4 flex gap-3">
                 <button
                   type="button"
-                  onClick={() => {
-                    setIsClearModalOpen(false);
-                    setClearCompanyId("");
-                    setClearPassword("");
-                  }}
+                  onClick={resetClearDatabaseModal}
                   className="flex-1 px-4 py-2 rounded-lg font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 dark:text-slate-300 dark:bg-white/5 dark:hover:bg-white/10 transition-colors"
                 >
                   Cancelar

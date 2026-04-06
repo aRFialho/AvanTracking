@@ -96,6 +96,37 @@ const formatDateTime = (value: Date | string | null | undefined) => {
   return Number.isNaN(parsed.getTime()) ? "-" : parsed.toLocaleString("pt-BR");
 };
 
+const inferTrackingSourceLabel = (order: Order) => {
+  if (order.trackingSourceLabel) {
+    return order.trackingSourceLabel;
+  }
+
+  const trackingUrl = String(order.trackingUrl || "");
+  const normalizedInvoice = String(order.invoiceNumber || "").replace(/\D/g, "");
+  const normalizedTrackingCode = String(order.trackingCode || "").replace(/\D/g, "");
+  const normalizedTrackingKey = String(order.trackingCode || "")
+    .replace(/[^a-zA-Z0-9]/g, "")
+    .toUpperCase();
+
+  if (/ssw\.inf\.br/i.test(trackingUrl)) {
+    if (!normalizedInvoice && normalizedTrackingKey.length >= 44) {
+      return "SSW com Codigo XML";
+    }
+
+    if (!normalizedInvoice && normalizedTrackingCode) {
+      return "SSW com codigo envio/NF";
+    }
+
+    return "SSW com NF";
+  }
+
+  if (/ondeestameupedido\.com|intelipost/i.test(trackingUrl)) {
+    return "Intelipost";
+  }
+
+  return "-";
+};
+
 interface OrderDetailProps {
   order: Order;
   onClose: () => void;
@@ -323,7 +354,7 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({
                   <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-slate-700 dark:text-slate-200">
                     <p>
                       <span className="text-slate-500 dark:text-slate-400">Rastreio:</span>{" "}
-                      {order.trackingSourceLabel || "-"}
+                      {inferTrackingSourceLabel(order)}
                     </p>
                     <p>
                       <span className="text-slate-500 dark:text-slate-400">Canal:</span>{" "}

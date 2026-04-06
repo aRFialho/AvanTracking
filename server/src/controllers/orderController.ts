@@ -223,7 +223,17 @@ const getStoredTrackingUrl = (
   safeString(order.apiRawPayload?.tracking_url) ||
   null;
 
-const resolveTrackingSourceLabel = (rawPayload: any) => {
+const resolveTrackingSourceLabel = (
+  order: {
+    invoiceNumber?: string | null;
+    trackingCode?: string | null;
+    orderNumber?: string | null;
+    apiRawPayload?: any;
+  },
+  sswRequireCnpjs: string[] = [],
+  intelipostClientId?: string | null,
+) => {
+  const rawPayload = order.apiRawPayload;
   const source = safeString(rawPayload?.source)?.toUpperCase();
   const lookupMode = safeString(rawPayload?.lookupMode)?.toUpperCase();
 
@@ -255,6 +265,35 @@ const resolveTrackingSourceLabel = (rawPayload: any) => {
       return 'SSW com Codigo XML';
     }
     return 'SSW com NF';
+  }
+
+  const resolvedTrackingUrl = resolveOrderTrackingUrl(
+    order,
+    sswRequireCnpjs,
+    intelipostClientId,
+  );
+
+  if (/ssw\.inf\.br/i.test(String(resolvedTrackingUrl || ''))) {
+    const normalizedInvoiceNumber = normalizeDigits(order.invoiceNumber);
+    const normalizedTrackingCode = normalizeDigits(order.trackingCode);
+    const normalizedTrackingKey = normalizeAlphaNumeric(order.trackingCode);
+
+    if (!normalizedInvoiceNumber && normalizedTrackingKey && isXmlTrackingKey(normalizedTrackingKey)) {
+      return 'SSW com Codigo XML';
+    }
+
+    if (!normalizedInvoiceNumber && normalizedTrackingCode) {
+      return 'SSW com codigo envio/NF';
+    }
+
+    return 'SSW com NF';
+  }
+
+  if (
+    /ondeestameupedido\.com/i.test(String(resolvedTrackingUrl || '')) &&
+    buildIntelipostTrackingUrl(intelipostClientId, order.orderNumber)
+  ) {
+    return 'Intelipost';
   }
 
   return null;
@@ -819,7 +858,11 @@ const formatOrderForResponse = (
     status: order.status as OrderStatus,
     platformCreatedAt: resolvePlatformCreatedDate(order),
     carrierEstimatedDeliveryDate,
-    trackingSourceLabel: resolveTrackingSourceLabel(order.apiRawPayload),
+    trackingSourceLabel: resolveTrackingSourceLabel(
+      order,
+      sswRequireCnpjs,
+      intelipostClientId,
+    ),
     quotedFreightValue: legacyQuotedValue,
     quotedFreightDate: legacyQuotedDate,
     quotedFreightDetails: legacyQuotedDetails,
@@ -1416,7 +1459,15 @@ export const getSyncAllStatus = async (req: Request, res: Response) => {
 
 export const clearOrdersDatabase = async (req: Request, res: Response) => {
   try {
-    const { type, password, companyId } = req.body;
+    const {
+      type,
+      password,
+      companyId,
+      status,
+      period,
+      customStartDate,
+      customEndDate,
+    } = req.body;
 
     if (req.user?.email !== 'admin@avantracking.com.br') {
       return res.status(403).json({ error: 'Acesso negado' });
@@ -1463,6 +1514,66 @@ export const clearOrdersDatabase = async (req: Request, res: Response) => {
       });
       return res.json({
         message: `${result.count} pedidos entregues ha mais de 7 dias da empresa ${company.name} foram apagados.`,
+      });
+    }
+
+    if (type === 'FILTERED') {
+      const whereClause: Record<string, any> = {
+        companyId: company.id,
+      };
+
+      if (status && status !== 'ALL') {
+        if (!Object.values(OrderStatus).includes(status as OrderStatus)) {
+          return res.status(400).json({ error: 'Status invalido' });
+        }
+
+        whereClause.status = status as OrderStatus;
+      }
+
+      if (period === '7_DAYS' || period === '15_DAYS' || period === '30_DAYS') {
+        const days = Number(String(period).split('_')[0]);
+        const cutoffDate = new Date();
+        cutoffDate.setDate(cutoffDate.getDate() - days);
+
+        whereClause.lastUpdate = {
+          lt: cutoffDate,
+        };
+      } else if (period === 'CUSTOM') {
+        const startDate = safeDate(customStartDate);
+        const endDate = safeDate(customEndDate);
+
+        if (!startDate || !endDate) {
+          return res.status(400).json({
+            error: 'Informe as datas inicial e final do periodo personalizado.',
+          });
+        }
+
+        startDate.setHours(0, 0, 0, 0);
+        endDate.setHours(23, 59, 59, 999);
+
+        whereClause.lastUpdate = {
+          gte: startDate,
+          lte: endDate,
+        };
+      } else if (period !== 'ALL') {
+        return res.status(400).json({ error: 'Periodo invalido' });
+      }
+
+      const result = await prisma.order.deleteMany({
+        where: whereClause,
+      });
+
+      const statusLabel =
+        status && status !== 'ALL' ? ` com status ${status}` : '';
+      const periodLabel =
+        period === 'ALL'
+          ? ' sem recorte de periodo'
+          : period === 'CUSTOM'
+            ? ` no periodo de ${customStartDate} ate ${customEndDate}`
+            : ` com ultima atualizacao acima de ${String(period).replace('_', ' ').toLowerCase()}`;
+
+      return res.json({
+        message: `${result.count} pedidos${statusLabel}${periodLabel} da empresa ${company.name} foram apagados.`,
       });
     }
 
