@@ -93,7 +93,7 @@ export const SupportModal: React.FC<SupportModalProps> = ({
         value:
           trayIntegrationStatus?.storeName ||
           trayIntegrationStatus?.storeId ||
-          "Sem loja Tray vinculada",
+          "Sem loja da Integradora vinculada",
       },
       { label: "Tela atual", value: VIEW_LABELS[currentView] || currentView },
     ],

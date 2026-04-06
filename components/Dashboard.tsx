@@ -75,6 +75,13 @@ const CHART_COLORS = [
 
 const DAY_IN_MS = 86400000;
 
+const isDateInRange = (value: unknown, start: Date, endExclusive: Date) => {
+  const parsed = parseOptionalDate(value);
+  if (!parsed) return false;
+
+  return parsed >= start && parsed < endExclusive;
+};
+
 const isActiveCarrierDelayedOrder = (order: Order) =>
   isCarrierDelayedOrder(order);
 
@@ -424,71 +431,90 @@ export const Dashboard: React.FC<DashboardProps> = ({
   // --- Month Summary Logic ---
   const monthSummary = useMemo(() => {
     const now = new Date();
-    const currentMonth = now.getMonth();
-    const prevMonth = currentMonth === 0 ? 11 : currentMonth - 1;
+    const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const previousMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
 
-    const currentMonthOrders = orders.filter((o) => {
-      const platformCreatedDate = resolvePlatformCreatedDate(o);
-      return platformCreatedDate?.getMonth() === currentMonth;
+    const monthEligibleOrders = orders.filter((order) => {
+      if (order.status === OrderStatus.CANCELED) return false;
+      if (isChannelManagedOrder(order)) return false;
+      return true;
     });
-    const prevMonthOrders = orders.filter((o) => {
-      const platformCreatedDate = resolvePlatformCreatedDate(o);
-      return platformCreatedDate?.getMonth() === prevMonth;
-    });
+
+    const currentMonthOrders = monthEligibleOrders.filter((order) =>
+      isDateInRange(
+        resolvePlatformCreatedDate(order),
+        currentMonthStart,
+        nextMonthStart,
+      ),
+    );
+    const previousMonthOrders = monthEligibleOrders.filter((order) =>
+      isDateInRange(
+        resolvePlatformCreatedDate(order),
+        previousMonthStart,
+        currentMonthStart,
+      ),
+    );
+
+    const currentMonthDeliveredOrders = monthEligibleOrders.filter(
+      (order) =>
+        order.status === OrderStatus.DELIVERED &&
+        isDateInRange(order.lastUpdate, currentMonthStart, nextMonthStart),
+    );
+    const previousMonthDeliveredOrders = monthEligibleOrders.filter(
+      (order) =>
+        order.status === OrderStatus.DELIVERED &&
+        isDateInRange(order.lastUpdate, previousMonthStart, currentMonthStart),
+    );
 
     const calcGrowth = (curr: number, prev: number) => {
       if (prev === 0) return curr > 0 ? 100 : 0;
       return ((curr - prev) / prev) * 100;
     };
 
-    // Total
     const totalGrowth = calcGrowth(
-      currentMonthOrders.length,
-      prevMonthOrders.length,
+      currentMonthDeliveredOrders.length,
+      previousMonthDeliveredOrders.length,
     );
 
-    // On Time (Match Dashboard KPI Logic: Delivered On Time / Total Delivered)
-    let currMeasurable = 0;
-    let currDeliveredOnTime = 0;
+    const currentMonthCarrierDelayed = currentMonthOrders.filter(
+      isActiveCarrierDelayedOrder,
+    ).length;
+    const currentMonthPlatformDelayed = currentMonthOrders.filter(
+      isActivePlatformDelayedOrder,
+    ).length;
+    const currentMonthActiveDelayed = currentMonthOrders.filter(
+      (order) =>
+        isActiveCarrierDelayedOrder(order) || isActivePlatformDelayedOrder(order),
+    ).length;
 
-    currentMonthOrders.forEach((o) => {
-      if (!isQualityMeasurableOrder(o)) return;
-
-      currMeasurable++;
-      if (o.status === OrderStatus.DELIVERED && isOrderDeliveredOnCarrierTime(o)) {
-        currDeliveredOnTime++;
-      }
-    });
-
-    let prevMeasurable = 0;
-    let prevDeliveredOnTime = 0;
-
-    prevMonthOrders.forEach((o) => {
-      if (!isQualityMeasurableOrder(o)) return;
-
-      prevMeasurable++;
-      if (o.status === OrderStatus.DELIVERED && isOrderDeliveredOnCarrierTime(o)) {
-        prevDeliveredOnTime++;
-      }
-    });
+    const currDeliveredOnTime = currentMonthDeliveredOrders.filter(
+      isOrderDeliveredOnCarrierTime,
+    ).length;
+    const prevDeliveredOnTime = previousMonthDeliveredOrders.filter(
+      isOrderDeliveredOnCarrierTime,
+    ).length;
 
     const currOnTimePct =
-      currMeasurable > 0 ? (currDeliveredOnTime / currMeasurable) * 100 : 0;
+      currentMonthDeliveredOrders.length > 0
+        ? (currDeliveredOnTime / currentMonthDeliveredOrders.length) * 100
+        : 0;
 
     const prevOnTimePct =
-      prevMeasurable > 0 ? (prevDeliveredOnTime / prevMeasurable) * 100 : 0;
+      previousMonthDeliveredOrders.length > 0
+        ? (prevDeliveredOnTime / previousMonthDeliveredOrders.length) * 100
+        : 0;
 
     const onTimeGrowth = calcGrowth(currOnTimePct, prevOnTimePct);
 
-    // Delayed (Active)
-    const activeDelayed = orders.filter(isActiveCarrierDelayedOrder).length;
-
     return {
-      total: currentMonthOrders.length,
+      totalDelivered: currentMonthDeliveredOrders.length,
       totalGrowth,
       onTimePct: currOnTimePct.toFixed(1),
       onTimeGrowth,
-      activeDelayed,
+      activeDelayed: currentMonthActiveDelayed,
+      carrierDelayed: currentMonthCarrierDelayed,
+      platformDelayed: currentMonthPlatformDelayed,
     };
   }, [orders]);
 
@@ -977,20 +1003,20 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     <AlertTriangle className="w-5 h-5" /> Atrasos Ativos
                   </div>
                   <span className="text-2xl font-bold text-red-700 dark:text-white">
-                    {stats.platformDelayed}
+                    {monthSummary.activeDelayed}
                   </span>
                 </div>
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between text-red-600 dark:text-red-300/80">
                     <span>Atraso transportadora</span>
                     <span className="font-bold">
-                      {monthSummary.activeDelayed}
+                      {monthSummary.carrierDelayed}
                     </span>
                   </div>
                   <div className="flex justify-between text-red-600 dark:text-red-300/80">
                     <span>Atraso plataforma</span>
                     <span className="font-bold">
-                      {stats.platformDelayed}
+                      {monthSummary.platformDelayed}
                     </span>
                   </div>
                 </div>
@@ -998,7 +1024,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   onClick={() => handleCardClick("platform_delayed")}
                   className="text-xs text-red-500 hover:text-red-400 mt-4 underline decoration-red-500/30 underline-offset-4"
                 >
-                  Ver pedidos em atraso plataforma ({stats.platformDelayed})
+                  Ver pedidos em atraso plataforma ({monthSummary.platformDelayed})
                 </button>
               </div>
 
@@ -1009,7 +1035,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     Total Entregas
                   </p>
                   <h4 className="text-3xl font-bold text-slate-800 dark:text-white mt-1">
-                    {monthSummary.total}
+                    {monthSummary.totalDelivered}
                   </h4>
                   <div
                     className={clsx(
@@ -1163,7 +1189,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     </div>
                     <div>
                       <p className="text-[10px] text-slate-400 uppercase">
-                        Fora Prazo Tray
+                        Fora Prazo Integradora
                       </p>
                       <p className="font-bold text-rose-500">
                         {carrier.lateTray}

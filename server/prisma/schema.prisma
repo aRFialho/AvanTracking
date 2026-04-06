@@ -64,6 +64,7 @@ model Company {
     databaseUrl String? // URL do banco de dados específico da empresa
     intelipostClientId String?
     sswRequireCnpjs String[] @default([])
+    integrationCarrierExceptions String[] @default([])
     createdAt   DateTime @default(now())
     users       User[]
     orders      Order[]

@@ -473,24 +473,26 @@ export class TrackingService {
     });
 
     return {
-      totalTracked: orders.filter((order) => !normalizeExcludedPlatformFreight(order.freightType)).length,
+      totalTracked: orders.filter(
+        (order) => order.status !== OrderStatus.CHANNEL_LOGISTICS,
+      ).length,
       delivered: orders.filter(
         (order) =>
-          !normalizeExcludedPlatformFreight(order.freightType) &&
+          order.status !== OrderStatus.CHANNEL_LOGISTICS &&
           order.status === OrderStatus.DELIVERED,
       ).length,
       onRoute: orders.filter(
         (order) =>
-          !normalizeExcludedPlatformFreight(order.freightType) &&
+          order.status !== OrderStatus.CHANNEL_LOGISTICS &&
           isRouteStatus(order.status),
       ).length,
       delayed: orders.filter(
         (order) =>
-          !normalizeExcludedPlatformFreight(order.freightType) && order.isDelayed,
+          order.status !== OrderStatus.CHANNEL_LOGISTICS && order.isDelayed,
       ).length,
       failure: orders.filter(
         (order) =>
-          !normalizeExcludedPlatformFreight(order.freightType) &&
+          order.status !== OrderStatus.CHANNEL_LOGISTICS &&
           order.status === OrderStatus.FAILURE,
       ).length,
     };
@@ -537,6 +539,11 @@ export class TrackingService {
       const order = await prisma.order.findUnique({
         where: { id: orderId },
         include: {
+          company: {
+            select: {
+              name: true,
+            },
+          },
           trackingEvents: {
             orderBy: { eventDate: 'desc' },
             take: 5,
@@ -581,7 +588,10 @@ export class TrackingService {
         };
       }
 
-      const excludedFreight = normalizeExcludedPlatformFreight(order.freightType);
+      const excludedFreight = normalizeExcludedPlatformFreight(
+        order.freightType,
+        order.company?.name,
+      );
       const isChannelManaged = Boolean(excludedFreight);
 
       if (isChannelManaged) {

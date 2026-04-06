@@ -31,6 +31,7 @@ interface Company {
   cnpj?: string;
   intelipostClientId?: string | null;
   sswRequireCnpjs?: string[];
+  integrationCarrierExceptions?: string[];
   createdAt: string;
 }
 
@@ -185,8 +186,10 @@ export const AdminPanel: React.FC = () => {
   const [currentCompany, setCurrentCompany] = useState<Company | null>(null);
   const [intelipostClientId, setIntelipostClientId] = useState("");
   const [sswRequireCnpjs, setSswRequireCnpjs] = useState<string[]>([""]);
+  const [integrationCarrierExceptions, setIntegrationCarrierExceptions] = useState<string[]>([""]);
   const [isSavingIntelipost, setIsSavingIntelipost] = useState(false);
   const [isSavingSswRequire, setIsSavingSswRequire] = useState(false);
+  const [isSavingCarrierExceptions, setIsSavingCarrierExceptions] = useState(false);
   const [patchNotesForm, setPatchNotesForm] = useState<PatchNotesFormData>({
     version: "",
     title: "",
@@ -325,10 +328,17 @@ export const AdminPanel: React.FC = () => {
           ? data.sswRequireCnpjs
           : [""],
       );
+      setIntegrationCarrierExceptions(
+        Array.isArray(data.integrationCarrierExceptions) &&
+          data.integrationCarrierExceptions.length > 0
+          ? data.integrationCarrierExceptions
+          : [""],
+      );
     } catch {
       setCurrentCompany(null);
       setIntelipostClientId("");
       setSswRequireCnpjs([""]);
+      setIntegrationCarrierExceptions([""]);
     }
   };
 
@@ -607,6 +617,67 @@ export const AdminPanel: React.FC = () => {
       alert(err.message || "Erro ao salvar os CNPJs do SSW Require.");
     } finally {
       setIsSavingSswRequire(false);
+    }
+  };
+
+  const handleAddCarrierException = () => {
+    setIntegrationCarrierExceptions((currentValues) => [...currentValues, ""]);
+  };
+
+  const handleChangeCarrierException = (index: number, value: string) => {
+    setIntegrationCarrierExceptions((currentValues) =>
+      currentValues.map((item, itemIndex) =>
+        itemIndex === index ? value : item,
+      ),
+    );
+  };
+
+  const handleRemoveCarrierException = (index: number) => {
+    setIntegrationCarrierExceptions((currentValues) => {
+      const nextValues = currentValues.filter((_, itemIndex) => itemIndex !== index);
+      return nextValues.length > 0 ? nextValues : [""];
+    });
+  };
+
+  const handleSaveCarrierExceptions = async () => {
+    const normalizedExceptions = Array.from(
+      new Set(
+        integrationCarrierExceptions
+          .map((value) => value.trim())
+          .filter(Boolean),
+      ),
+    );
+
+    setIsSavingCarrierExceptions(true);
+    try {
+      const response = await fetchWithAuth("/api/companies/current/integration", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          integrationCarrierExceptions: normalizedExceptions,
+        }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(
+          data.error || "Nao foi possivel salvar as excecoes de transportadora.",
+        );
+      }
+
+      setCurrentCompany(data.company || null);
+      setIntegrationCarrierExceptions(
+        Array.isArray(data.company?.integrationCarrierExceptions) &&
+          data.company.integrationCarrierExceptions.length > 0
+          ? data.company.integrationCarrierExceptions
+          : [""],
+      );
+      alert(data.message || "Excecoes de transportadora atualizadas com sucesso.");
+    } catch (err: any) {
+      alert(err.message || "Erro ao salvar as excecoes de transportadora.");
+    } finally {
+      setIsSavingCarrierExceptions(false);
     }
   };
 
@@ -1396,6 +1467,69 @@ export const AdminPanel: React.FC = () => {
                   className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-medium text-white bg-slate-700 hover:bg-slate-800 disabled:opacity-50 transition-colors"
                 >
                   {isSavingSswRequire ? "Salvando..." : "Salvar SSW Require"}
+                </button>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 dark:border-white/10 dark:bg-white/5">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="font-semibold text-slate-700 dark:text-white">
+                    Excecao de transportadora
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    Informe o nome exato da transportadora. Pedidos importados da plataforma com esse mesmo nome
+                    serao ignorados durante a importacao desta empresa.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleAddCarrierException}
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-medium text-white bg-blue-600 hover:bg-blue-700 transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  Adicionar excecao
+                </button>
+              </div>
+
+              <div className="mt-4 space-y-3">
+                {integrationCarrierExceptions.map((carrierName, index) => (
+                  <div key={`${index}-${carrierName}`} className="flex flex-col gap-3 sm:flex-row">
+                    <input
+                      type="text"
+                      value={carrierName}
+                      onChange={(e) =>
+                        handleChangeCarrierException(index, e.target.value)
+                      }
+                      placeholder="Nome exato da transportadora"
+                      className="w-full bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white focus:border-blue-500 outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveCarrierException(index)}
+                      disabled={integrationCarrierExceptions.length === 1}
+                      className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-medium border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 hover:border-red-500 hover:text-red-600 disabled:opacity-50 transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      Remover
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                <p className="text-[11px] text-slate-400">
+                  A comparacao usa o texto exato normalizado da transportadora recebida da plataforma.
+                </p>
+
+                <button
+                  type="button"
+                  onClick={handleSaveCarrierExceptions}
+                  disabled={isSavingCarrierExceptions || !currentCompany}
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-medium text-white bg-slate-700 hover:bg-slate-800 disabled:opacity-50 transition-colors"
+                >
+                  {isSavingCarrierExceptions ? "Salvando..." : "Salvar excecoes"}
                 </button>
               </div>
             </div>

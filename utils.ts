@@ -76,11 +76,10 @@ export const isChannelManagedFreight = (
 
 export const isExcludedPlatformFreight = (
   freightType: string | null | undefined,
-): boolean => Boolean(normalizeExcludedPlatformFreight(freightType));
+): boolean => false;
 
 export const isChannelManagedOrder = (order: Pick<Order, "status" | "freightType">) =>
-  order.status === OrderStatus.CHANNEL_LOGISTICS ||
-  isExcludedPlatformFreight(order.freightType);
+  order.status === OrderStatus.CHANNEL_LOGISTICS;
 
 export const parseOptionalDate = (value: unknown): Date | null => {
   if (!value) return null;
@@ -231,7 +230,7 @@ export const isPendingDeliveryFailureOrder = (
   if (
     order.status === OrderStatus.DELIVERED ||
     order.status === OrderStatus.CANCELED ||
-    isExcludedPlatformFreight(order.freightType)
+    order.status === OrderStatus.CHANNEL_LOGISTICS
   ) {
     return false;
   }

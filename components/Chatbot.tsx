@@ -55,7 +55,7 @@ interface KnowledgeItem {
 const SUPPORT_FALLBACK_MESSAGE =
   "Nao consegui identificar essa funcionalidade com seguranca.\n\nEntre em contato com o desenvolvedor da plataforma para orientacao ou correcao.";
 
-const DEFAULT_WELCOME_MESSAGE = `Ola! Eu sou a ${BOT_NAME}.\n\nPosso te ajudar com Dashboard, Pedidos, Alertas, Falhas na Entrega, Importacao, sincronizacao, Tray, frete recalculado, suporte, administracao e release notes.\n\nSe quiser dados reais da operacao, voce tambem pode pedir contagens e relatorios como:\n- quantos pedidos estao entregues\n- me envie um relatorio com pedidos atrasados\n- me envie um relatorio com pedidos da Jadlog`;
+const DEFAULT_WELCOME_MESSAGE = `Ola! Eu sou a ${BOT_NAME}.\n\nPosso te ajudar com Dashboard, Pedidos, Alertas, Falhas na Entrega, Importacao, sincronizacao, Integradora, frete recalculado, suporte, administracao e release notes.\n\nSe quiser dados reais da operacao, voce tambem pode pedir contagens e relatorios como:\n- quantos pedidos estao entregues\n- me envie um relatorio com pedidos atrasados\n- me envie um relatorio com pedidos da Jadlog`;
 
 const getUserCallName = (name: string | null | undefined) => {
   const trimmed = String(name || "").trim();
@@ -189,7 +189,7 @@ const getConversationalResponse = (text: string) => {
   }
 
   if (hasGreeting) {
-    return "Oi! Que bom falar com voce.\n\nComo voce esta? Se quiser, ja me diga sua duvida sobre Dashboard, Pedidos, Sync, Tray, frete recalculado, alertas ou qualquer outra funcao do Avantracking.";
+    return "Oi! Que bom falar com voce.\n\nComo voce esta? Se quiser, ja me diga sua duvida sobre Dashboard, Pedidos, Sync, Integradora, frete recalculado, alertas ou qualquer outra funcao do Avantracking.";
   }
 
   if (
@@ -228,7 +228,7 @@ const getConversationalResponse = (text: string) => {
     normalized.includes("tudo tranquilo") ||
     normalized.includes("tudo joia")
   ) {
-    return "Que bom! Qual e a sua duvida? Se quiser, pode me perguntar sobre pedidos, sincronizacao, frete, alertas, Tray ou qualquer outra funcao da plataforma.";
+    return "Que bom! Qual e a sua duvida? Se quiser, pode me perguntar sobre pedidos, sincronizacao, frete, alertas, Integradora ou qualquer outra funcao da plataforma.";
   }
 
   return null;
@@ -399,8 +399,8 @@ const ENHANCED_KNOWLEDGE_BASE: KnowledgeItem[] = [
       "sync de rastreio",
     ],
     responses: [
-      "Sincronizacao\n\nPosso te ajudar melhor se voce me confirmar o foco.\n1. passo a passo para sincronizar manualmente\n2. como funciona o sync automatico\n3. diferenca entre sync de rastreio e sync da Tray\n4. relatorio de sincronizacao\n5. pedido que nao sincronizou\n6. alguma funcionalidade especifica da sincronizacao",
-      "Sincronizacao de pedidos\n\nConsigo te orientar melhor se voce me disser qual parte da sincronizacao quer entender.\n\nPode ser:\n1. sync manual\n2. sync automatico\n3. sync de rastreio\n4. sync da Tray\n5. relatorio de sync\n6. erro ou comportamento inesperado",
+      "Sincronizacao\n\nPosso te ajudar melhor se voce me confirmar o foco.\n1. passo a passo para sincronizar manualmente\n2. como funciona o sync automatico\n3. diferenca entre sync de rastreio e sync da Integradora\n4. relatorio de sincronizacao\n5. pedido que nao sincronizou\n6. alguma funcionalidade especifica da sincronizacao",
+      "Sincronizacao de pedidos\n\nConsigo te orientar melhor se voce me disser qual parte da sincronizacao quer entender.\n\nPode ser:\n1. sync manual\n2. sync automatico\n3. sync de rastreio\n4. sync da Integradora\n5. relatorio de sync\n6. erro ou comportamento inesperado",
     ],
   },
   {
@@ -413,8 +413,8 @@ const ENHANCED_KNOWLEDGE_BASE: KnowledgeItem[] = [
       "loja tray",
     ],
     responses: [
-      "Integracao Tray\n\nA integracao com a Tray permite:\n- autorizar a loja na tela de Integracao\n- acompanhar o status da integracao\n- sincronizar pedidos da Tray\n- reaproveitar dados da Tray em recursos como recotacao de frete",
-      "Tray\n\nCom a integracao da Tray voce consegue autorizar a loja, acompanhar o status da conexao, sincronizar pedidos e usar os dados da plataforma em recursos como recotacao de frete.",
+      "Integracao da Integradora\n\nA integracao com a Integradora permite:\n- autorizar a loja na tela de Integracao\n- acompanhar o status da integracao\n- sincronizar pedidos da Integradora\n- reaproveitar dados da plataforma em recursos como recotacao de frete",
+      "Integradora\n\nCom a integracao da Integradora voce consegue autorizar a loja, acompanhar o status da conexao, sincronizar pedidos e usar os dados da plataforma em recursos como recotacao de frete.",
     ],
   },
   {

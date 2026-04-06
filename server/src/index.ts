@@ -84,7 +84,7 @@ app.post("/api/chat", authenticateToken, async (req, res) => {
       "- Sincronização: atualização manual e automática (a cada 1 hora) com a Intelipost para pedidos ativos; recalcula status efetivo e atraso.",
       "- Alertas: monitora riscos de atraso (data atual > previsão; não entregue).",
       "- Falhas na entrega: visão focada em ocorrências/entregas com problema.",
-      "- Integração TRAY: rotas /api/tray/* para autenticação e sincronização.",
+      "- Integracao da Integradora: rotas /api/tray/* para autenticacao e sincronizacao.",
       "- Cotação de frete: rotas /api/freight/quote/:orderId e /api/freight/quote-batch.",
       "",
       "Regras de resposta:",
@@ -100,7 +100,7 @@ app.post("/api/chat", authenticateToken, async (req, res) => {
       "- Dashboard com KPIs, graficos, ranking e atalhos para filtros.",
       "- Pedidos com filtros, ordenacao por colunas, detalhes, exportacao HTML e CSV e abertura de rastreio.",
       "- Alertas de risco, Falhas na Entrega e Sem Movimentacao.",
-      "- Integracao Tray, sincronizacao de pedidos e frete recalculado.",
+      "- Integracao da Integradora, sincronizacao de pedidos e frete recalculado.",
       "- Administracao de usuarios, empresas, integracoes e release notes.",
       "- Ultimas Atualizacoes com historico dos release notes enviados.",
       "Se a pergunta nao estiver coberta com seguranca ou se o usuario relatar erro persistente, oriente contato com o desenvolvedor da plataforma.",
@@ -265,7 +265,7 @@ void syncJobService.initializeSchedules().catch((error) => {
 });
 
 void traySyncJobService.initializeSchedules().catch((error) => {
-  console.error('Erro ao inicializar agendas automaticas da Tray:', error);
+  console.error('Erro ao inicializar agendas automaticas da Integradora:', error);
 });
 
 void weeklyMovementReportService.initializeSchedule().catch((error) => {

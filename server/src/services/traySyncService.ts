@@ -3,6 +3,11 @@ import { trayAuthService } from './trayAuthService';
 import { importOrdersForCompany } from './orderImportService';
 import type { TraySyncOrderReport } from '../types/syncReport';
 import { prisma } from '../lib/prisma';
+import { TrayFreightService } from './trayFreightService';
+import {
+  needsFreightRecalculation,
+  recalculateStoredOrderFreight,
+} from './freightRecalculationService';
 
 const TRAY_STATUS_OPTIONS = [
   'pedido cadastrado',
@@ -98,6 +103,13 @@ export class TraySyncService {
 
     const modified = resolveModifiedDate(days);
     const trayApi = new TrayApiService(companyId);
+    const freightService = new TrayFreightService(companyId);
+    const company = await prisma.company.findUnique({
+      where: { id: companyId },
+      select: {
+        name: true,
+      },
+    });
     const existingOrderNumbers = new Set(
       (
         await prisma.order.findMany({
@@ -150,7 +162,9 @@ export class TraySyncService {
             }
 
             const mappedOrders = freshOrders.map((order) =>
-              trayApi.mapTrayOrderToSystem(order),
+              trayApi.mapTrayOrderToSystem(order, {
+                companyName: company?.name,
+              }),
             );
             const importResult = await importOrdersForCompany(companyId, mappedOrders);
 
@@ -167,6 +181,65 @@ export class TraySyncService {
               ...importResult.results.updatedOrders,
             );
             importedOrdersCount += freshOrders.length;
+
+            const affectedOrderIds = [
+              ...importResult.results.createdOrders,
+              ...importResult.results.updatedOrders,
+            ]
+              .map((order) => order.orderId)
+              .filter((orderId): orderId is string => Boolean(orderId));
+
+            if (affectedOrderIds.length > 0) {
+              const ordersForFreight = await prisma.order.findMany({
+                where: {
+                  id: { in: affectedOrderIds },
+                },
+                select: {
+                  id: true,
+                  orderNumber: true,
+                  freightType: true,
+                  zipCode: true,
+                  freightValue: true,
+                  apiRawPayload: true,
+                  recalculatedFreightValue: true,
+                  recalculatedFreightDate: true,
+                  recalculatedFreightDetails: true,
+                },
+              });
+
+              let recalculatedCount = 0;
+              let skippedRecalculationCount = 0;
+
+              for (const order of ordersForFreight) {
+                try {
+                  if (!needsFreightRecalculation(order)) {
+                    skippedRecalculationCount += 1;
+                    continue;
+                  }
+
+                  await recalculateStoredOrderFreight({
+                    prisma,
+                    order,
+                    companyId,
+                    freightService,
+                  });
+                  recalculatedCount += 1;
+                } catch (error) {
+                  const message =
+                    error instanceof Error ? error.message : 'Erro desconhecido';
+                  aggregateResults.errors.push(
+                    `Frete ${order.orderNumber}: ${message}`,
+                  );
+                  hooks?.onLog?.(
+                    `Falha ao recalcular frete do pedido ${order.orderNumber}: ${message}`,
+                  );
+                }
+              }
+
+              hooks?.onLog?.(
+                `Frete recalculado no lote: ${recalculatedCount} pedido(s) atualizado(s), ${skippedRecalculationCount} ja estavam completos.`,
+              );
+            }
 
             for (const order of freshOrders) {
               existingOrderNumbers.add(String(order.id));

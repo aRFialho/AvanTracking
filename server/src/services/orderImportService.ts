@@ -1,5 +1,8 @@
 import { OrderStatus } from '@prisma/client';
-import { isExcludedPlatformFreight } from '../utils/orderExclusion';
+import {
+  normalizeExcludedPlatformFreight,
+  shouldSkipPlatformOrderImport,
+} from '../utils/orderExclusion';
 import type { TraySyncOrderReport } from '../types/syncReport';
 import { prisma } from '../lib/prisma';
 
@@ -189,6 +192,14 @@ export const importOrdersForCompany = async (companyId: string, orders: any[]) =
     throw new Error('Nenhum pedido valido para importar');
   }
 
+  const company = await (prisma.company as any).findUnique({
+    where: { id: companyId },
+    select: {
+      name: true,
+      integrationCarrierExceptions: true,
+    },
+  });
+
   const orderNumbers = orders
     .map((order) => safeString(order?.orderNumber))
     .filter((value): value is string => Boolean(value));
@@ -227,14 +238,32 @@ export const importOrdersForCompany = async (companyId: string, orders: any[]) =
       continue;
     }
 
-    if (isExcludedPlatformFreight(orderData?.freightType)) {
+    if (
+      shouldSkipPlatformOrderImport({
+        freightType: orderData?.freightType,
+        carrierExceptions: company?.integrationCarrierExceptions,
+      })
+    ) {
       skipped += 1;
       continue;
     }
 
     const status = mapStatus(String(orderData.status || 'PENDING'));
-    const orderPayload = buildOrderData(orderData, status);
-    const trackingEventsData = buildTrackingEventsData(orderData, status);
+    const normalizedChannelFreight = normalizeExcludedPlatformFreight(
+      orderData?.freightType,
+      company?.name,
+    );
+    const resolvedStatus = normalizedChannelFreight
+      ? OrderStatus.CHANNEL_LOGISTICS
+      : status;
+    const orderPayload = buildOrderData(
+      {
+        ...orderData,
+        freightType: normalizedChannelFreight || orderData?.freightType,
+      },
+      resolvedStatus,
+    );
+    const trackingEventsData = buildTrackingEventsData(orderData, resolvedStatus);
     const existing = existingMap.get(orderNumber);
 
     if (existing) {

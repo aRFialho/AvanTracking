@@ -3,7 +3,6 @@ import { OrderStatus } from '@prisma/client';
 import { syncJobService } from '../services/syncJobService';
 import { TrackingService } from '../services/trackingService';
 import { importOrdersForCompany } from '../services/orderImportService';
-import { isExcludedPlatformFreight } from '../utils/orderExclusion';
 import { sswTrackingService } from '../services/sswTrackingService';
 import { syncReportService } from '../services/syncReportService';
 import { toUserFacingDatabaseErrorMessage } from '../utils/prismaError';
@@ -191,8 +190,7 @@ const isXmlTrackingKey = (value: unknown) => {
 };
 
 const shouldExcludeOrderFromPlatform = (order: any) =>
-  order.status === OrderStatus.CHANNEL_LOGISTICS ||
-  isExcludedPlatformFreight(order.freightType);
+  order.status === OrderStatus.CHANNEL_LOGISTICS;
 
 const buildSswTrackingUrl = (identifier: string, cnpj?: string | null) =>
   cnpj
@@ -1014,6 +1012,78 @@ export const getOrderById = async (req: Request, res: Response) => {
   }
 };
 
+export const updateOrderFreightType = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const freightType = safeString(req.body?.freightType);
+    // @ts-ignore
+    const user = req.user;
+
+    if (typeof id !== 'string') {
+      return res.status(400).json({ error: 'ID invalido' });
+    }
+
+    if (!user?.companyId) {
+      return res.status(403).json({ error: 'Acesso negado. Usuario sem empresa.' });
+    }
+
+    if (!freightType) {
+      return res.status(400).json({ error: 'Informe o nome da transportadora.' });
+    }
+
+    const order = await prisma.order.findUnique({
+      where: { id },
+      include: {
+        carrier: true,
+        trackingEvents: {
+          orderBy: { eventDate: 'desc' },
+        },
+      },
+    });
+
+    if (!order || order.companyId !== user.companyId) {
+      return res.status(404).json({ error: 'Pedido nao encontrado' });
+    }
+
+    const updatedOrder = await prisma.order.update({
+      where: { id },
+      data: {
+        freightType,
+        lastUpdate: new Date(),
+      },
+      include: {
+        carrier: true,
+        trackingEvents: {
+          orderBy: { eventDate: 'desc' },
+        },
+      },
+    });
+
+    const sswRequireCnpjs = await getCompanySswRequireCnpjs(user.companyId);
+    const intelipostClientId = await getCompanyIntelipostClientId(user.companyId);
+    const checkoutQuote = await loadCheckoutQuoteForOrder(user.companyId, updatedOrder);
+
+    return res.json({
+      success: true,
+      message: 'Transportadora atualizada com sucesso.',
+      order: formatOrderForResponse(
+        updatedOrder,
+        sswRequireCnpjs,
+        intelipostClientId,
+        checkoutQuote,
+      ),
+    });
+  } catch (error) {
+    console.error('Erro ao atualizar transportadora do pedido:', error);
+    return res.status(500).json({
+      error: toUserFacingDatabaseErrorMessage(
+        error,
+        'Erro ao atualizar transportadora do pedido',
+      ),
+    });
+  }
+};
+
 export const openOrderTracking = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -1205,7 +1275,7 @@ export const syncSingleOrder = async (req: Request, res: Response) => {
     if (order && shouldExcludeOrderFromPlatform(order)) {
       return res.status(404).json({
         success: false,
-        message: 'Pedido excluido da plataforma pelo tipo de frete.',
+        message: 'Pedido tratado como logistica do canal.',
       });
     }
 

@@ -29,7 +29,6 @@ import {
   isPlatformDelayedOrder,
   normalizeTrackingHistory,
   toText,
-  isExcludedPlatformFreight,
 } from "./utils";
 import { TruckCursor } from "./components/TruckCursor";
 import { fetchWithAuth } from "./utils/authFetch";
@@ -340,8 +339,8 @@ const MainApp: React.FC = () => {
         message:
           statusData.message ||
           (statusData.authorized
-            ? "Integracao Tray online."
-            : "Nenhuma integracao Tray autorizada."),
+            ? "Integracao da Integradora online."
+            : "Nenhuma integracao da Integradora autorizada."),
       };
 
       setTrayIntegrationStatus(normalizedTrayIntegrationStatus);
@@ -361,7 +360,7 @@ const MainApp: React.FC = () => {
       setTraySyncJob(data.job || null);
       setNextTraySyncAt(parseDate(data.schedule?.nextScheduledAt));
     } catch (error) {
-      console.error("Erro ao carregar status da sincronizacao da Tray:", error);
+      console.error("Erro ao carregar status da sincronizacao da Integradora:", error);
       setTrayIntegrationStatus(null);
       setTraySyncJob(null);
       setNextTraySyncAt(null);
@@ -560,8 +559,8 @@ const MainApp: React.FC = () => {
 
         setTraySyncJob(data.job || null);
       } catch (error: any) {
-        console.error("Tray sync failed:", error);
-        alert(error.message || "Erro ao sincronizar pedidos da Tray.");
+        console.error("Integradora sync failed:", error);
+        alert(error.message || "Erro ao sincronizar pedidos da Integradora.");
       }
     },
     [],
@@ -634,11 +633,6 @@ const MainApp: React.FC = () => {
           );
         }
 
-        if (isExcludedPlatformFreight(data.order.freightType)) {
-          alert(`Consulta ${rawIdentifier} ignorada pelo tipo de frete.`);
-          return;
-        }
-
         upsertOrder(data.order as Order);
         setLastSyncTime(new Date());
         alert(`Consulta ${rawIdentifier} encontrada e adicionada.`);
@@ -658,8 +652,7 @@ const MainApp: React.FC = () => {
     const processedOrders = newOrders.filter((order) => {
       if (order.status === OrderStatus.CANCELED) return false;
       if (order.status === OrderStatus.CHANNEL_LOGISTICS) return false;
-
-      return !isExcludedPlatformFreight(order.freightType);
+      return true;
     });
 
     if (processedOrders.length === 0) {
@@ -714,6 +707,7 @@ const MainApp: React.FC = () => {
             orders={orders}
             initialFilters={activeFilters}
             onFetchSingle={handleFetchSingleOrder}
+            onOrderUpdated={upsertOrder}
             onStartSync={handleSync}
             onStartTraySync={handleTraySync}
             syncJob={syncJob}
@@ -727,6 +721,7 @@ const MainApp: React.FC = () => {
             orders={orders}
             onFetchSingle={handleFetchSingleOrder}
             isNoMovementView={true}
+            onOrderUpdated={upsertOrder}
             onStartSync={handleSync}
             syncJob={syncJob}
             traySyncJob={traySyncJob}
@@ -834,7 +829,7 @@ const MainApp: React.FC = () => {
             {trayIntegrationStatus?.authorized && traySyncJob?.status === "running" && (
               <span className="flex items-center gap-2 text-cyan-600 dark:text-cyan-300 animate-pulse">
                 <Loader2 className="w-4 h-4 animate-spin" />
-                Sync Tray em andamento...
+                Sync da Integradora em andamento...
               </span>
             )}
             {trayIntegrationStatus?.authorized &&
@@ -842,7 +837,7 @@ const MainApp: React.FC = () => {
               nextTraySyncAt && (
               <div className="flex flex-col items-end font-mono text-[11px] opacity-80">
                 <span className="text-[10px] uppercase tracking-wide opacity-60">
-                  Próximo Sync de Pedidos com a Tray
+                  Proximo Sync de Pedidos com a Integradora
                 </span>
                 <span>{formatCountdown(nextTraySyncAt, nowMs)}</span>
               </div>

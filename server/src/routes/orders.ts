@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { importOrders, getOrders, getOrderById, syncSingleOrder, syncAllOrders, startSyncAllOrders, getSyncAllStatus, clearOrdersDatabase, openOrderTracking, searchExternalOrder } from '../controllers/orderController';
+import { importOrders, getOrders, getOrderById, syncSingleOrder, syncAllOrders, startSyncAllOrders, getSyncAllStatus, clearOrdersDatabase, openOrderTracking, searchExternalOrder, updateOrderFreightType } from '../controllers/orderController';
 
 const router = Router();
 
@@ -17,6 +17,9 @@ router.post('/search-external', searchExternalOrder);
 
 // GET /api/orders/:id/open-tracking - Abrir link direto de rastreio
 router.get('/:id/open-tracking', openOrderTracking);
+
+// PATCH /api/orders/:id/freight-type - Atualizar transportadora manualmente
+router.patch('/:id/freight-type', updateOrderFreightType);
 
 // GET /api/orders/:id - Detalhes de um pedido
 router.get('/:id', getOrderById);

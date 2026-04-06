@@ -597,11 +597,17 @@ export class TrayApiService {
     return allOrders;
   }
 
-  mapTrayOrderToSystem(trayOrder: any): any {
+  mapTrayOrderToSystem(
+    trayOrder: any,
+    options?: {
+      companyName?: string | null;
+    },
+  ): any {
     const customer = trayOrder.Customer || {};
     const mainAddress = customer.CustomerAddresses?.[0]?.CustomerAddress || {};
     const normalizedChannelFreight = normalizeExcludedPlatformFreight(
       trayOrder.shipment,
+      options?.companyName,
     );
 
     const statusMap: Record<string, string> = {

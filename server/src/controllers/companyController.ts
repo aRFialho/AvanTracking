@@ -13,6 +13,18 @@ const normalizeSswRequireCnpjs = (value: unknown) => {
   return Array.from(new Set(normalized));
 };
 
+const normalizeIntegrationCarrierExceptions = (value: unknown) => {
+  if (!Array.isArray(value)) return [];
+
+  return Array.from(
+    new Set(
+      value
+        .map((item) => String(item || '').trim())
+        .filter(Boolean),
+    ),
+  );
+};
+
 // Listar todas as empresas
 export const getCompanies = async (req: Request, res: Response) => {
   try {
@@ -43,6 +55,9 @@ export const createCompany = async (req: Request, res: Response) => {
         cnpj,
         intelipostClientId: intelipostClientId ? String(intelipostClientId).trim() : null,
         sswRequireCnpjs: normalizeSswRequireCnpjs(sswRequireCnpjs),
+        integrationCarrierExceptions: normalizeIntegrationCarrierExceptions(
+          req.body?.integrationCarrierExceptions,
+        ),
       }
     });
     res.status(201).json(company);
@@ -85,6 +100,7 @@ export const getCurrentCompany = async (req: Request, res: Response) => {
         cnpj: true,
         intelipostClientId: true,
         sswRequireCnpjs: true,
+        integrationCarrierExceptions: true,
         createdAt: true,
       },
     });
@@ -119,6 +135,11 @@ export const updateCurrentCompanyIntegration = async (
       sswRequireCnpjsRaw === undefined
         ? undefined
         : normalizeSswRequireCnpjs(sswRequireCnpjsRaw);
+    const integrationCarrierExceptionsRaw = req.body?.integrationCarrierExceptions;
+    const integrationCarrierExceptions =
+      integrationCarrierExceptionsRaw === undefined
+        ? undefined
+        : normalizeIntegrationCarrierExceptions(integrationCarrierExceptionsRaw);
 
     if (intelipostClientId !== undefined && !intelipostClientId) {
       return res.status(400).json({ error: 'ID da Intelipost obrigatorio' });
@@ -129,6 +150,9 @@ export const updateCurrentCompanyIntegration = async (
       data: {
         ...(intelipostClientId !== undefined ? { intelipostClientId } : {}),
         ...(sswRequireCnpjs !== undefined ? { sswRequireCnpjs } : {}),
+        ...(integrationCarrierExceptions !== undefined
+          ? { integrationCarrierExceptions }
+          : {}),
       },
       select: {
         id: true,
@@ -136,6 +160,7 @@ export const updateCurrentCompanyIntegration = async (
         cnpj: true,
         intelipostClientId: true,
         sswRequireCnpjs: true,
+        integrationCarrierExceptions: true,
         createdAt: true,
       },
     });

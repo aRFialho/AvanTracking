@@ -92,7 +92,7 @@ export const FreightComparison: React.FC<FreightComparisonProps> = ({
           <p className="text-sm font-medium text-red-700 dark:text-red-400">{error}</p>
           {error.includes('não autorizada') && (
             <p className="text-xs text-red-600 dark:text-red-300 mt-1">
-              ⏳ Aguardando aprovação do app pela Tray. Entre em contato com o suporte.
+              ⏳ Aguardando aprovacao do app pela Integradora. Entre em contato com o suporte.
             </p>
           )}
         </div>

@@ -1,6 +1,16 @@
-import React from "react";
+import React, { useState } from "react";
 import { Order, OrderStatus } from "../types";
-import { X, MapPin, Calendar, Truck, User, CreditCard } from "lucide-react";
+import {
+  X,
+  MapPin,
+  Calendar,
+  Truck,
+  User,
+  CreditCard,
+  Pencil,
+  Check,
+  Loader2,
+} from "lucide-react";
 import { clsx } from "clsx";
 import {
   normalizeCarrierName,
@@ -8,6 +18,7 @@ import {
   formatDateOrDash,
   formatCarrierForecast,
 } from "../utils";
+import { fetchWithAuth } from "../utils/authFetch";
 
 const STATUS_TRANSLATIONS: Record<string, string> = {
   PENDING: "Aguardando envio",
@@ -88,13 +99,73 @@ const formatDateTime = (value: Date | string | null | undefined) => {
 interface OrderDetailProps {
   order: Order;
   onClose: () => void;
+  onOrderUpdated?: (order: Order) => void;
 }
 
-export const OrderDetail: React.FC<OrderDetailProps> = ({ order, onClose }) => {
+export const OrderDetail: React.FC<OrderDetailProps> = ({
+  order,
+  onClose,
+  onOrderUpdated,
+}) => {
+  const [isEditingFreightType, setIsEditingFreightType] = useState(false);
+  const [freightTypeDraft, setFreightTypeDraft] = useState(order.freightType || "");
+  const [isSavingFreightType, setIsSavingFreightType] = useState(false);
+  const [freightTypeError, setFreightTypeError] = useState("");
   const trackingHistory = normalizeTrackingHistory(order.trackingHistory);
   const sortedHistory = [...trackingHistory].sort(
     (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
   );
+
+  const handleStartFreightEdit = () => {
+    setFreightTypeDraft(order.freightType || "");
+    setFreightTypeError("");
+    setIsEditingFreightType(true);
+  };
+
+  const handleCancelFreightEdit = () => {
+    setFreightTypeDraft(order.freightType || "");
+    setFreightTypeError("");
+    setIsEditingFreightType(false);
+  };
+
+  const handleSaveFreightType = async () => {
+    const normalizedFreightType = freightTypeDraft.trim();
+
+    if (!normalizedFreightType) {
+      setFreightTypeError("Informe o nome da transportadora.");
+      return;
+    }
+
+    setIsSavingFreightType(true);
+    setFreightTypeError("");
+
+    try {
+      const response = await fetchWithAuth(`/api/orders/${order.id}/freight-type`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ freightType: normalizedFreightType }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || !data?.order) {
+        throw new Error(
+          data?.error || "Nao foi possivel atualizar a transportadora.",
+        );
+      }
+
+      onOrderUpdated?.(data.order as Order);
+      setIsEditingFreightType(false);
+    } catch (error) {
+      setFreightTypeError(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel atualizar a transportadora.",
+      );
+    } finally {
+      setIsSavingFreightType(false);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
@@ -164,9 +235,63 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({ order, onClose }) => {
                       <p className="text-lg font-semibold text-slate-800 dark:text-white">
                         {formatCurrency(order.freightValue)}
                       </p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
-                        Transportadora real: {normalizeCarrierName(order.freightType)}
-                      </p>
+                      <div className="mt-2 space-y-2">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
+                            Transportadora real: {normalizeCarrierName(order.freightType)}
+                          </p>
+                          {!isEditingFreightType && (
+                            <button
+                              type="button"
+                              onClick={handleStartFreightEdit}
+                              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-[11px] font-medium text-slate-600 transition-colors hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5 dark:hover:text-white"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                              Editar
+                            </button>
+                          )}
+                        </div>
+
+                        {isEditingFreightType && (
+                          <div className="space-y-2">
+                            <input
+                              type="text"
+                              value={freightTypeDraft}
+                              onChange={(event) => setFreightTypeDraft(event.target.value)}
+                              placeholder="Digite a transportadora real"
+                              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
+                            />
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={handleSaveFreightType}
+                                disabled={isSavingFreightType}
+                                className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-60"
+                              >
+                                {isSavingFreightType ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <Check className="h-3.5 w-3.5" />
+                                )}
+                                Salvar transportadora
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleCancelFreightEdit}
+                                disabled={isSavingFreightType}
+                                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
+                              >
+                                Cancelar
+                              </button>
+                            </div>
+                            {freightTypeError && (
+                              <p className="text-xs text-red-600 dark:text-red-300">
+                                {freightTypeError}
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
 
 

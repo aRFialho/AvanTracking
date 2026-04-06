@@ -192,6 +192,7 @@ interface OrderListProps {
   orders: Order[];
   initialFilters?: any;
   onFetchSingle?: (orderId: string) => Promise<void>;
+  onOrderUpdated?: (order: Order) => void;
   isNoMovementView?: boolean;
   onStartSync?: () => Promise<void> | void;
   onStartTraySync?: (filters: TraySyncFilters) => Promise<void>;
@@ -204,6 +205,7 @@ export const OrderList: React.FC<OrderListProps> = ({
   orders,
   initialFilters,
   onFetchSingle,
+  onOrderUpdated,
   isNoMovementView = false,
   onStartSync,
   onStartTraySync,
@@ -584,7 +586,7 @@ export const OrderList: React.FC<OrderListProps> = ({
     if (!onStartTraySync) return;
 
     if (trayStatusMode === "selected" && selectedTrayStatuses.length === 0) {
-      alert("Selecione ao menos um status da Tray para buscar os pedidos.");
+      alert("Selecione ao menos um status da Integradora para buscar os pedidos.");
       return;
     }
 
@@ -1456,17 +1458,17 @@ export const OrderList: React.FC<OrderListProps> = ({
               {isTraySyncing ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  Iniciando Tray...
+                  Iniciando Integradora...
                 </>
               ) : isTrayJobRunning ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  Acompanhar Sync Tray
+                  Acompanhar Sync da Integradora
                 </>
               ) : (
                 <>
                   <RefreshCw className="w-4 h-4" />
-                  Sincronizar Pedidos da Tray
+                  Sincronizar Pedidos da Integradora
                 </>
               )}
             </button>
@@ -1743,6 +1745,10 @@ export const OrderList: React.FC<OrderListProps> = ({
         <OrderDetail
           order={selectedOrder}
           onClose={() => setSelectedOrder(null)}
+          onOrderUpdated={(updatedOrder) => {
+            setSelectedOrder(updatedOrder);
+            onOrderUpdated?.(updatedOrder);
+          }}
         />
       )}
 
@@ -1753,7 +1759,7 @@ export const OrderList: React.FC<OrderListProps> = ({
             <div className="flex justify-between items-center mb-6 shrink-0">
               <div>
                 <h3 className="text-lg font-bold text-slate-800 dark:text-white">
-                  Sincronizar Pedidos da Tray
+                  Sincronizar Pedidos da Integradora
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                   Defina o período e os status dos pedidos que serão buscados.
@@ -1862,7 +1868,7 @@ export const OrderList: React.FC<OrderListProps> = ({
                         Todos exceto cancelados
                       </p>
                       <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                        Busca os pedidos da Tray ignorando apenas o status cancelado.
+                        Busca os pedidos da Integradora ignorando apenas o status cancelado.
                       </p>
                     </div>
                   </label>
@@ -1950,7 +1956,7 @@ export const OrderList: React.FC<OrderListProps> = ({
                     </div>
                   ) : (
                     <div className="px-4 py-6 text-center text-xs text-slate-400">
-                      Os logs da Tray aparecem aqui assim que a sincronizacao for iniciada.
+                      Os logs da Integradora aparecem aqui assim que a sincronizacao for iniciada.
                     </div>
                   )}
                 </div>
