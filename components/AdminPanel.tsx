@@ -1417,7 +1417,12 @@ export const AdminPanel: React.FC = () => {
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Integracao principal</p>
-                    <h4 className="mt-2 text-lg font-bold text-slate-800 dark:text-white">Integradora</h4>
+                    <img
+                      src="/logo-tray.png"
+                      alt="Tray"
+                      className="mt-3 h-8 w-auto object-contain"
+                    />
+                    <h4 className="mt-2 text-lg font-bold text-slate-800 dark:text-white">Tray</h4>
                     <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
                       Autorize a loja, acompanhe o status e controle o uso da integracao de pedidos da Tray.
                     </p>
@@ -1489,7 +1494,7 @@ export const AdminPanel: React.FC = () => {
                   <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                     {trayIntegrationEnabled
                       ? trayStatus.message
-                      : "A integracao da Integradora esta desativada para esta empresa."}
+                      : "A integracao da Tray esta desativada para esta empresa."}
                   </p>
                   {trayStatus.updatedAt && trayIntegrationEnabled && (
                     <p className="mt-1 text-[11px] text-slate-400">
@@ -1529,6 +1534,11 @@ export const AdminPanel: React.FC = () => {
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Tracking externo</p>
+                    <img
+                      src="/intelipost.png"
+                      alt="Intelipost"
+                      className="mt-3 h-8 w-auto object-contain"
+                    />
                     <h4 className="mt-2 text-lg font-bold text-slate-800 dark:text-white">Intelipost</h4>
                     <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
                       Define o client ID usado nas consultas manuais e nos fluxos de rastreio que passam pela Intelipost.
@@ -1587,6 +1597,11 @@ export const AdminPanel: React.FC = () => {
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Tracking por NF</p>
+                    <img
+                      src="/ssw.png"
+                      alt="SSW"
+                      className="mt-3 h-8 w-auto object-contain"
+                    />
                     <h4 className="mt-2 text-lg font-bold text-slate-800 dark:text-white">SSW Require</h4>
                     <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
                       Mantem os CNPJs usados para montar links de rastreio no formato SSW por NF.
@@ -1731,6 +1746,11 @@ export const AdminPanel: React.FC = () => {
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Em implementacao</p>
+                    <img
+                      src="/bling.png"
+                      alt="Bling ERP"
+                      className="mt-3 h-8 w-auto object-contain"
+                    />
                     <h4 className="mt-2 text-lg font-bold text-slate-800 dark:text-white">Bling ERP</h4>
                     <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
                       Card reservado para a futura integracao com ERP, com foco em pedidos, faturamento e operacao.
@@ -1749,6 +1769,11 @@ export const AdminPanel: React.FC = () => {
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Em implementacao</p>
+                    <img
+                      src="/sysemp.png"
+                      alt="SYSEMP"
+                      className="mt-3 h-8 w-auto object-contain"
+                    />
                     <h4 className="mt-2 text-lg font-bold text-slate-800 dark:text-white">SYSEMP - Shopping de Precos</h4>
                     <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
                       Espaco preparado para a futura integracao com comparador de precos e operacao comercial.
