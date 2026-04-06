@@ -25,6 +25,11 @@ const normalizeIntegrationCarrierExceptions = (value: unknown) => {
   );
 };
 
+const normalizeBooleanSetting = (value: unknown) => {
+  if (value === undefined) return undefined;
+  return Boolean(value);
+};
+
 // Listar todas as empresas
 export const getCompanies = async (req: Request, res: Response) => {
   try {
@@ -53,6 +58,13 @@ export const createCompany = async (req: Request, res: Response) => {
       data: {
         name,
         cnpj,
+        trayIntegrationEnabled: normalizeBooleanSetting(
+          req.body?.trayIntegrationEnabled,
+        ) ?? true,
+        intelipostIntegrationEnabled: normalizeBooleanSetting(
+          req.body?.intelipostIntegrationEnabled,
+        ) ?? true,
+        sswRequireEnabled: normalizeBooleanSetting(req.body?.sswRequireEnabled) ?? true,
         intelipostClientId: intelipostClientId ? String(intelipostClientId).trim() : null,
         sswRequireCnpjs: normalizeSswRequireCnpjs(sswRequireCnpjs),
         integrationCarrierExceptions: normalizeIntegrationCarrierExceptions(
@@ -98,6 +110,9 @@ export const getCurrentCompany = async (req: Request, res: Response) => {
         id: true,
         name: true,
         cnpj: true,
+        trayIntegrationEnabled: true,
+        intelipostIntegrationEnabled: true,
+        sswRequireEnabled: true,
         intelipostClientId: true,
         sswRequireCnpjs: true,
         integrationCarrierExceptions: true,
@@ -140,6 +155,13 @@ export const updateCurrentCompanyIntegration = async (
       integrationCarrierExceptionsRaw === undefined
         ? undefined
         : normalizeIntegrationCarrierExceptions(integrationCarrierExceptionsRaw);
+    const trayIntegrationEnabled = normalizeBooleanSetting(
+      req.body?.trayIntegrationEnabled,
+    );
+    const intelipostIntegrationEnabled = normalizeBooleanSetting(
+      req.body?.intelipostIntegrationEnabled,
+    );
+    const sswRequireEnabled = normalizeBooleanSetting(req.body?.sswRequireEnabled);
 
     if (intelipostClientId !== undefined && !intelipostClientId) {
       return res.status(400).json({ error: 'ID da Intelipost obrigatorio' });
@@ -149,6 +171,11 @@ export const updateCurrentCompanyIntegration = async (
       where: { id: req.user.companyId },
       data: {
         ...(intelipostClientId !== undefined ? { intelipostClientId } : {}),
+        ...(trayIntegrationEnabled !== undefined ? { trayIntegrationEnabled } : {}),
+        ...(intelipostIntegrationEnabled !== undefined
+          ? { intelipostIntegrationEnabled }
+          : {}),
+        ...(sswRequireEnabled !== undefined ? { sswRequireEnabled } : {}),
         ...(sswRequireCnpjs !== undefined ? { sswRequireCnpjs } : {}),
         ...(integrationCarrierExceptions !== undefined
           ? { integrationCarrierExceptions }
@@ -158,6 +185,9 @@ export const updateCurrentCompanyIntegration = async (
         id: true,
         name: true,
         cnpj: true,
+        trayIntegrationEnabled: true,
+        intelipostIntegrationEnabled: true,
+        sswRequireEnabled: true,
         intelipostClientId: true,
         sswRequireCnpjs: true,
         integrationCarrierExceptions: true,

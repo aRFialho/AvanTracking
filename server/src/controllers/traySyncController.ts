@@ -3,6 +3,7 @@ import { traySyncJobService } from '../services/traySyncJobService';
 import { traySyncService } from '../services/traySyncService';
 import { trayAuthService } from '../services/trayAuthService';
 import { syncReportService } from '../services/syncReportService';
+import { prisma } from '../lib/prisma';
 
 const getUserCompany = (req: Request) => {
   if (!req.user) {
@@ -19,6 +20,17 @@ const getUserCompany = (req: Request) => {
   return { companyId: req.user.companyId, userId: req.user.id };
 };
 
+const isTrayIntegrationEnabled = async (companyId: string) => {
+  const company = await (prisma.company as any).findUnique({
+    where: { id: companyId },
+    select: {
+      trayIntegrationEnabled: true,
+    },
+  });
+
+  return company?.trayIntegrationEnabled !== false;
+};
+
 export const syncTrayOrders = async (req: Request, res: Response) => {
   console.log('Iniciando sincronizacao com Tray...');
 
@@ -26,6 +38,12 @@ export const syncTrayOrders = async (req: Request, res: Response) => {
     const context = getUserCompany(req);
     if ('error' in context) {
       return res.status(context.status).json({ error: context.error });
+    }
+
+    if (!(await isTrayIntegrationEnabled(context.companyId))) {
+      return res.status(400).json({
+        error: 'A integracao da Integradora esta desativada para a empresa atual.',
+      });
     }
 
     const auth = await trayAuthService.getCurrentAuth(context.companyId);
@@ -82,6 +100,12 @@ export const startTraySyncJob = async (req: Request, res: Response) => {
       return res.status(context.status).json({ error: context.error });
     }
 
+    if (!(await isTrayIntegrationEnabled(context.companyId))) {
+      return res.status(400).json({
+        error: 'A integracao da Integradora esta desativada para a empresa atual.',
+      });
+    }
+
     const auth = await trayAuthService.getCurrentAuth(context.companyId);
     if (!auth) {
       return res.status(400).json({
@@ -131,6 +155,14 @@ export const getTraySyncStatus = async (req: Request, res: Response) => {
     const context = getUserCompany(req);
     if ('error' in context) {
       return res.status(context.status).json({ error: context.error });
+    }
+
+    if (!(await isTrayIntegrationEnabled(context.companyId))) {
+      return res.json({
+        success: true,
+        job: null,
+        schedule: traySyncJobService.getDisabledSchedule(),
+      });
     }
 
     const auth = await trayAuthService.getCurrentAuth(context.companyId);

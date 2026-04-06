@@ -61,6 +61,9 @@ model Company {
     id          String   @id @default(uuid())
     name        String
     cnpj        String?
+    trayIntegrationEnabled Boolean @default(true)
+    intelipostIntegrationEnabled Boolean @default(true)
+    sswRequireEnabled Boolean @default(true)
     databaseUrl String? // URL do banco de dados específico da empresa
     intelipostClientId String?
     sswRequireCnpjs String[] @default([])

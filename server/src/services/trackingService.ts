@@ -273,22 +273,34 @@ export class TrackingService {
       return {
         intelipostClientId: DEFAULT_CLIENT_ID,
         sswRequireCnpjs: [] as string[],
+        intelipostIntegrationEnabled: true,
+        sswRequireEnabled: true,
       };
     }
 
     const company = await (prisma.company as any).findUnique({
       where: { id: companyId },
       select: {
+        intelipostIntegrationEnabled: true,
+        sswRequireEnabled: true,
         intelipostClientId: true,
         sswRequireCnpjs: true,
       },
     });
 
     return {
-      intelipostClientId: String(company?.intelipostClientId || DEFAULT_CLIENT_ID).trim(),
-      sswRequireCnpjs: Array.isArray(company?.sswRequireCnpjs)
+      intelipostClientId:
+        company?.intelipostIntegrationEnabled === false
+          ? ''
+          : String(company?.intelipostClientId || DEFAULT_CLIENT_ID).trim(),
+      sswRequireCnpjs:
+        company?.sswRequireEnabled === false
+          ? []
+          : Array.isArray(company?.sswRequireCnpjs)
         ? company.sswRequireCnpjs.map((cnpj) => String(cnpj || '').replace(/\D/g, '').trim()).filter(Boolean)
         : [],
+      intelipostIntegrationEnabled: company?.intelipostIntegrationEnabled !== false,
+      sswRequireEnabled: company?.sswRequireEnabled !== false,
     };
   }
 
@@ -297,7 +309,11 @@ export class TrackingService {
     companyId?: string | null,
   ) {
     try {
-      const { intelipostClientId } = await this.resolveCompanyTrackingConfig(companyId);
+      const { intelipostClientId, intelipostIntegrationEnabled } =
+        await this.resolveCompanyTrackingConfig(companyId);
+      if (!intelipostIntegrationEnabled || !intelipostClientId) {
+        return null;
+      }
       const payload = {
         operationName: null,
         query: INTELIPOST_QUERY,

@@ -239,8 +239,12 @@ export const OrderList: React.FC<OrderListProps> = ({
   );
   const [carrierFilter, setCarrierFilter] = useState<string>("ALL");
   const [marketplaceFilter, setMarketplaceFilter] = useState<string>("ALL");
-  const [dateRangeStart, setDateRangeStart] = useState("");
-  const [dateRangeEnd, setDateRangeEnd] = useState("");
+  const [dateRangeStart, setDateRangeStart] = useState(
+    initialFilters?.dateRangeStart || "",
+  );
+  const [dateRangeEnd, setDateRangeEnd] = useState(
+    initialFilters?.dateRangeEnd || "",
+  );
   const [sortConfig, setSortConfig] = useState<{
     key: SortKey;
     direction: SortDirection;
@@ -277,6 +281,8 @@ export const OrderList: React.FC<OrderListProps> = ({
       setDueToday(!!initialFilters.dueToday);
       setNoSync(!!initialFilters.noSync);
       setNoForecast(!!initialFilters.noForecast);
+      setDateRangeStart(initialFilters.dateRangeStart || "");
+      setDateRangeEnd(initialFilters.dateRangeEnd || "");
     }
   }, [initialFilters]);
 

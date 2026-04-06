@@ -29,6 +29,9 @@ interface Company {
   id: string;
   name: string;
   cnpj?: string;
+  trayIntegrationEnabled?: boolean;
+  intelipostIntegrationEnabled?: boolean;
+  sswRequireEnabled?: boolean;
   intelipostClientId?: string | null;
   sswRequireCnpjs?: string[];
   integrationCarrierExceptions?: string[];
@@ -184,12 +187,17 @@ export const AdminPanel: React.FC = () => {
   });
   const [isCheckingTrayStatus, setIsCheckingTrayStatus] = useState(false);
   const [currentCompany, setCurrentCompany] = useState<Company | null>(null);
+  const [trayIntegrationEnabled, setTrayIntegrationEnabled] = useState(true);
+  const [intelipostIntegrationEnabled, setIntelipostIntegrationEnabled] =
+    useState(true);
+  const [sswRequireEnabled, setSswRequireEnabled] = useState(true);
   const [intelipostClientId, setIntelipostClientId] = useState("");
   const [sswRequireCnpjs, setSswRequireCnpjs] = useState<string[]>([""]);
   const [integrationCarrierExceptions, setIntegrationCarrierExceptions] = useState<string[]>([""]);
   const [isSavingIntelipost, setIsSavingIntelipost] = useState(false);
   const [isSavingSswRequire, setIsSavingSswRequire] = useState(false);
   const [isSavingCarrierExceptions, setIsSavingCarrierExceptions] = useState(false);
+  const [isSavingIntegrationToggle, setIsSavingIntegrationToggle] = useState(false);
   const [patchNotesForm, setPatchNotesForm] = useState<PatchNotesFormData>({
     version: "",
     title: "",
@@ -322,6 +330,9 @@ export const AdminPanel: React.FC = () => {
       }
 
       setCurrentCompany(data);
+      setTrayIntegrationEnabled(data.trayIntegrationEnabled !== false);
+      setIntelipostIntegrationEnabled(data.intelipostIntegrationEnabled !== false);
+      setSswRequireEnabled(data.sswRequireEnabled !== false);
       setIntelipostClientId(data.intelipostClientId || "");
       setSswRequireCnpjs(
         Array.isArray(data.sswRequireCnpjs) && data.sswRequireCnpjs.length > 0
@@ -336,6 +347,9 @@ export const AdminPanel: React.FC = () => {
       );
     } catch {
       setCurrentCompany(null);
+      setTrayIntegrationEnabled(true);
+      setIntelipostIntegrationEnabled(true);
+      setSswRequireEnabled(true);
       setIntelipostClientId("");
       setSswRequireCnpjs([""]);
       setIntegrationCarrierExceptions([""]);
@@ -681,6 +695,47 @@ export const AdminPanel: React.FC = () => {
     }
   };
 
+  const handleSaveIntegrationToggle = async (
+    field:
+      | "trayIntegrationEnabled"
+      | "intelipostIntegrationEnabled"
+      | "sswRequireEnabled",
+    value: boolean,
+  ) => {
+    if (!currentCompany) return;
+
+    setIsSavingIntegrationToggle(true);
+    try {
+      const response = await fetchWithAuth("/api/companies/current/integration", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          [field]: value,
+        }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(
+          data.error || "Nao foi possivel atualizar o status da integracao.",
+        );
+      }
+
+      setCurrentCompany(data.company || null);
+      setTrayIntegrationEnabled(data.company?.trayIntegrationEnabled !== false);
+      setIntelipostIntegrationEnabled(
+        data.company?.intelipostIntegrationEnabled !== false,
+      );
+      setSswRequireEnabled(data.company?.sswRequireEnabled !== false);
+    } catch (err: any) {
+      alert(err.message || "Erro ao atualizar a integracao.");
+      await fetchCurrentCompany();
+    } finally {
+      setIsSavingIntegrationToggle(false);
+    }
+  };
+
   const handlePatchNotesFieldChange = (
     field: keyof PatchNotesFormData,
     value: string,
@@ -824,6 +879,33 @@ export const AdminPanel: React.FC = () => {
 
   const filteredRecipientIds = filteredRecipientUsers.map(
     (userItem) => userItem.id,
+  );
+
+  const IntegrationToggle: React.FC<{
+    enabled: boolean;
+    disabled?: boolean;
+    onChange?: (nextValue: boolean) => void;
+  }> = ({ enabled, disabled = false, onChange }) => (
+    <button
+      type="button"
+      onClick={() => !disabled && onChange?.(!enabled)}
+      disabled={disabled}
+      className={clsx(
+        "relative inline-flex h-7 w-12 items-center rounded-full border transition-all",
+        enabled
+          ? "border-emerald-400 bg-emerald-500/90"
+          : "border-slate-300 bg-slate-300 dark:border-white/10 dark:bg-white/10",
+        disabled && "cursor-not-allowed opacity-60",
+      )}
+      aria-pressed={enabled}
+    >
+      <span
+        className={clsx(
+          "inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform",
+          enabled ? "translate-x-6" : "translate-x-1",
+        )}
+      />
+    </button>
   );
 
   return (
@@ -1301,6 +1383,389 @@ export const AdminPanel: React.FC = () => {
       )}
 
       {activeTab === "integration" && (
+        <div className="space-y-6">
+          <div className="glass-card rounded-2xl overflow-hidden border border-slate-200 dark:border-white/10">
+            <div className="p-5 bg-[linear-gradient(135deg,#fff7ed_0%,#f8fafc_45%,#eff6ff_100%)] dark:bg-[linear-gradient(135deg,rgba(240,90,61,0.12),rgba(15,23,42,0.92),rgba(37,99,235,0.12))] border-b border-slate-200 dark:border-white/10">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <p className="inline-flex items-center rounded-full border border-orange-200 bg-orange-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-orange-700 dark:border-orange-500/20 dark:bg-orange-500/10 dark:text-orange-200">
+                    Integracoes
+                  </p>
+                  <h3 className="mt-3 text-xl font-bold text-slate-800 dark:text-white">
+                    Central de Integracao
+                  </h3>
+                  <p className="mt-2 max-w-3xl text-sm text-slate-500 dark:text-slate-400">
+                    Cada integracao fica no proprio card, com status, configuracoes e um toggle claro para ativar ou desativar o recurso da empresa.
+                  </p>
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 bg-white/80 px-4 py-3 text-sm text-slate-600 shadow-sm dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
+                  <p className="font-semibold text-slate-700 dark:text-white">
+                    Empresa atual: {currentCompany?.name || "Nao vinculada"}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    As configuracoes abaixo sao compartilhadas por todos os usuarios desta empresa.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+            <div className="glass-card rounded-2xl overflow-hidden border border-slate-200 dark:border-white/10">
+              <div className="p-5 border-b border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-white/5">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Integracao principal</p>
+                    <h4 className="mt-2 text-lg font-bold text-slate-800 dark:text-white">Integradora</h4>
+                    <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+                      Autorize a loja, acompanhe o status e controle o uso da integracao de pedidos da Tray.
+                    </p>
+                  </div>
+                  <div className="flex flex-col items-end gap-2">
+                    <IntegrationToggle
+                      enabled={trayIntegrationEnabled}
+                      disabled={isSavingIntegrationToggle || !currentCompany}
+                      onChange={(nextValue) =>
+                        handleSaveIntegrationToggle("trayIntegrationEnabled", nextValue)
+                      }
+                    />
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                      {trayIntegrationEnabled ? "Ativa" : "Desativada"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-5 space-y-4">
+                <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700 dark:border-blue-900/30 dark:bg-blue-900/10 dark:text-blue-300">
+                  Voce pode informar a URL da loja ou a URL completa com <span className="font-semibold">/web_api</span>. O sistema normaliza a URL antes de redirecionar para a Tray.
+                </div>
+
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-white/10 dark:bg-white/5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div
+                      className={clsx(
+                        "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide",
+                        !trayIntegrationEnabled
+                          ? "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200"
+                          : trayStatus.status === "online"
+                            ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-900/10 dark:text-emerald-300"
+                            : "border-slate-200 bg-slate-100 text-slate-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300",
+                      )}
+                    >
+                      <span
+                        className={clsx(
+                          "h-2 w-2 rounded-full",
+                          !trayIntegrationEnabled
+                            ? "bg-amber-500"
+                            : trayStatus.status === "online"
+                              ? "bg-emerald-500"
+                              : "bg-slate-400",
+                        )}
+                      />
+                      {!trayIntegrationEnabled
+                        ? "Desativada"
+                        : isCheckingTrayStatus
+                          ? "Verificando"
+                          : trayStatus.status === "online"
+                            ? "Online"
+                            : "Offline"}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={fetchTrayStatus}
+                      disabled={!trayIntegrationEnabled}
+                      className="text-xs font-medium text-slate-500 hover:text-slate-700 disabled:opacity-50 dark:text-slate-400 dark:hover:text-white transition-colors"
+                    >
+                      Atualizar status
+                    </button>
+                  </div>
+
+                  <p className="mt-3 text-sm font-semibold text-slate-700 dark:text-white">
+                    {trayStatus.storeName || trayStatus.storeId || "Nenhuma loja conectada"}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    {trayIntegrationEnabled
+                      ? trayStatus.message
+                      : "A integracao da Integradora esta desativada para esta empresa."}
+                  </p>
+                  {trayStatus.updatedAt && trayIntegrationEnabled && (
+                    <p className="mt-1 text-[11px] text-slate-400">
+                      Ultima validacao: {new Date(trayStatus.updatedAt).toLocaleString()}
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">URL da loja Tray</label>
+                  <input
+                    type="text"
+                    value={trayStoreUrl}
+                    onChange={(e) => setTrayStoreUrl(e.target.value)}
+                    placeholder="https://www.sualoja.com.br/web_api"
+                    disabled={!trayIntegrationEnabled}
+                    className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white focus:border-blue-500 outline-none disabled:opacity-50"
+                  />
+                  <p className="text-[11px] text-slate-400 mt-2">Exemplo aceito: https://www.sualoja.com.br/web_api</p>
+                </div>
+
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    onClick={handleConnectTray}
+                    disabled={!trayIntegrationEnabled}
+                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                  >
+                    <Link2 className="w-4 h-4" />
+                    Conectar Tray
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="glass-card rounded-2xl overflow-hidden border border-slate-200 dark:border-white/10">
+              <div className="p-5 border-b border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-white/5">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Tracking externo</p>
+                    <h4 className="mt-2 text-lg font-bold text-slate-800 dark:text-white">Intelipost</h4>
+                    <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+                      Define o client ID usado nas consultas manuais e nos fluxos de rastreio que passam pela Intelipost.
+                    </p>
+                  </div>
+                  <div className="flex flex-col items-end gap-2">
+                    <IntegrationToggle
+                      enabled={intelipostIntegrationEnabled}
+                      disabled={isSavingIntegrationToggle || !currentCompany}
+                      onChange={(nextValue) =>
+                        handleSaveIntegrationToggle("intelipostIntegrationEnabled", nextValue)
+                      }
+                    />
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                      {intelipostIntegrationEnabled ? "Ativa" : "Desativada"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-5 space-y-4">
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Client ID Intelipost</label>
+                  <div className="flex flex-col gap-3 sm:flex-row">
+                    <input
+                      type="text"
+                      value={intelipostClientId}
+                      onChange={(e) => setIntelipostClientId(e.target.value)}
+                      placeholder="40115"
+                      disabled={!intelipostIntegrationEnabled}
+                      className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white focus:border-blue-500 outline-none disabled:opacity-50"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleSaveIntelipost}
+                      disabled={isSavingIntelipost || !currentCompany || !intelipostIntegrationEnabled}
+                      className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-medium text-white bg-slate-700 hover:bg-slate-800 disabled:opacity-50 transition-colors"
+                    >
+                      {isSavingIntelipost ? "Salvando..." : "Salvar Intelipost"}
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-2">Exemplo: a Drossi Interiores permanece com o ID padrao 40115.</p>
+                </div>
+
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
+                  <p className="font-semibold text-slate-700 dark:text-white">Uso atual</p>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    Quando desativada, a empresa deixa de usar a Intelipost para consulta de rastreio e geracao de links.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="glass-card rounded-2xl overflow-hidden border border-slate-200 dark:border-white/10">
+              <div className="p-5 border-b border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-white/5">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Tracking por NF</p>
+                    <h4 className="mt-2 text-lg font-bold text-slate-800 dark:text-white">SSW Require</h4>
+                    <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+                      Mantem os CNPJs usados para montar links de rastreio no formato SSW por NF.
+                    </p>
+                  </div>
+                  <div className="flex flex-col items-end gap-2">
+                    <IntegrationToggle
+                      enabled={sswRequireEnabled}
+                      disabled={isSavingIntegrationToggle || !currentCompany}
+                      onChange={(nextValue) =>
+                        handleSaveIntegrationToggle("sswRequireEnabled", nextValue)
+                      }
+                    />
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                      {sswRequireEnabled ? "Ativa" : "Desativada"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-5 space-y-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p className="font-semibold text-slate-700 dark:text-white">CNPJs permitidos</p>
+                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                      Inserir CNPJ sem pontuacao. O sistema tenta os CNPJs cadastrados para montar o rastreio SSW da NF.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleAddSswRequireCnpj}
+                    disabled={!sswRequireEnabled}
+                    className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Adicionar CNPJ
+                  </button>
+                </div>
+
+                <div className="space-y-3">
+                  {sswRequireCnpjs.map((cnpj, index) => (
+                    <div key={`${index}-${cnpj}`} className="flex flex-col gap-3 sm:flex-row">
+                      <input
+                        type="text"
+                        value={cnpj}
+                        onChange={(e) => handleChangeSswRequireCnpj(index, e.target.value)}
+                        placeholder="12345678000199"
+                        disabled={!sswRequireEnabled}
+                        className="w-full bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white focus:border-blue-500 outline-none disabled:opacity-50"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveSswRequireCnpj(index)}
+                        disabled={!sswRequireEnabled || sswRequireCnpjs.length === 1}
+                        className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-medium border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 hover:border-red-500 hover:text-red-600 disabled:opacity-50 transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        Remover
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-[11px] text-slate-400">Todos os usuarios da empresa compartilham esta configuracao.</p>
+
+                  <button
+                    type="button"
+                    onClick={handleSaveSswRequire}
+                    disabled={isSavingSswRequire || !currentCompany || !sswRequireEnabled}
+                    className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-medium text-white bg-slate-700 hover:bg-slate-800 disabled:opacity-50 transition-colors"
+                  >
+                    {isSavingSswRequire ? "Salvando..." : "Salvar SSW Require"}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="glass-card rounded-2xl overflow-hidden border border-slate-200 dark:border-white/10">
+              <div className="p-5 border-b border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-white/5">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Regras de importacao</p>
+                    <h4 className="mt-2 text-lg font-bold text-slate-800 dark:text-white">Excecao de transportadora</h4>
+                    <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+                      Controle fino para ignorar pedidos da plataforma por nome exato de transportadora nesta empresa.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleAddCarrierException}
+                    className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-medium text-white bg-blue-600 hover:bg-blue-700 transition-colors"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Adicionar
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-5 space-y-3">
+                {integrationCarrierExceptions.map((carrierName, index) => (
+                  <div key={`${index}-${carrierName}`} className="flex flex-col gap-3 sm:flex-row">
+                    <input
+                      type="text"
+                      value={carrierName}
+                      onChange={(e) => handleChangeCarrierException(index, e.target.value)}
+                      placeholder="Nome exato da transportadora"
+                      className="w-full bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white focus:border-blue-500 outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveCarrierException(index)}
+                      disabled={integrationCarrierExceptions.length === 1}
+                      className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-medium border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 hover:border-red-500 hover:text-red-600 disabled:opacity-50 transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      Remover
+                    </button>
+                  </div>
+                ))}
+
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-[11px] text-slate-400">A comparacao usa o texto normalizado exato recebido da plataforma.</p>
+
+                  <button
+                    type="button"
+                    onClick={handleSaveCarrierExceptions}
+                    disabled={isSavingCarrierExceptions || !currentCompany}
+                    className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-medium text-white bg-slate-700 hover:bg-slate-800 disabled:opacity-50 transition-colors"
+                  >
+                    {isSavingCarrierExceptions ? "Salvando..." : "Salvar excecoes"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+            <div className="glass-card rounded-2xl overflow-hidden border border-dashed border-slate-300 dark:border-white/10">
+              <div className="p-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Em implementacao</p>
+                    <h4 className="mt-2 text-lg font-bold text-slate-800 dark:text-white">Bling ERP</h4>
+                    <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+                      Card reservado para a futura integracao com ERP, com foco em pedidos, faturamento e operacao.
+                    </p>
+                  </div>
+                  <div className="flex flex-col items-end gap-2">
+                    <IntegrationToggle enabled={false} disabled={true} />
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Em implementacao</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="glass-card rounded-2xl overflow-hidden border border-dashed border-slate-300 dark:border-white/10">
+              <div className="p-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Em implementacao</p>
+                    <h4 className="mt-2 text-lg font-bold text-slate-800 dark:text-white">SYSEMP - Shopping de Precos</h4>
+                    <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+                      Espaco preparado para a futura integracao com comparador de precos e operacao comercial.
+                    </p>
+                  </div>
+                  <div className="flex flex-col items-end gap-2">
+                    <IntegrationToggle enabled={false} disabled={true} />
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Em implementacao</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {false && activeTab === "integration" && (
         <div className="glass-card rounded-xl overflow-hidden border border-slate-200 dark:border-white/10">
           <div className="p-4 border-b border-slate-200 dark:border-white/10 bg-slate-50/50 dark:bg-white/5 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>

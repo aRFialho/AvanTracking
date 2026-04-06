@@ -100,12 +100,25 @@ class TraySyncJobService {
     });
 
     const seenCompanies = new Set<string>();
+    const enabledCompanies = new Set(
+      (
+        await (prisma.company as any).findMany({
+          where: {
+            trayIntegrationEnabled: true,
+          },
+          select: {
+            id: true,
+          },
+        })
+      ).map((company: { id: string }) => company.id),
+    );
 
     for (const user of users) {
       if (
         !user.companyId ||
         seenCompanies.has(user.companyId) ||
-        !companyIdsWithAuth.has(user.companyId)
+        !companyIdsWithAuth.has(user.companyId) ||
+        !enabledCompanies.has(user.companyId)
       ) {
         continue;
       }
@@ -383,23 +396,37 @@ class TraySyncJobService {
     schedule.timeout = null;
     schedule.nextScheduledAt = null;
 
-    const existing = this.jobs.get(companyId);
-    if (existing?.status === 'running') {
-      this.scheduleNext(companyId, schedule.userId);
-      return;
-    }
+    void (async () => {
+      const company = await (prisma.company as any).findUnique({
+        where: { id: companyId },
+        select: {
+          trayIntegrationEnabled: true,
+        },
+      });
 
-    const job = this.startJob(
-      companyId,
-      schedule.userId,
-      AUTO_TRAY_SYNC_FILTERS,
-      'automatic',
-    );
-    this.pushLog(
-      job,
-      'info',
-      'Execucao automatica da Tray disparada com janela de 2 dias.',
-    );
+      if (company?.trayIntegrationEnabled === false) {
+        this.schedules.delete(companyId);
+        return;
+      }
+
+      const existing = this.jobs.get(companyId);
+      if (existing?.status === 'running') {
+        this.scheduleNext(companyId, schedule.userId);
+        return;
+      }
+
+      const job = this.startJob(
+        companyId,
+        schedule.userId,
+        AUTO_TRAY_SYNC_FILTERS,
+        'automatic',
+      );
+      this.pushLog(
+        job,
+        'info',
+        'Execucao automatica da Tray disparada com janela de 2 dias.',
+      );
+    })();
   }
 
   private clearScheduledTimeout(companyId: string) {

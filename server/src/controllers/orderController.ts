@@ -526,9 +526,14 @@ const getCompanySswRequireCnpjs = async (companyId: string | null | undefined) =
   const company = await ((prisma.company as any).findUnique({
     where: { id: companyId },
     select: {
+      sswRequireEnabled: true,
       sswRequireCnpjs: true,
     },
   }) as Promise<any>);
+
+  if (company?.sswRequireEnabled === false) {
+    return [];
+  }
 
   return Array.isArray(company?.sswRequireCnpjs)
     ? company.sswRequireCnpjs
@@ -547,9 +552,14 @@ const getCompanyIntelipostClientId = async (
   const company = await ((prisma.company as any).findUnique({
     where: { id: companyId },
     select: {
+      intelipostIntegrationEnabled: true,
       intelipostClientId: true,
     },
   }) as Promise<any>);
+
+  if (company?.intelipostIntegrationEnabled === false) {
+    return null;
+  }
 
   return safeString(company?.intelipostClientId);
 };

@@ -240,6 +240,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
   // --- UI State ---
   const [isRankingExpanded, setIsRankingExpanded] = useState(false);
 
+  const currentMonthDateFilters = useMemo(() => {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), 1);
+    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+    return {
+      dateRangeStart: start.toISOString().slice(0, 10),
+      dateRangeEnd: end.toISOString().slice(0, 10),
+    };
+  }, []);
+
   // --- Helpers ---
   const uniqueCarriers = useMemo(
     () =>
@@ -456,21 +467,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
       ),
     );
 
-    const currentMonthDeliveredOrders = monthEligibleOrders.filter(
-      (order) =>
-        order.status === OrderStatus.DELIVERED &&
-        isDateInRange(order.lastUpdate, currentMonthStart, nextMonthStart),
-    );
-    const previousMonthDeliveredOrders = monthEligibleOrders.filter(
-      (order) =>
-        order.status === OrderStatus.DELIVERED &&
-        isDateInRange(order.lastUpdate, previousMonthStart, currentMonthStart),
-    );
-
     const calcGrowth = (curr: number, prev: number) => {
       if (prev === 0) return curr > 0 ? 100 : 0;
       return ((curr - prev) / prev) * 100;
     };
+
+    const currentMonthDeliveredOrders = currentMonthOrders.filter(
+      (order) => order.status === OrderStatus.DELIVERED,
+    );
+    const previousMonthDeliveredOrders = previousMonthOrders.filter(
+      (order) => order.status === OrderStatus.DELIVERED,
+    );
 
     const totalGrowth = calcGrowth(
       currentMonthDeliveredOrders.length,
@@ -488,21 +495,31 @@ export const Dashboard: React.FC<DashboardProps> = ({
         isActiveCarrierDelayedOrder(order) || isActivePlatformDelayedOrder(order),
     ).length;
 
-    const currDeliveredOnTime = currentMonthDeliveredOrders.filter(
-      isOrderDeliveredOnCarrierTime,
+    const currentMonthCarrierMeasurableCount = currentMonthOrders.filter(
+      isCarrierQualityMeasurableOrder,
     ).length;
-    const prevDeliveredOnTime = previousMonthDeliveredOrders.filter(
-      isOrderDeliveredOnCarrierTime,
+    const previousMonthCarrierMeasurableCount = previousMonthOrders.filter(
+      isCarrierQualityMeasurableOrder,
+    ).length;
+    const currDeliveredOnTime = currentMonthOrders.filter(
+      (order) =>
+        order.status === OrderStatus.DELIVERED &&
+        isOrderDeliveredOnCarrierTime(order),
+    ).length;
+    const prevDeliveredOnTime = previousMonthOrders.filter(
+      (order) =>
+        order.status === OrderStatus.DELIVERED &&
+        isOrderDeliveredOnCarrierTime(order),
     ).length;
 
     const currOnTimePct =
-      currentMonthDeliveredOrders.length > 0
-        ? (currDeliveredOnTime / currentMonthDeliveredOrders.length) * 100
+      currentMonthCarrierMeasurableCount > 0
+        ? (currDeliveredOnTime / currentMonthCarrierMeasurableCount) * 100
         : 0;
 
     const prevOnTimePct =
-      previousMonthDeliveredOrders.length > 0
-        ? (prevDeliveredOnTime / previousMonthDeliveredOrders.length) * 100
+      previousMonthCarrierMeasurableCount > 0
+        ? (prevDeliveredOnTime / previousMonthCarrierMeasurableCount) * 100
         : 0;
 
     const onTimeGrowth = calcGrowth(currOnTimePct, prevOnTimePct);
@@ -1021,7 +1038,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   </div>
                 </div>
                 <button
-                  onClick={() => handleCardClick("platform_delayed")}
+                  onClick={() => {
+                    onFilterRequest?.({
+                      onlyPlatformDelayed: true,
+                      ...currentMonthDateFilters,
+                    });
+                    onChangeView("orders");
+                  }}
                   className="text-xs text-red-500 hover:text-red-400 mt-4 underline decoration-red-500/30 underline-offset-4"
                 >
                   Ver pedidos em atraso plataforma ({monthSummary.platformDelayed})

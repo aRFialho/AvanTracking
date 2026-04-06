@@ -1,5 +1,19 @@
 import { Request, Response } from 'express';
 import { trayAuthService } from '../services/trayAuthService';
+import { prisma } from '../lib/prisma';
+
+const isTrayIntegrationEnabled = async (companyId?: string | null) => {
+  if (!companyId) return false;
+
+  const company = await (prisma.company as any).findUnique({
+    where: { id: companyId },
+    select: {
+      trayIntegrationEnabled: true,
+    },
+  });
+
+  return company?.trayIntegrationEnabled !== false;
+};
 
 const getAppBaseUrl = (req: Request) => {
   const configuredBaseUrl = String(
@@ -23,7 +37,7 @@ const getIntegrationReturnUrl = (req: Request, status: 'connected' | 'error') =>
   return `${getAppBaseUrl(req)}/?${params.toString()}`;
 };
 
-export const startTrayAuthorization = (req: Request, res: Response) => {
+export const startTrayAuthorization = async (req: Request, res: Response) => {
   const { url } = req.query;
 
   if (!req.user) {
@@ -33,6 +47,12 @@ export const startTrayAuthorization = (req: Request, res: Response) => {
   if (!req.user.companyId) {
     return res.status(403).json({
       error: 'Usuario nao vinculado a uma empresa.',
+    });
+  }
+
+  if (!(await isTrayIntegrationEnabled(req.user.companyId))) {
+    return res.status(400).json({
+      error: 'A integracao da Integradora esta desativada para esta empresa.',
     });
   }
 
@@ -276,6 +296,18 @@ export const checkAuthStatus = async (req: Request, res: Response) => {
         ? req.query.storeId.trim()
         : undefined;
 
+    if (!(await isTrayIntegrationEnabled(req.user.companyId))) {
+      return res.json({
+        authorized: false,
+        status: 'offline',
+        storeId: null,
+        storeName: null,
+        updatedAt: null,
+        integrationEnabled: false,
+        message: 'Integracao da Integradora desativada para esta empresa.',
+      });
+    }
+
     const auth = await trayAuthService.getCurrentAuth(req.user.companyId, storeId);
 
     if (!auth) {
@@ -285,6 +317,7 @@ export const checkAuthStatus = async (req: Request, res: Response) => {
         storeId: null,
         storeName: null,
         updatedAt: null,
+        integrationEnabled: true,
         message: 'Nenhuma integracao Tray autorizada.',
       });
     }
@@ -304,6 +337,7 @@ export const checkAuthStatus = async (req: Request, res: Response) => {
       storeId: auth.storeId,
       storeName: auth.storeName || null,
       updatedAt: auth.updatedAt,
+      integrationEnabled: true,
       message: isAuthorized
         ? 'Integracao Tray online.'
         : 'Integracao Tray offline ou com token expirado.',

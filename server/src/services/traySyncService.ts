@@ -77,6 +77,18 @@ export class TraySyncService {
         ? filters.storeId.trim()
         : undefined;
 
+    const company = await (prisma.company as any).findUnique({
+      where: { id: companyId },
+      select: {
+        name: true,
+        trayIntegrationEnabled: true,
+      },
+    });
+
+    if (company?.trayIntegrationEnabled === false) {
+      throw new Error('A integracao da Integradora esta desativada para esta empresa.');
+    }
+
     const auth = await trayAuthService.getCurrentAuth(companyId, requestedStoreId);
 
     if (!auth) {
@@ -104,12 +116,6 @@ export class TraySyncService {
     const modified = resolveModifiedDate(days);
     const trayApi = new TrayApiService(companyId);
     const freightService = new TrayFreightService(companyId);
-    const company = await prisma.company.findUnique({
-      where: { id: companyId },
-      select: {
-        name: true,
-      },
-    });
     const existingOrderNumbers = new Set(
       (
         await prisma.order.findMany({
