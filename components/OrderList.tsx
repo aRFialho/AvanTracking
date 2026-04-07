@@ -438,6 +438,13 @@ export const OrderList: React.FC<OrderListProps> = ({
     [visibleColumnSet],
   );
 
+  const tableMinWidth = useMemo(() => {
+    const actionColumnWidth = 170;
+    const baseColumnWidth = 155;
+
+    return `${activeColumns.length * baseColumnWidth + actionColumnWidth}px`;
+  }, [activeColumns.length]);
+
   // Extract Lists (excluding Canceled)
   const validOrders = useMemo(
     () => orders.filter((o) => o.status !== OrderStatus.CANCELED),
@@ -1711,10 +1718,10 @@ export const OrderList: React.FC<OrderListProps> = ({
       </div>
 
       <div className={clsx("flex justify-end", !showFilters && "hidden")}>
-        <div className="flex w-full flex-wrap items-center justify-between gap-2">
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
           <div
             ref={columnMenuRef}
-            className="relative flex w-full justify-end sm:w-auto sm:justify-start"
+            className="relative z-30 flex shrink-0"
           >
             <button
               type="button"
@@ -1734,7 +1741,7 @@ export const OrderList: React.FC<OrderListProps> = ({
             </button>
 
             {isColumnMenuOpen && (
-              <div className="absolute right-0 top-12 z-20 w-[280px] rounded-xl border border-slate-200 bg-white p-3 shadow-xl dark:border-white/10 dark:bg-[#11131f]">
+              <div className="absolute right-0 top-[calc(100%+0.5rem)] z-40 w-[280px] rounded-xl border border-slate-200 bg-white p-3 shadow-xl dark:border-white/10 dark:bg-[#11131f]">
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <div>
                     <p className="text-sm font-semibold text-slate-800 dark:text-white">
@@ -1843,7 +1850,10 @@ export const OrderList: React.FC<OrderListProps> = ({
       {/* 2. Detailed Data Table */}
       <div className="glass-card relative min-h-[420px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-dark-border dark:bg-dark-card sm:min-h-[560px] lg:min-h-0 lg:flex-1">
         <div className="absolute inset-0 overflow-x-auto overflow-y-auto">
-          <table className="min-w-[1450px] text-sm text-left border-collapse">
+          <table
+            className="w-full text-sm text-left border-collapse"
+            style={{ minWidth: tableMinWidth }}
+          >
             <thead className="text-xs text-slate-500 dark:text-slate-400 font-semibold uppercase bg-slate-50 dark:bg-dark-card sticky top-0 z-10 shadow-sm backdrop-blur-md">
               <tr>
                 <th
