@@ -66,6 +66,13 @@ export interface TraySyncFilters {
   statuses: string[];
 }
 
+export interface IntegrationOrderStatusOption {
+  value: string;
+  label: string;
+  code?: number | null;
+  category?: string | null;
+}
+
 export interface Order {
   // Identification
   id: string; // Internal ID or mapped from 'Pedido'

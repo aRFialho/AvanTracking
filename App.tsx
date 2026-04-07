@@ -19,7 +19,15 @@ import {
   TraySyncFilters,
   TrayIntegrationStatus,
 } from "./types";
-import { LifeBuoy, Loader2 } from "lucide-react";
+import {
+  AlertCircle,
+  AlertTriangle,
+  CheckCircle2,
+  Info,
+  LifeBuoy,
+  Loader2,
+  X,
+} from "lucide-react";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { LOGO_URL } from "./constants";
@@ -32,6 +40,7 @@ import {
 } from "./utils";
 import { TruckCursor } from "./components/TruckCursor";
 import { fetchWithAuth } from "./utils/authFetch";
+import { APP_TOAST_EVENT, ToastPayload, ToastTone, showToast } from "./utils/toast";
 
 const SplitIntro: React.FC = () => {
   return (
@@ -156,6 +165,140 @@ const InitialDataLoader: React.FC = () => {
   );
 };
 
+const SessionExpiredToast: React.FC<{
+  visible: boolean;
+  onClose: () => void;
+}> = ({ visible, onClose }) => {
+  if (!visible) {
+    return null;
+  }
+
+  return (
+    <div className="fixed right-4 top-4 z-[120] w-full max-w-sm animate-in slide-in-from-top-3 fade-in duration-200">
+      <div className="overflow-hidden rounded-2xl border border-amber-200/80 bg-white/95 shadow-[0_20px_60px_rgba(15,23,42,0.18)] backdrop-blur-xl dark:border-amber-500/20 dark:bg-[#0f172a]/95">
+        <div className="h-1.5 w-full bg-[linear-gradient(90deg,#f59e0b_0%,#f97316_100%)]" />
+        <div className="flex gap-3 p-4">
+          <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300">
+            <AlertTriangle className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-bold text-slate-900 dark:text-white">
+              Sessao expirada
+            </p>
+            <p className="mt-1 text-sm leading-6 text-slate-600 dark:text-slate-300">
+              Entre novamente para continuar usando a plataforma com seguranca.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-white/10 dark:hover:text-white"
+            aria-label="Fechar aviso"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+type AppToast = ToastPayload & {
+  id: string;
+  tone: ToastTone;
+};
+
+const TOAST_STYLES: Record<
+  ToastTone,
+  {
+    border: string;
+    iconWrap: string;
+    icon: React.ReactNode;
+    title: string;
+  }
+> = {
+  success: {
+    border: "border-emerald-200/80 dark:border-emerald-500/20",
+    iconWrap:
+      "bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300",
+    icon: <CheckCircle2 className="h-5 w-5" />,
+    title: "Sucesso",
+  },
+  error: {
+    border: "border-rose-200/80 dark:border-rose-500/20",
+    iconWrap:
+      "bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-300",
+    icon: <AlertCircle className="h-5 w-5" />,
+    title: "Erro",
+  },
+  warning: {
+    border: "border-amber-200/80 dark:border-amber-500/20",
+    iconWrap:
+      "bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300",
+    icon: <AlertTriangle className="h-5 w-5" />,
+    title: "Aviso",
+  },
+  info: {
+    border: "border-sky-200/80 dark:border-sky-500/20",
+    iconWrap:
+      "bg-sky-100 text-sky-600 dark:bg-sky-500/15 dark:text-sky-300",
+    icon: <Info className="h-5 w-5" />,
+    title: "Informacao",
+  },
+};
+
+const ToastViewport: React.FC<{
+  toasts: AppToast[];
+  onClose: (id: string) => void;
+}> = ({ toasts, onClose }) => {
+  if (toasts.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="pointer-events-none fixed right-4 top-4 z-[130] flex w-full max-w-sm flex-col gap-3">
+      {toasts.map((toast) => {
+        const style = TOAST_STYLES[toast.tone];
+
+        return (
+          <div
+            key={toast.id}
+            className="pointer-events-auto animate-in slide-in-from-top-3 fade-in duration-200"
+          >
+            <div
+              className={`overflow-hidden rounded-2xl border bg-white/95 shadow-[0_20px_60px_rgba(15,23,42,0.18)] backdrop-blur-xl dark:bg-[#0f172a]/95 ${style.border}`}
+            >
+              <div className="flex gap-3 p-4">
+                <div
+                  className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ${style.iconWrap}`}
+                >
+                  {style.icon}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold text-slate-900 dark:text-white">
+                    {toast.title || style.title}
+                  </p>
+                  <p className="mt-1 whitespace-pre-line text-sm leading-6 text-slate-600 dark:text-slate-300">
+                    {toast.message}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onClose(toast.id)}
+                  className="rounded-full p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-white/10 dark:hover:text-white"
+                  aria-label="Fechar aviso"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
 const MainApp: React.FC = () => {
   const { isAuthenticated, isLoading, user } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
@@ -174,6 +317,8 @@ const MainApp: React.FC = () => {
   const [isSupportOpen, setIsSupportOpen] = useState(false);
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const [isInitialDashboardLoading, setIsInitialDashboardLoading] = useState(true);
+  const [toasts, setToasts] = useState<AppToast[]>([]);
+  const [showSessionExpiredToast, setShowSessionExpiredToast] = useState(false);
   const previousSyncStatusRef = useRef<SyncJobStatus["status"] | null>(null);
   const previousTraySyncStatusRef = useRef<SyncJobStatus["status"] | null>(null);
   const lastSyncWarningJobRef = useRef<string | null>(null);
@@ -490,7 +635,12 @@ const MainApp: React.FC = () => {
         syncJob.warnings.length > 0
       ) {
         lastSyncWarningJobRef.current = syncJob.jobId;
-        alert(syncJob.warnings.join("\n\n"));
+        showToast({
+          title: "Aviso de sincronizacao",
+          message: syncJob.warnings.join("\n\n"),
+          tone: "warning",
+          durationMs: 7000,
+        });
       }
     }
 
@@ -531,6 +681,74 @@ const MainApp: React.FC = () => {
     return () => clearInterval(clockInterval);
   }, []);
 
+  useEffect(() => {
+    const handleToast = (event: Event) => {
+      const customEvent = event as CustomEvent<ToastPayload>;
+      const detail = customEvent.detail;
+
+      if (!detail?.message) {
+        return;
+      }
+
+      setToasts((current) => [
+        ...current,
+        {
+          id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          title: detail.title,
+          message: detail.message,
+          tone: detail.tone || "info",
+          durationMs: detail.durationMs,
+        },
+      ]);
+    };
+
+    window.addEventListener(APP_TOAST_EVENT, handleToast as EventListener);
+
+    return () => {
+      window.removeEventListener(APP_TOAST_EVENT, handleToast as EventListener);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (toasts.length === 0) {
+      return;
+    }
+
+    const timers = toasts.map((toast) =>
+      window.setTimeout(() => {
+        setToasts((current) => current.filter((item) => item.id !== toast.id));
+      }, toast.durationMs ?? 4500),
+    );
+
+    return () => {
+      timers.forEach((timer) => window.clearTimeout(timer));
+    };
+  }, [toasts]);
+
+  useEffect(() => {
+    const handleExpiredSession = () => {
+      setShowSessionExpiredToast(true);
+    };
+
+    window.addEventListener("auth:expired", handleExpiredSession);
+
+    return () => {
+      window.removeEventListener("auth:expired", handleExpiredSession);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!showSessionExpiredToast) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setShowSessionExpiredToast(false);
+    }, 7000);
+
+    return () => window.clearTimeout(timer);
+  }, [showSessionExpiredToast]);
+
   const handleSync = useCallback(async () => {
     try {
       const response = await fetchWithAuth("/api/orders/sync-all/start", {
@@ -548,7 +766,10 @@ const MainApp: React.FC = () => {
       setNextSyncAt(parseDate(data.schedule?.nextScheduledAt));
     } catch (error) {
       console.error("Sync failed:", error);
-      alert("Erro ao sincronizar com a Intelipost.");
+      showToast({
+        message: "Erro ao sincronizar com a Intelipost.",
+        tone: "error",
+      });
     }
   }, []);
 
@@ -570,7 +791,10 @@ const MainApp: React.FC = () => {
         setTraySyncJob(data.job || null);
       } catch (error: any) {
         console.error("Integradora sync failed:", error);
-        alert(error.message || "Erro ao sincronizar pedidos da Integradora.");
+        showToast({
+          message: error.message || "Erro ao sincronizar pedidos da Integradora.",
+          tone: "error",
+        });
       }
     },
     [],
@@ -625,7 +849,10 @@ const MainApp: React.FC = () => {
           }
 
           setLastSyncTime(new Date());
-          alert(`Consulta ${rawIdentifier} atualizada com sucesso.`);
+          showToast({
+            message: `Consulta ${rawIdentifier} atualizada com sucesso.`,
+            tone: "success",
+          });
           return;
         }
 
@@ -645,19 +872,23 @@ const MainApp: React.FC = () => {
 
         upsertOrder(data.order as Order);
         setLastSyncTime(new Date());
-        alert(`Consulta ${rawIdentifier} encontrada e adicionada.`);
+        showToast({
+          message: `Consulta ${rawIdentifier} encontrada e adicionada.`,
+          tone: "success",
+        });
       } catch (error) {
         console.error(error);
-        alert(
-          error instanceof Error ? error.message : "Erro ao consultar API.",
-        );
+        showToast({
+          message: error instanceof Error ? error.message : "Erro ao consultar API.",
+          tone: "error",
+        });
       }
     },
     [orders, upsertOrder],
   );
 
   const handleOrdersUploaded = async (newOrders: Order[]) => {
-    console.log("📤 Enviando", newOrders.length, "pedidos para API...");
+    console.log("Enviando", newOrders.length, "pedidos para API...");
 
     const processedOrders = newOrders.filter((order) => {
       if (order.status === OrderStatus.CANCELED) return false;
@@ -666,9 +897,12 @@ const MainApp: React.FC = () => {
     });
 
     if (processedOrders.length === 0) {
-      alert(
-        "Nenhum pedido válido para importar após os filtros (Cancelados e Logística do Canal ignorados).",
-      );
+      showToast({
+        tone: "warning",
+        title: "Importacao de pedidos",
+        message:
+          "Nenhum pedido valido para importar apos os filtros (Cancelados e Logistica do Canal ignorados).",
+      });
       return;
     }
 
@@ -688,13 +922,20 @@ const MainApp: React.FC = () => {
       setCurrentView("dashboard");
 
       if (data.message) {
-        alert(data.message);
+        showToast({
+          tone: "success",
+          title: "Importacao concluida",
+          message: data.message,
+        });
       }
     } catch (error) {
-      console.error("❌ Erro ao enviar para API:", error);
-      alert(
-        "Erro ao importar pedidos. Verifique o console e os logs do servidor.",
-      );
+      console.error("Erro ao enviar para API:", error);
+      showToast({
+        tone: "error",
+        title: "Falha na importacao",
+        message:
+          "Erro ao importar pedidos. Verifique o console e os logs do servidor.",
+      });
     }
   };
 
@@ -753,6 +994,24 @@ const MainApp: React.FC = () => {
     }
   };
 
+  if (!isAuthenticated) {
+    return (
+      <>
+        <SessionExpiredToast
+          visible={showSessionExpiredToast}
+          onClose={() => setShowSessionExpiredToast(false)}
+        />
+        <ToastViewport
+          toasts={toasts}
+          onClose={(id) =>
+            setToasts((current) => current.filter((toast) => toast.id !== id))
+          }
+        />
+        <Login />
+      </>
+    );
+  }
+
   if (isLoading) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-[#0B0C15] text-white">
@@ -761,33 +1020,31 @@ const MainApp: React.FC = () => {
     );
   }
 
-  if (!isAuthenticated) {
-    return (
-      <>
-        {showIntro && <SplitIntro />}
-        <Login />
-      </>
-    );
-  }
-
   if (isInitialDashboardLoading) {
     return <InitialDataLoader />;
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-[#0B0C15] text-slate-900 dark:text-slate-100 transition-colors duration-300 font-sans">
-      {showIntro && <SplitIntro />}
-
-            <Sidebar
-        currentView={currentView}
-        onChangeView={handleChangeView}
-        onSync={handleSync}
-        isSyncing={isSyncing}
-        lastSync={lastSyncTime}
-        syncJob={syncJob}
-        isCollapsed={isSidebarCollapsed}
-        onToggleCollapse={() => setIsSidebarCollapsed((current) => !current)}
+    <>
+      <ToastViewport
+        toasts={toasts}
+        onClose={(id) =>
+          setToasts((current) => current.filter((toast) => toast.id !== id))
+        }
       />
+      <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-[#0B0C15] text-slate-900 dark:text-slate-100 transition-colors duration-300 font-sans">
+        {showIntro && <SplitIntro />}
+
+        <Sidebar
+          currentView={currentView}
+          onChangeView={handleChangeView}
+          onSync={handleSync}
+          isSyncing={isSyncing}
+          lastSync={lastSyncTime}
+          syncJob={syncJob}
+          isCollapsed={isSidebarCollapsed}
+          onToggleCollapse={() => setIsSidebarCollapsed((current) => !current)}
+        />
 
       <main className="flex-1 flex flex-col h-full relative overflow-hidden">
         <header className="h-16 bg-white dark:bg-dark-card border-b border-slate-200 dark:border-white/5 flex items-center justify-between px-6 shrink-0 transition-colors duration-300">
@@ -875,8 +1132,9 @@ const MainApp: React.FC = () => {
           trayIntegrationStatus={trayIntegrationStatus}
         />
         <Chatbot />
-      </main>
-    </div>
+        </main>
+      </div>
+    </>
   );
 };
 
@@ -892,5 +1150,6 @@ const App: React.FC = () => {
 };
 
 export default App;
+
 
 

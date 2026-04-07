@@ -4,6 +4,7 @@ import { traySyncService } from '../services/traySyncService';
 import { trayAuthService } from '../services/trayAuthService';
 import { syncReportService } from '../services/syncReportService';
 import { prisma } from '../lib/prisma';
+import { integrationOrderStatusService } from '../services/integrationOrderStatusService';
 
 const getUserCompany = (req: Request) => {
   if (!req.user) {
@@ -184,6 +185,29 @@ export const getTraySyncStatus = async (req: Request, res: Response) => {
     console.error('Erro ao consultar status da sincronizacao da Tray:', error);
     return res.status(500).json({
       error: 'Erro ao consultar status da sincronizacao da Tray',
+    });
+  }
+};
+
+export const getOrderImportStatusOptions = async (req: Request, res: Response) => {
+  try {
+    const context = getUserCompany(req);
+    if ('error' in context) {
+      return res.status(context.status).json({ error: context.error });
+    }
+
+    const result = await integrationOrderStatusService.getOrderImportStatuses(
+      context.companyId,
+    );
+
+    return res.json({
+      success: true,
+      ...result,
+    });
+  } catch (error) {
+    console.error('Erro ao consultar status da integradora ativa:', error);
+    return res.status(500).json({
+      error: 'Erro ao consultar os status da integradora ativa.',
     });
   }
 };

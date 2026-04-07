@@ -8,6 +8,7 @@ import {
   needsFreightRecalculation,
   recalculateStoredOrderFreight,
 } from './freightRecalculationService';
+import { integrationOrderStatusService } from './integrationOrderStatusService';
 
 const TRAY_STATUS_OPTIONS = [
   'pedido cadastrado',
@@ -20,13 +21,7 @@ const TRAY_STATUS_OPTIONS = [
   'aguardando envio',
 ] as const;
 
-const DEFAULT_TRAY_STATUSES = TRAY_STATUS_OPTIONS.filter(
-  (status) => status !== 'cancelado',
-);
-
 const VALID_DAY_OPTIONS = [90, 60, 30, 15, 7, 2] as const;
-
-type TrayStatusOption = (typeof TRAY_STATUS_OPTIONS)[number];
 
 export interface TraySyncFiltersInput {
   storeId?: string;
@@ -54,9 +49,7 @@ const normalizeRequestedStatuses = (value: unknown) => {
 
   return value
     .map((status) => String(status || '').trim().toLowerCase())
-    .filter((status): status is TrayStatusOption =>
-      TRAY_STATUS_OPTIONS.includes(status as TrayStatusOption),
-    );
+    .filter(Boolean);
 };
 
 const resolveModifiedDate = (days: number) => {
@@ -106,8 +99,22 @@ export class TraySyncService {
       filters.statusMode === 'selected' ? 'selected' : 'all_except_canceled';
 
     const requestedStatuses = normalizeRequestedStatuses(filters.statuses);
+    const availableStatuses =
+      await integrationOrderStatusService.getOrderImportStatuses(companyId);
     const statusesToSync =
-      statusMode === 'selected' ? requestedStatuses : [...DEFAULT_TRAY_STATUSES];
+      statusMode === 'selected'
+        ? requestedStatuses
+        : (availableStatuses.statuses.length > 0
+            ? availableStatuses.statuses
+                .map((status) => String(status.value || '').trim().toLowerCase())
+                .filter(
+                  (status) =>
+                    status &&
+                    !availableStatuses.cancelStatusValues
+                      .map((value) => String(value || '').trim().toLowerCase())
+                      .includes(status),
+                )
+            : TRAY_STATUS_OPTIONS.filter((status) => status !== 'cancelado'));
 
     if (statusMode === 'selected' && statusesToSync.length === 0) {
       throw new Error('Selecione ao menos um status da Tray para sincronizar.');

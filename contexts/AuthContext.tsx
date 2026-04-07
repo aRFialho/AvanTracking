@@ -48,6 +48,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     setIsLoading(false);
   }, []);
 
+  useEffect(() => {
+    const handleExpiredSession = () => {
+      setUser(null);
+      setToken(null);
+      localStorage.removeItem("session_user");
+      localStorage.removeItem("session_token");
+      sessionStorage.removeItem("session_user");
+      sessionStorage.removeItem("session_token");
+    };
+
+    window.addEventListener("auth:expired", handleExpiredSession);
+
+    return () => {
+      window.removeEventListener("auth:expired", handleExpiredSession);
+    };
+  }, []);
+
   const login = async (
     email: string,
     pass: string,

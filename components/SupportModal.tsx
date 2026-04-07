@@ -3,6 +3,7 @@ import { LifeBuoy, Mail, Phone, Send, Sparkles, X } from "lucide-react";
 import { clsx } from "clsx";
 import { useAuth } from "../contexts/AuthContext";
 import { fetchWithAuth } from "../utils/authFetch";
+import { showToast } from "../utils/toast";
 import { PageView, TrayIntegrationStatus } from "../types";
 
 interface SupportModalProps {
@@ -114,12 +115,20 @@ export const SupportModal: React.FC<SupportModalProps> = ({
     event.preventDefault();
 
     if (!form.message.trim()) {
-      alert("Descreva sua solicitacao antes de enviar.");
+      showToast({
+        tone: "warning",
+        title: "Mensagem obrigatoria",
+        message: "Descreva sua solicitacao antes de enviar.",
+      });
       return;
     }
 
     if (form.responsePreference === "phone" && !form.phone.trim()) {
-      alert("Informe um celular para retorno.");
+      showToast({
+        tone: "warning",
+        title: "Celular obrigatorio",
+        message: "Informe um celular para retorno.",
+      });
       return;
     }
 
@@ -151,14 +160,21 @@ export const SupportModal: React.FC<SupportModalProps> = ({
         throw new Error(data.error || "Nao foi possivel enviar a solicitacao.");
       }
 
-      alert(data.message || "Solicitacao enviada com sucesso.");
+      showToast({
+        tone: "success",
+        title: "Suporte acionado",
+        message: data.message || "Solicitacao enviada com sucesso.",
+      });
       onClose();
     } catch (error) {
-      alert(
-        error instanceof Error
-          ? error.message
-          : "Nao foi possivel enviar a solicitacao.",
-      );
+      showToast({
+        tone: "error",
+        title: "Falha no envio",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Nao foi possivel enviar a solicitacao.",
+      });
     } finally {
       setIsSending(false);
     }

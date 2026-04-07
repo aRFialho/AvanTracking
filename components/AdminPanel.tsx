@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { clsx } from "clsx";
 import { fetchWithAuth } from "../utils/authFetch";
+import { showToast } from "../utils/toast";
 
 // Types for local state
 interface Company {
@@ -202,6 +203,18 @@ const buildPatchNotesPreviewHtml = (input: PatchNotesFormData) => {
       </body>
     </html>
   `;
+};
+
+const adminToast = (
+  message: string,
+  tone: "success" | "error" | "warning" | "info" = "info",
+  title?: string,
+) => {
+  showToast({
+    message,
+    tone,
+    title,
+  });
 };
 
 export const AdminPanel: React.FC = () => {
@@ -518,10 +531,10 @@ export const AdminPanel: React.FC = () => {
         setIsCompanyModalOpen(false);
         setCompanyFormData({ name: "", cnpj: "" });
       } else {
-        alert("Erro ao criar empresa");
+        adminToast("Erro ao criar empresa");
       }
     } catch (err) {
-      alert("Erro ao criar empresa");
+      adminToast("Erro ao criar empresa");
     }
   };
 
@@ -556,11 +569,11 @@ export const AdminPanel: React.FC = () => {
       const result = await response.json();
       setIsModalOpen(false);
       if (!editingUser && result?.message) {
-        alert(result.message);
+        adminToast(result.message);
       }
       fetchData();
     } catch (err: any) {
-      alert(err.message);
+      adminToast(err.message);
     }
   };
 
@@ -575,7 +588,7 @@ export const AdminPanel: React.FC = () => {
       fetchData();
     } catch (err) {
       console.error(err);
-      alert("Erro ao deletar usuário");
+      adminToast("Erro ao deletar usuário");
     }
   };
 
@@ -583,7 +596,7 @@ export const AdminPanel: React.FC = () => {
     const normalizedUrl = trayStoreUrl.trim();
 
     if (!normalizedUrl) {
-      alert("Informe a URL da loja ou a URL /web_api da Tray.");
+      adminToast("Informe a URL da loja ou a URL /web_api da Tray.");
       return;
     }
 
@@ -605,7 +618,7 @@ export const AdminPanel: React.FC = () => {
 
       window.open(data.authUrl, "_blank");
     } catch (err: any) {
-      alert(err.message || "Erro ao iniciar a integracao Tray.");
+      adminToast(err.message || "Erro ao iniciar a integracao Tray.");
     }
   };
 
@@ -613,7 +626,7 @@ export const AdminPanel: React.FC = () => {
     const normalizedId = intelipostClientId.trim();
 
     if (!normalizedId) {
-      alert("Informe o ID padrao da Intelipost para a empresa.");
+      adminToast("Informe o ID padrao da Intelipost para a empresa.");
       return;
     }
 
@@ -635,9 +648,9 @@ export const AdminPanel: React.FC = () => {
 
       setCurrentCompany(data.company || null);
       setIntelipostClientId(data.company?.intelipostClientId || normalizedId);
-      alert(data.message || "ID da Intelipost atualizado com sucesso.");
+      adminToast(data.message || "ID da Intelipost atualizado com sucesso.");
     } catch (err: any) {
-      alert(err.message || "Erro ao salvar ID da Intelipost.");
+      adminToast(err.message || "Erro ao salvar ID da Intelipost.");
     } finally {
       setIsSavingIntelipost(false);
     }
@@ -673,7 +686,7 @@ export const AdminPanel: React.FC = () => {
     );
 
     if (normalizedCnpjs.some((cnpj) => cnpj.length !== 14)) {
-      alert("Todos os CNPJs do SSW devem conter 14 digitos sem pontuacao.");
+      adminToast("Todos os CNPJs do SSW devem conter 14 digitos sem pontuacao.");
       return;
     }
 
@@ -694,9 +707,9 @@ export const AdminPanel: React.FC = () => {
       }
 
       applyCompanyIntegrationState(data.company || null);
-      alert(data.message || "CNPJs do SSW Require atualizados com sucesso.");
+      adminToast(data.message || "CNPJs do SSW Require atualizados com sucesso.");
     } catch (err: any) {
-      alert(err.message || "Erro ao salvar os CNPJs do SSW Require.");
+      adminToast(err.message || "Erro ao salvar os CNPJs do SSW Require.");
     } finally {
       setIsSavingSswRequire(false);
     }
@@ -749,9 +762,9 @@ export const AdminPanel: React.FC = () => {
       }
 
       applyCompanyIntegrationState(data.company || null);
-      alert(data.message || "Excecoes de transportadora atualizadas com sucesso.");
+      adminToast(data.message || "Excecoes de transportadora atualizadas com sucesso.");
     } catch (err: any) {
-      alert(err.message || "Erro ao salvar as excecoes de transportadora.");
+      adminToast(err.message || "Erro ao salvar as excecoes de transportadora.");
     } finally {
       setIsSavingCarrierExceptions(false);
     }
@@ -789,7 +802,7 @@ export const AdminPanel: React.FC = () => {
                 : null;
 
       if (activeErpField && activeErpField !== field) {
-        alert(
+        adminToast(
           "Nao e permitido ativar um segundo ERP. Desative o ERP atual antes de ativar outro.",
         );
         return;
@@ -816,7 +829,7 @@ export const AdminPanel: React.FC = () => {
 
       applyCompanyIntegrationState(data.company || null);
     } catch (err: any) {
-      alert(err.message || "Erro ao atualizar a integracao.");
+      adminToast(err.message || "Erro ao atualizar a integracao.");
       await fetchCurrentCompany();
     } finally {
       setIsSavingIntegrationToggle(false);
@@ -855,9 +868,9 @@ export const AdminPanel: React.FC = () => {
       }
 
       applyCompanyIntegrationState(data.company || null);
-      alert(data.message || "Credenciais da Magazord atualizadas com sucesso.");
+      adminToast(data.message || "Credenciais da Magazord atualizadas com sucesso.");
     } catch (err: any) {
-      alert(err.message || "Erro ao salvar as credenciais da Magazord.");
+      adminToast(err.message || "Erro ao salvar as credenciais da Magazord.");
     } finally {
       setIsSavingMagazord(false);
     }
@@ -898,22 +911,22 @@ export const AdminPanel: React.FC = () => {
 
   const handleSendReleaseNotes = async () => {
     if (!patchNotesForm.version.trim()) {
-      alert("Informe a versao do release notes.");
+      adminToast("Informe a versao do release notes.");
       return;
     }
 
     if (!patchNotesForm.title.trim()) {
-      alert("Informe o titulo do release notes.");
+      adminToast("Informe o titulo do release notes.");
       return;
     }
 
     if (!patchNotesForm.summary.trim()) {
-      alert("Informe o texto principal do release notes.");
+      adminToast("Informe o texto principal do release notes.");
       return;
     }
 
     if (selectedRecipientIds.length === 0) {
-      alert("Selecione pelo menos um destinatario.");
+      adminToast("Selecione pelo menos um destinatario.");
       return;
     }
 
@@ -934,9 +947,9 @@ export const AdminPanel: React.FC = () => {
         throw new Error(data.error || "Nao foi possivel enviar o release notes.");
       }
 
-      alert(data.message || "Release notes enviado com sucesso.");
+      adminToast(data.message || "Release notes enviado com sucesso.");
     } catch (err: any) {
-      alert(err.message || "Erro ao enviar release notes.");
+      adminToast(err.message || "Erro ao enviar release notes.");
     } finally {
       setIsSendingReleaseNotes(false);
     }
@@ -945,12 +958,12 @@ export const AdminPanel: React.FC = () => {
   const handleClearDatabase = async (e: React.FormEvent) => {
     e.preventDefault();
     if (clearPassword !== "172839") {
-      alert("Senha incorreta.");
+      adminToast("Senha incorreta.");
       return;
     }
 
     if (!clearCompanyId) {
-      alert("Selecione a empresa que terá os pedidos excluídos.");
+      adminToast("Selecione a empresa que terá os pedidos excluídos.");
       return;
     }
 
@@ -976,10 +989,10 @@ export const AdminPanel: React.FC = () => {
       }
 
       const result = await response.json();
-      alert(result.message || "Operação realizada com sucesso!");
+      adminToast(result.message || "Operação realizada com sucesso!");
       resetClearDatabaseModal();
     } catch (error: any) {
-      alert(error.message);
+      adminToast(error.message);
     } finally {
       setIsClearing(false);
     }
@@ -1655,9 +1668,9 @@ export const AdminPanel: React.FC = () => {
 
           {(integrationSubTab === "erp" || integrationSubTab === "tracking") && (
           <>
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+          <div className="columns-1 gap-6 xl:columns-2 2xl:columns-3">
             {integrationSubTab === "erp" && integrationCardMatches("tray integracao principal pedidos loja autorizacao") && (
-            <div className="glass-card rounded-2xl overflow-hidden border border-slate-200 dark:border-white/10">
+            <div className="glass-card mb-6 inline-block w-full break-inside-avoid rounded-2xl overflow-hidden border border-slate-200 dark:border-white/10 align-top">
               <div className="p-5 border-b border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-white/5">
                 <div className="flex items-start justify-between gap-4">
                   <div>
@@ -1776,7 +1789,7 @@ export const AdminPanel: React.FC = () => {
             )}
 
             {integrationSubTab === "tracking" && integrationCardMatches("intelipost tracking externo client id rastreio") && (
-            <div className="glass-card rounded-2xl overflow-hidden border border-slate-200 dark:border-white/10">
+            <div className="glass-card mb-6 inline-block w-full break-inside-avoid rounded-2xl overflow-hidden border border-slate-200 dark:border-white/10 align-top">
               <div className="p-5 border-b border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-white/5">
                 <div className="flex items-start justify-between gap-4">
                   <div>
@@ -1841,7 +1854,7 @@ export const AdminPanel: React.FC = () => {
             )}
 
             {integrationSubTab === "tracking" && integrationCardMatches("ssw require tracking nf cnpj rastreio") && (
-            <div className="glass-card rounded-2xl overflow-hidden border border-slate-200 dark:border-white/10">
+            <div className="glass-card mb-6 inline-block w-full break-inside-avoid rounded-2xl overflow-hidden border border-slate-200 dark:border-white/10 align-top">
               <div className="p-5 border-b border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-white/5">
                 <div className="flex items-start justify-between gap-4">
                   <div>
@@ -1932,7 +1945,7 @@ export const AdminPanel: React.FC = () => {
             )}
 
             {integrationSubTab === "tracking" && integrationCardMatches("correios api rastro codigo objeto rastreio pac sedex") && (
-            <div className="glass-card rounded-2xl overflow-hidden border border-slate-200 dark:border-white/10">
+            <div className="glass-card mb-6 inline-block w-full break-inside-avoid rounded-2xl overflow-hidden border border-slate-200 dark:border-white/10 align-top">
               <div className="p-5 border-b border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-white/5">
                 <div className="flex items-start justify-between gap-4">
                   <div>
@@ -1977,11 +1990,8 @@ export const AdminPanel: React.FC = () => {
             </div>
             )}
 
-          </div>
-
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
             {integrationSubTab === "erp" && integrationCardMatches("magazord erp pedidos basic auth usuario senha api") && (
-            <div className="glass-card rounded-2xl overflow-hidden border border-slate-200 dark:border-white/10">
+            <div className="glass-card mb-6 inline-block w-full break-inside-avoid rounded-2xl overflow-hidden border border-slate-200 dark:border-white/10 align-top">
               <div className="p-5 border-b border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-white/5">
                 <div className="flex items-start justify-between gap-4">
                   <div>
@@ -2019,7 +2029,7 @@ export const AdminPanel: React.FC = () => {
                 <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
                   <p className="font-semibold text-slate-700 dark:text-white">Regra de ERP unico</p>
                   <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                    Ao ativar a Magazord, os demais ERPs da empresa sao desativados automaticamente. Integracoes de rastreio continuam independentes.
+                    Apenas um ERP pode ficar ativo por empresa. Integracoes de rastreio continuam independentes.
                   </p>
                 </div>
 
@@ -2029,7 +2039,7 @@ export const AdminPanel: React.FC = () => {
                     type="text"
                     value={magazordApiBaseUrl}
                     onChange={(e) => setMagazordApiBaseUrl(e.target.value)}
-                    placeholder="https://sua-api.magazord.com.br"
+                    placeholder="Informe a URL base fornecida pela Magazord"
                     className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white focus:border-blue-500 outline-none"
                   />
                 </div>
@@ -2041,7 +2051,7 @@ export const AdminPanel: React.FC = () => {
                       type="text"
                       value={magazordApiUser}
                       onChange={(e) => setMagazordApiUser(e.target.value)}
-                      placeholder="usuario_api"
+                      placeholder="Informe o usuario de API da sua conta"
                       className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white focus:border-blue-500 outline-none"
                     />
                   </div>
@@ -2051,7 +2061,11 @@ export const AdminPanel: React.FC = () => {
                       type="password"
                       value={magazordApiPassword}
                       onChange={(e) => setMagazordApiPassword(e.target.value)}
-                      placeholder={magazordApiPasswordConfigured ? "Senha ja cadastrada" : "Informe a senha da API"}
+                      placeholder={
+                        magazordApiPasswordConfigured
+                          ? "Senha ja cadastrada"
+                          : "Informe a senha/codigo de acesso da API"
+                      }
                       className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white focus:border-blue-500 outline-none"
                     />
                   </div>
@@ -2078,7 +2092,7 @@ export const AdminPanel: React.FC = () => {
             )}
 
             {integrationSubTab === "erp" && integrationCardMatches("bling erp implementacao futuro") && (
-            <div className="glass-card rounded-2xl overflow-hidden border border-dashed border-slate-300 dark:border-white/10">
+            <div className="glass-card mb-6 inline-block w-full break-inside-avoid rounded-2xl overflow-hidden border border-dashed border-slate-300 dark:border-white/10 align-top">
               <div className="p-5">
                 <div className="flex items-start justify-between gap-4">
                   <div>
@@ -2103,7 +2117,7 @@ export const AdminPanel: React.FC = () => {
             )}
 
             {integrationSubTab === "erp" && integrationCardMatches("sysemp shopping de precos implementacao futuro") && (
-            <div className="glass-card rounded-2xl overflow-hidden border border-dashed border-slate-300 dark:border-white/10">
+            <div className="glass-card mb-6 inline-block w-full break-inside-avoid rounded-2xl overflow-hidden border border-dashed border-slate-300 dark:border-white/10 align-top">
               <div className="p-5">
                 <div className="flex items-start justify-between gap-4">
                   <div>
@@ -2924,3 +2938,4 @@ export const AdminPanel: React.FC = () => {
     </div>
   );
 };
+

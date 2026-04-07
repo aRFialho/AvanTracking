@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { fetchWithAuth } from "../utils/authFetch";
+import { showToast } from "../utils/toast";
 import { Building2, Check, ChevronDown } from "lucide-react";
 
 interface Company {
@@ -98,7 +99,11 @@ export const CompanySwitcher: React.FC = () => {
       }
     } catch (error) {
       console.error("Erro ao trocar empresa:", error);
-      alert("Erro ao trocar empresa");
+      showToast({
+        tone: "error",
+        title: "Troca de empresa",
+        message: "Erro ao trocar empresa.",
+      });
     } finally {
       setIsLoading(false);
       setIsOpen(false);

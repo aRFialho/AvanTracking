@@ -1,10 +1,11 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import {
   Order,
   OrderStatus,
   SyncJobStatus,
   TraySyncFilters,
   TrayIntegrationStatus,
+  IntegrationOrderStatusOption,
 } from "../types";
 import { OrderDetail } from "./OrderDetail";
 import {
@@ -37,9 +38,11 @@ import {
   formatCarrierForecast,
 } from "../utils";
 import { fetchWithAuth } from "../utils/authFetch";
+import { showToast } from "../utils/toast";
 import { LOGO_URL } from "../constants";
 
 const DELAYED_STATUS_FILTER = "DELAYED";
+const ORDER_TABLE_COLUMN_STORAGE_KEY = "avantracking:order-list-visible-columns";
 
 type SortDirection = "asc" | "desc";
 type SortKey =
@@ -55,6 +58,65 @@ type SortKey =
   | "carrierEstimatedDeliveryDate"
   | "lastUpdate"
   | "status";
+
+type VisibleColumnKey =
+  | "orderNumber"
+  | "invoiceNumber"
+  | "salesChannel"
+  | "freightType"
+  | "freightValue"
+  | "recalculatedFreightValue"
+  | "freightDifference"
+  | "estimatedDeliveryDate"
+  | "carrierEstimatedDeliveryDate"
+  | "lastUpdate"
+  | "status";
+
+interface OrderTableColumn {
+  key: VisibleColumnKey;
+  label: string;
+  sortKey: SortKey;
+}
+
+const ORDER_TABLE_COLUMNS: OrderTableColumn[] = [
+  { key: "orderNumber", label: "ID / Pedido", sortKey: "orderNumber" },
+  { key: "invoiceNumber", label: "Nota Fiscal", sortKey: "invoiceNumber" },
+  { key: "salesChannel", label: "Marketplace", sortKey: "salesChannel" },
+  { key: "freightType", label: "Transportadora", sortKey: "freightType" },
+  { key: "freightValue", label: "Frete Pago", sortKey: "freightValue" },
+  {
+    key: "recalculatedFreightValue",
+    label: "Frete Recalculado",
+    sortKey: "recalculatedFreightValue",
+  },
+  {
+    key: "freightDifference",
+    label: "Diferenca Frete",
+    sortKey: "freightDifference",
+  },
+  {
+    key: "estimatedDeliveryDate",
+    label: "Prev. Entrega",
+    sortKey: "estimatedDeliveryDate",
+  },
+  {
+    key: "carrierEstimatedDeliveryDate",
+    label: "Previsao Transportadora",
+    sortKey: "carrierEstimatedDeliveryDate",
+  },
+  {
+    key: "lastUpdate",
+    label: "Ultima Movimentacao",
+    sortKey: "lastUpdate",
+  },
+  {
+    key: "status",
+    label: "Status",
+    sortKey: "status",
+  },
+];
+
+const DEFAULT_VISIBLE_COLUMNS = ORDER_TABLE_COLUMNS.map((column) => column.key);
 
 const STATUS_LABELS: Record<string, string> = {
   [OrderStatus.PENDING]: "Pendente",
@@ -79,6 +141,14 @@ const TRAY_STATUS_OPTIONS = [
   "cancelado",
   "aguardando envio",
 ];
+
+interface IntegrationStatusOptionsResponse {
+  success: boolean;
+  integration: "tray" | "magazord" | "bling" | "sysemp" | null;
+  integrationLabel: string;
+  statuses: IntegrationOrderStatusOption[];
+  cancelStatusValues: string[];
+}
 
 const formatCurrency = (value: number | null | undefined) => {
   if (value === null || value === undefined || Number.isNaN(value)) {
@@ -188,6 +258,34 @@ const getDisplayStatusLabel = (
   return STATUS_LABELS[order.status] || order.status;
 };
 
+const getStoredVisibleColumns = (): VisibleColumnKey[] => {
+  if (typeof window === "undefined") {
+    return DEFAULT_VISIBLE_COLUMNS;
+  }
+
+  try {
+    const rawValue = window.localStorage.getItem(ORDER_TABLE_COLUMN_STORAGE_KEY);
+
+    if (!rawValue) {
+      return DEFAULT_VISIBLE_COLUMNS;
+    }
+
+    const parsedValue = JSON.parse(rawValue);
+
+    if (!Array.isArray(parsedValue)) {
+      return DEFAULT_VISIBLE_COLUMNS;
+    }
+
+    const validColumns = parsedValue.filter((column): column is VisibleColumnKey =>
+      ORDER_TABLE_COLUMNS.some((item) => item.key === column),
+    );
+
+    return validColumns.length > 0 ? validColumns : DEFAULT_VISIBLE_COLUMNS;
+  } catch {
+    return DEFAULT_VISIBLE_COLUMNS;
+  }
+};
+
 interface OrderListProps {
   orders: Order[];
   initialFilters?: any;
@@ -217,12 +315,22 @@ export const OrderList: React.FC<OrderListProps> = ({
   const [isFetchingSingle, setIsFetchingSingle] = useState(false);
   const [showFilters, setShowFilters] = useState(true);
   const [showTopPanel, setShowTopPanel] = useState(true);
+  const [isColumnMenuOpen, setIsColumnMenuOpen] = useState(false);
+  const [visibleColumns, setVisibleColumns] =
+    useState<VisibleColumnKey[]>(getStoredVisibleColumns);
   const [isTraySyncModalOpen, setIsTraySyncModalOpen] = useState(false);
   const [isTraySyncing, setIsTraySyncing] = useState(false);
   const [traySyncDays, setTraySyncDays] = useState<TraySyncFilters["days"]>(90);
   const [trayStatusMode, setTrayStatusMode] =
     useState<TraySyncFilters["statusMode"]>("all_except_canceled");
   const [selectedTrayStatuses, setSelectedTrayStatuses] = useState<string[]>([]);
+  const [integrationStatusOptions, setIntegrationStatusOptions] = useState<
+    IntegrationOrderStatusOption[]
+  >([]);
+  const [integrationLabel, setIntegrationLabel] = useState("Integradora");
+  const [isLoadingIntegrationStatuses, setIsLoadingIntegrationStatuses] =
+    useState(false);
+  const isTrayAvailable = Boolean(trayIntegrationStatus?.authorized);
   const [isSyncing, setIsSyncing] = useState(false); // ✅ Novo state
 
   // No Movement View State
@@ -249,6 +357,7 @@ export const OrderList: React.FC<OrderListProps> = ({
     key: SortKey;
     direction: SortDirection;
   } | null>(null);
+  const columnMenuRef = useRef<HTMLDivElement | null>(null);
 
   // Custom Filter Logic from Dashboard
   const [customStatusFilter, setCustomStatusFilter] = useState<string[] | null>(
@@ -285,6 +394,49 @@ export const OrderList: React.FC<OrderListProps> = ({
       setDateRangeEnd(initialFilters.dateRangeEnd || "");
     }
   }, [initialFilters]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(
+      ORDER_TABLE_COLUMN_STORAGE_KEY,
+      JSON.stringify(visibleColumns),
+    );
+  }, [visibleColumns]);
+
+  useEffect(() => {
+    if (!isColumnMenuOpen) {
+      return;
+    }
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        columnMenuRef.current &&
+        !columnMenuRef.current.contains(event.target as Node)
+      ) {
+        setIsColumnMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isColumnMenuOpen]);
+
+  const visibleColumnSet = useMemo(
+    () => new Set<VisibleColumnKey>(visibleColumns),
+    [visibleColumns],
+  );
+
+  const activeColumns = useMemo(
+    () =>
+      ORDER_TABLE_COLUMNS.filter((column) => visibleColumnSet.has(column.key)),
+    [visibleColumnSet],
+  );
 
   // Extract Lists (excluding Canceled)
   const validOrders = useMemo(
@@ -535,6 +687,31 @@ export const OrderList: React.FC<OrderListProps> = ({
   };
 
   // ✅ Função de sincronização
+  const toggleVisibleColumn = (columnKey: VisibleColumnKey) => {
+    if (visibleColumns.length === 1 && visibleColumns.includes(columnKey)) {
+      showToast({
+        tone: "warning",
+        title: "Uma coluna minima",
+        message: "Mantenha ao menos uma coluna visivel na tabela.",
+      });
+      return;
+    }
+
+    setVisibleColumns((current) => {
+      if (current.includes(columnKey)) {
+        return current.filter((item) => item !== columnKey);
+      }
+
+      return ORDER_TABLE_COLUMNS.filter(
+        (column) => current.includes(column.key) || column.key === columnKey,
+      ).map((column) => column.key);
+    });
+  };
+
+  const showAllColumns = () => {
+    setVisibleColumns([...DEFAULT_VISIBLE_COLUMNS]);
+  };
+
   const handleSyncAll = async () => {
     if (onStartSync) {
       if (
@@ -566,15 +743,27 @@ export const OrderList: React.FC<OrderListProps> = ({
       const result = await response.json();
 
       if (result.success) {
-        alert(
-          result.message || "Sincronizacao iniciada. O relatorio sera enviado ao final do processo.",
-        );
+        showToast({
+          tone: "success",
+          title: "Sincronizacao iniciada",
+          message:
+            result.message ||
+            "Sincronizacao iniciada. O relatorio sera enviado ao final do processo.",
+        });
       } else {
-        alert("❌ Erro ao sincronizar");
+        showToast({
+          tone: "error",
+          title: "Falha no sync",
+          message: "Nao foi possivel iniciar a sincronizacao.",
+        });
       }
     } catch (error) {
       console.error("Erro ao sincronizar:", error);
-      alert("❌ Erro ao sincronizar pedidos");
+      showToast({
+        tone: "error",
+        title: "Falha no sync",
+        message: "Erro ao sincronizar pedidos.",
+      });
     } finally {
       setIsSyncing(false);
     }
@@ -588,11 +777,82 @@ export const OrderList: React.FC<OrderListProps> = ({
     );
   };
 
+  useEffect(() => {
+    if (!isTraySyncModalOpen || !onStartTraySync || !isTrayAvailable) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadIntegrationStatuses = async () => {
+      setIsLoadingIntegrationStatuses(true);
+
+      try {
+        const response = await fetchWithAuth("/api/integrations/order-status-options");
+        const data =
+          (await response.json().catch(() => ({}))) as Partial<IntegrationStatusOptionsResponse>;
+
+        if (!response.ok) {
+          throw new Error(
+            typeof (data as any)?.error === "string"
+              ? (data as any).error
+              : `HTTP ${response.status}`,
+          );
+        }
+
+        if (cancelled) {
+          return;
+        }
+
+        const nextOptions = Array.isArray(data.statuses) ? data.statuses : [];
+        setIntegrationLabel(data.integrationLabel || "Integradora");
+        setIntegrationStatusOptions(nextOptions);
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        console.error("Erro ao carregar status da integradora ativa:", error);
+        setIntegrationLabel("Integradora");
+        setIntegrationStatusOptions([]);
+      } finally {
+        if (!cancelled) {
+          setIsLoadingIntegrationStatuses(false);
+        }
+      }
+    };
+
+    void loadIntegrationStatuses();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isTrayAvailable, isTraySyncModalOpen, onStartTraySync]);
+
+  useEffect(() => {
+    if (integrationStatusOptions.length === 0) {
+      return;
+    }
+
+    const validStatuses = new Set(
+      integrationStatusOptions.map((status) => String(status.value || "")),
+    );
+
+    setSelectedTrayStatuses((current) =>
+      current.filter((status) => validStatuses.has(status)),
+    );
+  }, [integrationStatusOptions]);
+
   const handleTraySync = async () => {
     if (!onStartTraySync) return;
 
     if (trayStatusMode === "selected" && selectedTrayStatuses.length === 0) {
-      alert("Selecione ao menos um status da Integradora para buscar os pedidos.");
+      showToast({
+        tone: "warning",
+        title: "Filtros da Tray",
+        message:
+          "Selecione ao menos um status da Integradora para buscar os pedidos.",
+      });
       return;
     }
 
@@ -676,7 +936,11 @@ export const OrderList: React.FC<OrderListProps> = ({
 
   const handleExportHtmlReport = () => {
     if (sortedOrders.length === 0) {
-      alert("Nao ha pedidos para exportar com os filtros atuais.");
+      showToast({
+        tone: "warning",
+        title: "Nada para exportar",
+        message: "Nao ha pedidos para exportar com os filtros atuais.",
+      });
       return;
     }
 
@@ -985,7 +1249,11 @@ export const OrderList: React.FC<OrderListProps> = ({
 
   const handleExportCsvReport = () => {
     if (sortedOrders.length === 0) {
-      alert("Nao ha pedidos para exportar com os filtros atuais.");
+      showToast({
+        tone: "warning",
+        title: "Nada para exportar",
+        message: "Nao ha pedidos para exportar com os filtros atuais.",
+      });
       return;
     }
 
@@ -1090,13 +1358,16 @@ export const OrderList: React.FC<OrderListProps> = ({
         popup.document.close();
       }
 
-      alert(message);
+      showToast({
+        tone: "error",
+        title: "Rastreio indisponivel",
+        message,
+      });
     }
   };
 
   const isSyncRunning = isSyncing || syncJob?.status === "running";
   const isTrayJobRunning = traySyncJob?.status === "running";
-  const isTrayAvailable = Boolean(trayIntegrationStatus?.authorized);
   const hasTrayJob = Boolean(traySyncJob);
   const trayLogs = traySyncJob?.logs || [];
   const trayStatusLabel =
@@ -1239,6 +1510,9 @@ export const OrderList: React.FC<OrderListProps> = ({
       </span>
     );
   };
+
+  const getColumnVisibilityClass = (columnKey: VisibleColumnKey) =>
+    visibleColumnSet.has(columnKey) ? "" : "hidden";
 
   return (
     <div className="space-y-4 relative lg:h-full lg:min-h-0 lg:flex lg:flex-col">
@@ -1437,20 +1711,85 @@ export const OrderList: React.FC<OrderListProps> = ({
       </div>
 
       <div className={clsx("flex justify-end", !showFilters && "hidden")}>
-        <div className="w-full flex flex-col gap-3 sm:max-w-xl sm:flex-row sm:justify-end">
-          <div className="flex flex-col gap-2 sm:flex-row">
+        <div className="flex w-full flex-wrap items-center justify-between gap-2">
+          <div
+            ref={columnMenuRef}
+            className="relative flex w-full justify-end sm:w-auto sm:justify-start"
+          >
+            <button
+              type="button"
+              onClick={() => setIsColumnMenuOpen((current) => !current)}
+              className="inline-flex h-10 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-semibold tracking-tight text-slate-700 transition-colors hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-white dark:hover:bg-white/10"
+            >
+              Colunas
+              <span className="text-xs font-medium text-slate-400 dark:text-slate-500">
+                {activeColumns.length}/{ORDER_TABLE_COLUMNS.length}
+              </span>
+              <ChevronDown
+                className={clsx(
+                  "h-4 w-4 transition-transform",
+                  isColumnMenuOpen && "rotate-180",
+                )}
+              />
+            </button>
+
+            {isColumnMenuOpen && (
+              <div className="absolute right-0 top-12 z-20 w-[280px] rounded-xl border border-slate-200 bg-white p-3 shadow-xl dark:border-white/10 dark:bg-[#11131f]">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800 dark:text-white">
+                      Colunas visiveis
+                    </p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      Escolha o que deseja ver na tabela.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={showAllColumns}
+                    className="text-xs font-semibold text-accent transition-colors hover:text-blue-700 dark:text-neon-blue dark:hover:text-cyan-300"
+                  >
+                    Mostrar todas
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 gap-1.5">
+                  {ORDER_TABLE_COLUMNS.map((column) => {
+                    const isChecked = visibleColumnSet.has(column.key);
+
+                    return (
+                      <label
+                        key={column.key}
+                        className="flex cursor-pointer items-center gap-3 rounded-lg px-2.5 py-2 text-sm text-slate-700 transition-colors hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-white/5"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => toggleVisibleColumn(column.key)}
+                          className="h-4 w-4 rounded border-slate-300 text-accent focus:ring-accent/30 dark:border-white/20 dark:bg-transparent dark:text-neon-blue dark:focus:ring-neon-blue/30"
+                        />
+                        <span>{column.label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={handleExportHtmlReport}
-              className="flex items-center justify-center gap-2 px-4 py-2 bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-700 dark:text-white rounded-lg hover:bg-slate-50 dark:hover:bg-white/10 transition-colors font-medium"
+              className="inline-flex h-10 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-semibold tracking-tight text-slate-700 transition-colors hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-white dark:hover:bg-white/10"
             >
-              <Download className="w-4 h-4" />
+              <Download className="h-3.5 w-3.5" />
               Abrir HTML
             </button>
             <button
               onClick={handleExportCsvReport}
-              className="flex items-center justify-center gap-2 px-4 py-2 bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-700 dark:text-white rounded-lg hover:bg-slate-50 dark:hover:bg-white/10 transition-colors font-medium"
+              className="inline-flex h-10 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-semibold tracking-tight text-slate-700 transition-colors hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-white dark:hover:bg-white/10"
             >
-              <Download className="w-4 h-4" />
+              <Download className="h-3.5 w-3.5" />
               Baixar CSV
             </button>
           </div>
@@ -1459,22 +1798,22 @@ export const OrderList: React.FC<OrderListProps> = ({
             <button
               onClick={() => setIsTraySyncModalOpen(true)}
               disabled={isTraySyncing}
-              className="flex items-center justify-center gap-2 px-4 py-2 bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-700 dark:text-white rounded-lg hover:bg-slate-50 dark:hover:bg-white/10 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              className="inline-flex h-10 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-semibold tracking-tight text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:bg-white/5 dark:text-white dark:hover:bg-white/10"
             >
               {isTraySyncing ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Iniciando Integradora...
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Iniciando...
                 </>
               ) : isTrayJobRunning ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Acompanhar Sync da Integradora
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Acompanhar Sync
                 </>
               ) : (
                 <>
-                  <RefreshCw className="w-4 h-4" />
-                  Sincronizar Pedidos da Integradora
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  Sync Integradora
                 </>
               )}
             </button>
@@ -1483,17 +1822,17 @@ export const OrderList: React.FC<OrderListProps> = ({
           <button
             onClick={handleSyncAll}
             disabled={isSyncRunning}
-            className="flex w-full items-center justify-center gap-2 px-4 py-2 bg-accent dark:bg-neon-blue text-white dark:text-black rounded-lg hover:bg-blue-600 dark:hover:bg-cyan-400 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+            className="inline-flex h-10 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-accent px-4 text-sm font-semibold tracking-tight text-white shadow-sm transition-colors hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-neon-blue dark:text-black dark:hover:bg-cyan-400"
           >
             {isSyncRunning ? (
               <>
-                <Loader2 className="w-4 h-4 animate-spin" />
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 Sincronizando...
               </>
             ) : (
               <>
-                <RefreshCw className="w-4 h-4" />
-                Sincronizar Todos
+                <RefreshCw className="h-3.5 w-3.5" />
+                Sync Geral
               </>
             )}
           </button>
@@ -1504,10 +1843,15 @@ export const OrderList: React.FC<OrderListProps> = ({
       {/* 2. Detailed Data Table */}
       <div className="glass-card relative min-h-[420px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-dark-border dark:bg-dark-card sm:min-h-[560px] lg:min-h-0 lg:flex-1">
         <div className="absolute inset-0 overflow-x-auto overflow-y-auto">
-          <table className="min-w-[1600px] text-sm text-left border-collapse [&_thead_th:nth-child(3)]:hidden [&_tbody_td:nth-child(3)]:hidden">
+          <table className="min-w-[1450px] text-sm text-left border-collapse">
             <thead className="text-xs text-slate-500 dark:text-slate-400 font-semibold uppercase bg-slate-50 dark:bg-dark-card sticky top-0 z-10 shadow-sm backdrop-blur-md">
               <tr>
-                <th className="px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]">
+                <th
+                  className={clsx(
+                    "px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]",
+                    getColumnVisibilityClass("orderNumber"),
+                  )}
+                >
                   <button
                     type="button"
                     onClick={() => handleSort("orderNumber")}
@@ -1517,7 +1861,12 @@ export const OrderList: React.FC<OrderListProps> = ({
                     {renderSortIcon("orderNumber")}
                   </button>
                 </th>
-                <th className="px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]">
+                <th
+                  className={clsx(
+                    "px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]",
+                    getColumnVisibilityClass("invoiceNumber"),
+                  )}
+                >
                   <button
                     type="button"
                     onClick={() => handleSort("invoiceNumber")}
@@ -1527,7 +1876,7 @@ export const OrderList: React.FC<OrderListProps> = ({
                     {renderSortIcon("invoiceNumber")}
                   </button>
                 </th>
-                <th className="px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]">
+                <th className="hidden px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]">
                   <button
                     type="button"
                     onClick={() => handleSort("shippingDate")}
@@ -1537,7 +1886,12 @@ export const OrderList: React.FC<OrderListProps> = ({
                     {renderSortIcon("shippingDate")}
                   </button>
                 </th>
-                <th className="px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]">
+                <th
+                  className={clsx(
+                    "px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]",
+                    getColumnVisibilityClass("salesChannel"),
+                  )}
+                >
                   <button
                     type="button"
                     onClick={() => handleSort("salesChannel")}
@@ -1547,7 +1901,12 @@ export const OrderList: React.FC<OrderListProps> = ({
                     {renderSortIcon("salesChannel")}
                   </button>
                 </th>
-                <th className="px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]">
+                <th
+                  className={clsx(
+                    "px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]",
+                    getColumnVisibilityClass("freightType"),
+                  )}
+                >
                   <button
                     type="button"
                     onClick={() => handleSort("freightType")}
@@ -1557,7 +1916,12 @@ export const OrderList: React.FC<OrderListProps> = ({
                     {renderSortIcon("freightType")}
                   </button>
                 </th>
-                <th className="px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]">
+                <th
+                  className={clsx(
+                    "px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]",
+                    getColumnVisibilityClass("freightValue"),
+                  )}
+                >
                   <button
                     type="button"
                     onClick={() => handleSort("freightValue")}
@@ -1568,7 +1932,12 @@ export const OrderList: React.FC<OrderListProps> = ({
                   </button>
                 </th>
 
-                <th className="px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]">
+                <th
+                  className={clsx(
+                    "px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]",
+                    getColumnVisibilityClass("recalculatedFreightValue"),
+                  )}
+                >
                   <button
                     type="button"
                     onClick={() => handleSort("recalculatedFreightValue")}
@@ -1578,7 +1947,12 @@ export const OrderList: React.FC<OrderListProps> = ({
                     {renderSortIcon("recalculatedFreightValue")}
                   </button>
                 </th>
-                <th className="px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]">
+                <th
+                  className={clsx(
+                    "px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]",
+                    getColumnVisibilityClass("freightDifference"),
+                  )}
+                >
                   <button
                     type="button"
                     onClick={() => handleSort("freightDifference")}
@@ -1588,7 +1962,12 @@ export const OrderList: React.FC<OrderListProps> = ({
                     {renderSortIcon("freightDifference")}
                   </button>
                 </th>
-                <th className="px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]">
+                <th
+                  className={clsx(
+                    "px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]",
+                    getColumnVisibilityClass("estimatedDeliveryDate"),
+                  )}
+                >
                   <button
                     type="button"
                     onClick={() => handleSort("estimatedDeliveryDate")}
@@ -1598,7 +1977,12 @@ export const OrderList: React.FC<OrderListProps> = ({
                     {renderSortIcon("estimatedDeliveryDate")}
                   </button>
                 </th>
-                <th className="px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]">
+                <th
+                  className={clsx(
+                    "px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]",
+                    getColumnVisibilityClass("carrierEstimatedDeliveryDate"),
+                  )}
+                >
                   <button
                     type="button"
                     onClick={() => handleSort("carrierEstimatedDeliveryDate")}
@@ -1608,7 +1992,12 @@ export const OrderList: React.FC<OrderListProps> = ({
                     {renderSortIcon("carrierEstimatedDeliveryDate")}
                   </button>
                 </th>
-                <th className="px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]">
+                <th
+                  className={clsx(
+                    "px-4 py-3 whitespace-nowrap bg-slate-50 dark:bg-[#11131f]",
+                    getColumnVisibilityClass("lastUpdate"),
+                  )}
+                >
                   <button
                     type="button"
                     onClick={() => handleSort("lastUpdate")}
@@ -1618,7 +2007,12 @@ export const OrderList: React.FC<OrderListProps> = ({
                     {renderSortIcon("lastUpdate")}
                   </button>
                 </th>
-                <th className="px-4 py-3 whitespace-nowrap text-center bg-slate-50 dark:bg-[#11131f]">
+                <th
+                  className={clsx(
+                    "px-4 py-3 whitespace-nowrap text-center bg-slate-50 dark:bg-[#11131f]",
+                    getColumnVisibilityClass("status"),
+                  )}
+                >
                   <button
                     type="button"
                     onClick={() => handleSort("status")}
@@ -1640,7 +2034,12 @@ export const OrderList: React.FC<OrderListProps> = ({
                     key={order.id}
                     className="hover:bg-slate-50 dark:hover:bg-white/5 transition-colors group"
                   >
-                    <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">
+                    <td
+                      className={clsx(
+                        "px-4 py-3 font-medium text-slate-900 dark:text-white",
+                        getColumnVisibilityClass("orderNumber"),
+                      )}
+                    >
                       <div className="flex flex-col">
                         <span className="bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-300 px-1.5 py-0.5 rounded text-xs w-fit mb-0.5">
                           #{order.orderNumber}
@@ -1650,27 +2049,52 @@ export const OrderList: React.FC<OrderListProps> = ({
                         </span>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                    <td
+                      className={clsx(
+                        "px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap",
+                        getColumnVisibilityClass("invoiceNumber"),
+                      )}
+                    >
                       {order.invoiceNumber || "-"}
                     </td>
-                    <td className="px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                    <td className="hidden px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">
                       {order.shippingDate
                         ? new Date(order.shippingDate).toLocaleDateString()
                         : "-"}
                     </td>
-                    <td className="px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                    <td
+                      className={clsx(
+                        "px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap",
+                        getColumnVisibilityClass("salesChannel"),
+                      )}
+                    >
                       <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">
                         {order.salesChannel}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                    <td
+                      className={clsx(
+                        "px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap",
+                        getColumnVisibilityClass("freightType"),
+                      )}
+                    >
                       {normalizeCarrierName(order.freightType)}
                     </td>
-                    <td className="px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                    <td
+                      className={clsx(
+                        "px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap",
+                        getColumnVisibilityClass("freightValue"),
+                      )}
+                    >
                       {formatCurrency(order.freightValue)}
                     </td>
 
-                    <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
+                    <td
+                      className={clsx(
+                        "px-4 py-3 text-slate-600 dark:text-slate-300",
+                        getColumnVisibilityClass("recalculatedFreightValue"),
+                      )}
+                    >
                       <div className="flex flex-col">
                         <span className="whitespace-nowrap">
                           {formatCurrency(order.recalculatedFreightValue)}
@@ -1681,16 +2105,36 @@ export const OrderList: React.FC<OrderListProps> = ({
                         </span>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                    <td
+                      className={clsx(
+                        "px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap",
+                        getColumnVisibilityClass("freightDifference"),
+                      )}
+                    >
                       {formatCurrency(getFreightDifference(order))}
                     </td>
-                    <td className="px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                    <td
+                      className={clsx(
+                        "px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap",
+                        getColumnVisibilityClass("estimatedDeliveryDate"),
+                      )}
+                    >
                       {formatDateOrDash(order.estimatedDeliveryDate)}
                     </td>
-                    <td className="px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                    <td
+                      className={clsx(
+                        "px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap",
+                        getColumnVisibilityClass("carrierEstimatedDeliveryDate"),
+                      )}
+                    >
                       {formatCarrierForecast(order.carrierEstimatedDeliveryDate)}
                     </td>
-                    <td className="px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                    <td
+                      className={clsx(
+                        "px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap",
+                        getColumnVisibilityClass("lastUpdate"),
+                      )}
+                    >
                       <div className="flex flex-col">
                         <span className="text-xs">
                           {order.lastUpdate
@@ -1706,7 +2150,12 @@ export const OrderList: React.FC<OrderListProps> = ({
                         </span>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-center">
+                    <td
+                      className={clsx(
+                        "px-4 py-3 text-center",
+                        getColumnVisibilityClass("status"),
+                      )}
+                    >
                       <StatusBadge
                         status={order.status}
                         delayed={order.isDelayed}
@@ -1734,7 +2183,7 @@ export const OrderList: React.FC<OrderListProps> = ({
               ) : (
                 <tr>
                   <td
-                    colSpan={14}
+                    colSpan={ORDER_TABLE_COLUMNS.length + 2}
                     className="px-6 py-12 text-center text-slate-400 dark:text-slate-500"
                   >
                     <Search className="w-12 h-12 mx-auto mb-3 opacity-20" />
@@ -1768,7 +2217,7 @@ export const OrderList: React.FC<OrderListProps> = ({
                   Sincronizar Pedidos da Integradora
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                  Defina o período e os status dos pedidos que serão buscados.
+                  Defina o periodo e os status da {integrationLabel} que serao buscados.
                 </p>
               </div>
               <button
@@ -1874,7 +2323,7 @@ export const OrderList: React.FC<OrderListProps> = ({
                         Todos exceto cancelados
                       </p>
                       <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                        Busca os pedidos da Integradora ignorando apenas o status cancelado.
+                        Busca os pedidos da {integrationLabel} usando os status disponiveis para a empresa e ignorando apenas os status de cancelamento.
                       </p>
                     </div>
                   </label>
@@ -1892,10 +2341,24 @@ export const OrderList: React.FC<OrderListProps> = ({
                       <p className="text-sm font-medium text-slate-700 dark:text-white">
                         Selecionar status manualmente
                       </p>
+                      <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                        {isLoadingIntegrationStatuses
+                          ? `Carregando status da ${integrationLabel}...`
+                          : `${integrationStatusOptions.length} status disponivel(eis) na ${integrationLabel}.`}
+                      </p>
                       <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        {TRAY_STATUS_OPTIONS.map((status) => (
+                        {(
+                          integrationStatusOptions.length > 0
+                            ? integrationStatusOptions
+                            : TRAY_STATUS_OPTIONS.map(
+                                (status): IntegrationOrderStatusOption => ({
+                                  value: status,
+                                  label: status,
+                                }),
+                              )
+                        ).map((status) => (
                           <label
-                            key={status}
+                            key={status.value}
                             className={clsx(
                               "flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors",
                               trayStatusMode === "selected"
@@ -1905,13 +2368,22 @@ export const OrderList: React.FC<OrderListProps> = ({
                           >
                             <input
                               type="checkbox"
-                              checked={selectedTrayStatuses.includes(status)}
-                              onChange={() => toggleTrayStatus(status)}
+                              checked={selectedTrayStatuses.includes(status.value)}
+                              onChange={() => toggleTrayStatus(status.value)}
                               disabled={
-                                trayStatusMode !== "selected" || isTrayJobRunning
+                                trayStatusMode !== "selected" ||
+                                isTrayJobRunning ||
+                                isLoadingIntegrationStatuses
                               }
                             />
-                            <span className="capitalize">{status}</span>
+                            <span className="flex items-center gap-1">
+                              <span className="capitalize">{status.label}</span>
+                              {typeof status.code === "number" && (
+                                <span className="text-[11px] text-slate-400 dark:text-slate-500">
+                                  #{status.code}
+                                </span>
+                              )}
+                            </span>
                           </label>
                         ))}
                       </div>
@@ -2066,3 +2538,4 @@ export const OrderList: React.FC<OrderListProps> = ({
     </div>
   );
 };
+
