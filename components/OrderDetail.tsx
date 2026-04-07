@@ -124,6 +124,10 @@ const inferTrackingSourceLabel = (order: Order) => {
     return "Intelipost";
   }
 
+  if (/rastreamento\.correios\.com\.br|correios/i.test(trackingUrl)) {
+    return "Correios";
+  }
+
   return "-";
 };
 

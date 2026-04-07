@@ -6,6 +6,7 @@ import type {
 } from '../types/syncReport';
 import { normalizeExcludedPlatformFreight } from '../utils/orderExclusion';
 import { isDatabaseUnavailableError, toUserFacingDatabaseErrorMessage } from '../utils/prismaError';
+import { correiosTrackingService } from './correiosTrackingService';
 import { sswTrackingService } from './sswTrackingService';
 import { prisma } from '../lib/prisma';
 
@@ -255,6 +256,7 @@ const buildEmptySnapshot = (): SyncReportSnapshot => ({
 });
 
 type SswLookupMode = 'INVOICE' | 'TRACKING_CODE' | 'XML_KEY';
+type TrackingProvider = 'SSW' | 'INTELIPOST' | 'CORREIOS';
 
 const isXmlSearchIdentifier = (value: string) => {
   const normalized = String(value || '')
@@ -275,6 +277,7 @@ export class TrackingService {
         sswRequireCnpjs: [] as string[],
         intelipostIntegrationEnabled: true,
         sswRequireEnabled: true,
+        correiosIntegrationEnabled: true,
       };
     }
 
@@ -283,6 +286,7 @@ export class TrackingService {
       select: {
         intelipostIntegrationEnabled: true,
         sswRequireEnabled: true,
+        correiosIntegrationEnabled: true,
         intelipostClientId: true,
         sswRequireCnpjs: true,
       },
@@ -301,6 +305,7 @@ export class TrackingService {
         : [],
       intelipostIntegrationEnabled: company?.intelipostIntegrationEnabled !== false,
       sswRequireEnabled: company?.sswRequireEnabled !== false,
+      correiosIntegrationEnabled: company?.correiosIntegrationEnabled !== false,
     };
   }
 
@@ -414,11 +419,47 @@ export class TrackingService {
     return null;
   }
 
+  private async fetchFromCorreios(order: {
+    trackingCode: string | null;
+    freightType: string | null;
+    companyId?: string | null;
+  }) {
+    try {
+      const { correiosIntegrationEnabled } =
+        await this.resolveCompanyTrackingConfig(order.companyId);
+      if (!correiosIntegrationEnabled) {
+        return null;
+      }
+
+      return await correiosTrackingService.fetchTrackingByObjectCode(
+        order.trackingCode,
+        order.freightType,
+      );
+    } catch (error) {
+      console.error('Erro ao consultar Correios:', error);
+      return null;
+    }
+  }
+
   async searchExternalIdentifier(identifier: string, companyId?: string | null) {
     const rawIdentifier = String(identifier || '').trim();
 
     if (!rawIdentifier) {
       return null;
+    }
+
+    const correiosResult = await this.fetchFromCorreios({
+      trackingCode: rawIdentifier,
+      freightType: 'Correios',
+      companyId,
+    });
+
+    if (correiosResult) {
+      return {
+        source: 'CORREIOS' as const,
+        identifier: rawIdentifier,
+        result: correiosResult,
+      };
     }
 
     const normalizedDigits = rawIdentifier.replace(/\D/g, '').trim();
@@ -646,43 +687,78 @@ export class TrackingService {
         };
       }
 
-      const sswTrackingData = await this.fetchFromSsw({
-        orderNumber: order.orderNumber,
-        invoiceNumber: order.invoiceNumber,
+      const shouldUseCorreiosProvider = correiosTrackingService.shouldUseForCarrier(
+        order.freightType,
+      );
+      const correiosTrackingData = await this.fetchFromCorreios({
         trackingCode: order.trackingCode,
+        freightType: order.freightType,
         companyId: order.companyId || companyId || null,
       });
 
+      const sswTrackingData = shouldUseCorreiosProvider
+        ? null
+        : correiosTrackingData
+        ? null
+        : await this.fetchFromSsw({
+            orderNumber: order.orderNumber,
+            invoiceNumber: order.invoiceNumber,
+            trackingCode: order.trackingCode,
+            companyId: order.companyId || companyId || null,
+          });
+
+      const intelipostTrackingData =
+        shouldUseCorreiosProvider || correiosTrackingData || sswTrackingData
+          ? null
+          : await this.fetchFromIntelipost(
+              order.orderNumber,
+              order.companyId || companyId,
+            );
+
       const trackingData =
-        sswTrackingData ||
-        (await this.fetchFromIntelipost(
-          order.orderNumber,
-          order.companyId || companyId,
-        ));
+        correiosTrackingData || sswTrackingData || intelipostTrackingData;
+
+      const selectedProvider: TrackingProvider | null = correiosTrackingData
+        ? 'CORREIOS'
+        : sswTrackingData
+          ? 'SSW'
+          : intelipostTrackingData
+            ? 'INTELIPOST'
+            : null;
 
       if (!trackingData) {
         const syncedAt = new Date();
+        const noDataErrorMessage = shouldUseCorreiosProvider
+          ? 'Sem dados da API dos Correios'
+          : 'Sem dados da SSW e da Intelipost';
         await prisma.order.update({
           where: { id: orderId },
           data: {
-            lastApiError: 'Sem dados da SSW e da Intelipost',
+            lastApiError: noDataErrorMessage,
             lastApiSync: syncedAt,
           },
         });
 
         return {
           success: false,
-          message: 'Sem dados de rastreio na SSW e na Intelipost',
+          message: shouldUseCorreiosProvider
+            ? 'Sem dados de rastreio na API dos Correios'
+            : 'Sem dados de rastreio na SSW e na Intelipost',
           change: {
             ...baseChange,
             lastApiSync: syncedAt.toISOString(),
-            errorMessage: 'Sem dados de rastreio na SSW e na Intelipost',
+            errorMessage: noDataErrorMessage,
           },
         };
       }
 
-      const usingSsw = 'source' in trackingData && trackingData.source === 'SSW';
-      const events = usingSsw
+      const usingCorreios =
+        selectedProvider === 'CORREIOS' ||
+        ('source' in trackingData && trackingData.source === 'CORREIOS');
+      const usingSsw =
+        selectedProvider === 'SSW' ||
+        ('source' in trackingData && trackingData.source === 'SSW');
+      const events = usingSsw || usingCorreios
         ? trackingData.events.map((event) => ({
             orderId,
             status: event.status,
@@ -706,11 +782,13 @@ export class TrackingService {
             };
           });
 
-      const newStatus = usingSsw
+      const newStatus = usingSsw || usingCorreios
         ? trackingData.status
         : resolveTrackingStatus(trackingData, events);
       const carrierEstimatedDate = usingSsw
         ? trackingData.carrierEstimatedDate
+        : usingCorreios
+          ? trackingData.carrierEstimatedDate
         : resolveCarrierEstimatedDate(events);
       const estimatedDate = order.estimatedDeliveryDate;
 
@@ -725,10 +803,19 @@ export class TrackingService {
         ].includes(newStatus) &&
         new Date() > carrierEstimatedDate;
       const syncedAt = new Date();
-      const currentFreightType = usingSsw
+      const currentFreightType = usingCorreios
+        ? order.freightType || trackingData.freightType || 'Correios'
+        : usingSsw
         ? trackingData.freightType || order.freightType || null
         : trackingData.logistic_provider?.name || order.freightType || null;
-      const rawPayload = usingSsw
+      const rawPayload = usingCorreios
+        ? ({
+            source: 'CORREIOS',
+            trackingUrl: trackingData.trackingUrl,
+            objectCode: trackingData.objectCode,
+            ...trackingData.rawPayload,
+          } as any)
+        : usingSsw
         ? ({
             source: 'SSW',
             lookupMode: (trackingData as any).lookupMode || 'INVOICE',
@@ -780,7 +867,9 @@ export class TrackingService {
 
       return {
         success: true,
-        message: usingSsw
+        message: usingCorreios
+          ? 'Rastreio atualizado com sucesso pelos Correios'
+          : usingSsw
           ? 'Rastreio atualizado com sucesso pela SSW'
           : 'Rastreio atualizado com sucesso pela Intelipost',
         change: {
@@ -843,7 +932,7 @@ export class TrackingService {
         where: {
           ...(companyId ? { companyId } : {}),
           freightType: {
-            notIn: ['ColetasME2', 'Shopee Xpress', 'Correios'],
+            notIn: ['ColetasME2', 'Shopee Xpress'],
           },
           status: {
             not: OrderStatus.CANCELED,

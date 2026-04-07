@@ -64,6 +64,7 @@ model Company {
     trayIntegrationEnabled Boolean @default(true)
     intelipostIntegrationEnabled Boolean @default(true)
     sswRequireEnabled Boolean @default(true)
+    correiosIntegrationEnabled Boolean @default(true)
     databaseUrl String? // URL do banco de dados específico da empresa
     intelipostClientId String?
     sswRequireCnpjs String[] @default([])

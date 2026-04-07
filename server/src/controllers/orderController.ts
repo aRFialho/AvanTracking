@@ -3,6 +3,7 @@ import { OrderStatus } from '@prisma/client';
 import { syncJobService } from '../services/syncJobService';
 import { TrackingService } from '../services/trackingService';
 import { importOrdersForCompany } from '../services/orderImportService';
+import { correiosTrackingService } from '../services/correiosTrackingService';
 import { sswTrackingService } from '../services/sswTrackingService';
 import { syncReportService } from '../services/syncReportService';
 import { toUserFacingDatabaseErrorMessage } from '../utils/prismaError';
@@ -211,10 +212,17 @@ const buildIntelipostTrackingUrl = (
   return `https://status.ondeestameupedido.com/tracking/${normalizedClientId}/${encodeURIComponent(normalizedOrderNumber)}`;
 };
 
+const buildCorreiosTrackingUrl = (trackingCode: string | null | undefined) =>
+  correiosTrackingService.buildTrackingUrl(trackingCode);
+
+const isCorreiosTrackingUrl = (value: string | null | undefined) =>
+  /rastreamento\.correios\.com\.br/i.test(String(value || ''));
+
 const getStoredTrackingUrl = (
   order: {
     invoiceNumber?: string | null;
     trackingCode?: string | null;
+    freightType?: string | null;
     apiRawPayload?: any;
   },
 ) =>
@@ -228,10 +236,12 @@ const resolveTrackingSourceLabel = (
     invoiceNumber?: string | null;
     trackingCode?: string | null;
     orderNumber?: string | null;
+    freightType?: string | null;
     apiRawPayload?: any;
   },
   sswRequireCnpjs: string[] = [],
   intelipostClientId?: string | null,
+  correiosIntegrationEnabled = true,
 ) => {
   const rawPayload = order.apiRawPayload;
   const source = safeString(rawPayload?.source)?.toUpperCase();
@@ -247,6 +257,17 @@ const resolveTrackingSourceLabel = (
     }
 
     return 'SSW com NF';
+  }
+
+  if (
+    correiosIntegrationEnabled &&
+    (source === 'CORREIOS' ||
+      correiosTrackingService.shouldUseForCarrier(order.freightType))
+  ) {
+    const correiosTrackingUrl = buildCorreiosTrackingUrl(order.trackingCode);
+    if (correiosTrackingUrl) {
+      return 'Correios';
+    }
   }
 
   if (
@@ -271,6 +292,7 @@ const resolveTrackingSourceLabel = (
     order,
     sswRequireCnpjs,
     intelipostClientId,
+    correiosIntegrationEnabled,
   );
 
   if (/ssw\.inf\.br/i.test(String(resolvedTrackingUrl || ''))) {
@@ -287,6 +309,13 @@ const resolveTrackingSourceLabel = (
     }
 
     return 'SSW com NF';
+  }
+
+  if (
+    /rastreamento\.correios\.com\.br/i.test(String(resolvedTrackingUrl || '')) &&
+    buildCorreiosTrackingUrl(order.trackingCode)
+  ) {
+    return 'Correios';
   }
 
   if (
@@ -462,13 +491,18 @@ const resolveOrderTrackingUrl = (
     invoiceNumber?: string | null;
     trackingCode?: string | null;
     orderNumber?: string | null;
+    freightType?: string | null;
     apiRawPayload?: any;
   },
   sswRequireCnpjs: string[] = [],
   intelipostClientId?: string | null,
+  correiosIntegrationEnabled = true,
 ) => {
   const storedTrackingUrl = getStoredTrackingUrl(order);
-  if (storedTrackingUrl) {
+  if (
+    storedTrackingUrl &&
+    (!isCorreiosTrackingUrl(storedTrackingUrl) || correiosIntegrationEnabled)
+  ) {
     return storedTrackingUrl;
   }
 
@@ -488,6 +522,16 @@ const resolveOrderTrackingUrl = (
     return buildSswTrackingUrl(trackingKey);
   }
 
+  const correiosTrackingUrl =
+    correiosIntegrationEnabled &&
+    correiosTrackingService.shouldUseForCarrier(order.freightType)
+    ? buildCorreiosTrackingUrl(order.trackingCode)
+    : null;
+
+  if (correiosTrackingUrl) {
+    return correiosTrackingUrl;
+  }
+
   const intelipostTrackingUrl =
     safeString(order.apiRawPayload?.source)?.toUpperCase() === 'INTELIPOST' ||
     order.apiRawPayload?.tracking ||
@@ -503,16 +547,23 @@ const resolveVerifiedOrderTrackingUrl = async (
     invoiceNumber?: string | null;
     trackingCode?: string | null;
     orderNumber?: string | null;
+    freightType?: string | null;
     apiRawPayload?: any;
   },
   sswRequireCnpjs: string[] = [],
   intelipostClientId?: string | null,
+  correiosIntegrationEnabled = true,
 ) => {
   const storedTrackingUrl = getStoredTrackingUrl(order);
   const trackingSource = safeString(order.apiRawPayload?.source)?.toUpperCase();
   const storedUrlLooksLikeSsw = /ssw\.inf\.br/i.test(storedTrackingUrl || '');
+  const canUseStoredTrackingUrl =
+    storedTrackingUrl &&
+    (!isCorreiosTrackingUrl(storedTrackingUrl) || correiosIntegrationEnabled)
+      ? storedTrackingUrl
+      : null;
 
-  if (storedTrackingUrl && trackingSource !== 'SSW' && !storedUrlLooksLikeSsw) {
+  if (canUseStoredTrackingUrl && trackingSource !== 'SSW' && !storedUrlLooksLikeSsw) {
     return storedTrackingUrl;
   }
 
@@ -541,6 +592,16 @@ const resolveVerifiedOrderTrackingUrl = async (
     }
   }
 
+  const correiosTrackingUrl =
+    correiosIntegrationEnabled &&
+    correiosTrackingService.shouldUseForCarrier(order.freightType)
+    ? buildCorreiosTrackingUrl(order.trackingCode)
+    : null;
+
+  if (correiosTrackingUrl) {
+    return correiosTrackingUrl;
+  }
+
   const intelipostTrackingUrl =
     safeString(order.apiRawPayload?.source)?.toUpperCase() === "INTELIPOST" ||
     order.apiRawPayload?.tracking ||
@@ -549,7 +610,7 @@ const resolveVerifiedOrderTrackingUrl = async (
       : null;
 
   return (
-    storedTrackingUrl ||
+    canUseStoredTrackingUrl ||
     safeString(order.apiRawPayload?.logistic_provider?.live_tracking_url) ||
     safeString(order.apiRawPayload?.tracking_url) ||
     intelipostTrackingUrl ||
@@ -603,6 +664,23 @@ const getCompanyIntelipostClientId = async (
   return safeString(company?.intelipostClientId);
 };
 
+const getCompanyCorreiosIntegrationEnabled = async (
+  companyId: string | null | undefined,
+) => {
+  if (!companyId) {
+    return true;
+  }
+
+  const company = await ((prisma.company as any).findUnique({
+    where: { id: companyId },
+    select: {
+      correiosIntegrationEnabled: true,
+    },
+  }) as Promise<any>);
+
+  return company?.correiosIntegrationEnabled !== false;
+};
+
 const mapIntelipostStatusToEnum = (status: string): OrderStatus => {
   const normalizedStatus = status ? status.toUpperCase() : '';
 
@@ -653,7 +731,7 @@ const mapIntelipostStatusToEnum = (status: string): OrderStatus => {
 
 const buildExternalOrderResponse = (
   identifier: string,
-  source: 'SSW' | 'INTELIPOST',
+  source: 'SSW' | 'INTELIPOST' | 'CORREIOS',
   result: any,
   intelipostClientId?: string | null,
 ) => {
@@ -698,6 +776,58 @@ const buildExternalOrderResponse = (
       neighborhood: '',
       city: latestEvent?.city || '',
       state: latestEvent?.state || '',
+      zipCode: '',
+      totalValue: 0,
+      recipient: null,
+      maxShippingDeadline: null,
+      estimatedDeliveryDate: result.carrierEstimatedDate || null,
+      carrierEstimatedDeliveryDate: result.carrierEstimatedDate || null,
+      status: result.status as OrderStatus,
+      isDelayed: false,
+      trackingHistory: events.map((event: any) => ({
+        status: safeString(event.status) || 'UNKNOWN',
+        description: safeString(event.description) || 'Evento de rastreamento',
+        date: safeDate(event.eventDate) || new Date(),
+        city: safeString(event.city) || '',
+        state: safeString(event.state) || '',
+      })),
+      lastApiSync: new Date(),
+      lastUpdate: latestEvent?.eventDate || new Date(),
+    };
+  }
+
+  if (source === 'CORREIOS') {
+    const events = Array.isArray(result.events) ? result.events : [];
+    const latestEvent = events[0] || null;
+
+    return {
+      id: `external-${normalizeAlphaNumeric(identifier) || Date.now()}`,
+      orderNumber: String(identifier),
+      invoiceNumber: null,
+      trackingCode: normalizeAlphaNumeric(result.objectCode || identifier),
+      trackingUrl: buildCorreiosTrackingUrl(result.objectCode || identifier),
+      trackingSourceLabel: 'Correios',
+      customerName: 'Consulta externa',
+      corporateName: null,
+      cpf: null,
+      cnpj: null,
+      phone: null,
+      mobile: null,
+      salesChannel: 'Externo',
+      freightType: 'Correios',
+      freightValue: 0,
+      quotedFreightValue: null,
+      quotedFreightDate: null,
+      quotedFreightDetails: null,
+      quotedCarrierName: null,
+      freightCarrierMatchesQuote: null,
+      shippingDate: latestEvent?.eventDate || new Date(),
+      address: '',
+      number: '',
+      complement: null,
+      neighborhood: '',
+      city: safeString(latestEvent?.city) || '',
+      state: safeString(latestEvent?.state) || '',
       zipCode: '',
       totalValue: 0,
       recipient: null,
@@ -805,6 +935,7 @@ const formatOrderForResponse = (
   order: any,
   sswRequireCnpjs: string[] = [],
   intelipostClientId?: string | null,
+  correiosIntegrationEnabled = true,
   checkoutQuote?: any,
 ) => {
   const carrierEstimatedDeliveryDate =
@@ -862,6 +993,7 @@ const formatOrderForResponse = (
       order,
       sswRequireCnpjs,
       intelipostClientId,
+      correiosIntegrationEnabled,
     ),
     quotedFreightValue: legacyQuotedValue,
     quotedFreightDate: legacyQuotedDate,
@@ -886,6 +1018,7 @@ const formatOrderForResponse = (
       order,
       sswRequireCnpjs,
       intelipostClientId,
+      correiosIntegrationEnabled,
     ),
   };
 };
@@ -995,6 +1128,8 @@ export const getOrders = async (req: Request, res: Response) => {
 
     const sswRequireCnpjs = await getCompanySswRequireCnpjs(user.companyId);
     const intelipostClientId = await getCompanyIntelipostClientId(user.companyId);
+    const correiosIntegrationEnabled =
+      await getCompanyCorreiosIntegrationEnabled(user.companyId);
     const checkoutQuotesMap = await loadCheckoutQuotesMap(user.companyId, orders);
 
     return res.json(
@@ -1005,6 +1140,7 @@ export const getOrders = async (req: Request, res: Response) => {
             order,
             sswRequireCnpjs,
             intelipostClientId,
+            correiosIntegrationEnabled,
             checkoutQuotesMap.get(extractOrderQuotationId(order) || ''),
           ),
         ),
@@ -1049,6 +1185,8 @@ export const getOrderById = async (req: Request, res: Response) => {
 
     const sswRequireCnpjs = await getCompanySswRequireCnpjs(order.companyId);
     const intelipostClientId = await getCompanyIntelipostClientId(order.companyId);
+    const correiosIntegrationEnabled =
+      await getCompanyCorreiosIntegrationEnabled(order.companyId);
     const checkoutQuote = await loadCheckoutQuoteForOrder(order.companyId, order);
 
     return res.json(
@@ -1056,6 +1194,7 @@ export const getOrderById = async (req: Request, res: Response) => {
         order,
         sswRequireCnpjs,
         intelipostClientId,
+        correiosIntegrationEnabled,
         checkoutQuote,
       ),
     );
@@ -1114,6 +1253,8 @@ export const updateOrderFreightType = async (req: Request, res: Response) => {
 
     const sswRequireCnpjs = await getCompanySswRequireCnpjs(user.companyId);
     const intelipostClientId = await getCompanyIntelipostClientId(user.companyId);
+    const correiosIntegrationEnabled =
+      await getCompanyCorreiosIntegrationEnabled(user.companyId);
     const checkoutQuote = await loadCheckoutQuoteForOrder(user.companyId, updatedOrder);
 
     return res.json({
@@ -1123,6 +1264,7 @@ export const updateOrderFreightType = async (req: Request, res: Response) => {
         updatedOrder,
         sswRequireCnpjs,
         intelipostClientId,
+        correiosIntegrationEnabled,
         checkoutQuote,
       ),
     });
@@ -1171,10 +1313,13 @@ export const openOrderTracking = async (req: Request, res: Response) => {
 
     const sswRequireCnpjs = await getCompanySswRequireCnpjs(user.companyId);
     const intelipostClientId = await getCompanyIntelipostClientId(user.companyId);
+    const correiosIntegrationEnabled =
+      await getCompanyCorreiosIntegrationEnabled(user.companyId);
     const trackingUrl = await resolveVerifiedOrderTrackingUrl(
       order,
       sswRequireCnpjs,
       intelipostClientId,
+      correiosIntegrationEnabled,
     );
 
     if (!trackingUrl) {
@@ -1251,6 +1396,8 @@ export const searchExternalOrder = async (req: Request, res: Response) => {
 
       const sswRequireCnpjs = await getCompanySswRequireCnpjs(user.companyId);
       const intelipostClientId = await getCompanyIntelipostClientId(user.companyId);
+      const correiosIntegrationEnabled =
+        await getCompanyCorreiosIntegrationEnabled(user.companyId);
 
       return res.json({
         source: 'LOCAL',
@@ -1259,6 +1406,7 @@ export const searchExternalOrder = async (req: Request, res: Response) => {
               refreshedOrder,
               sswRequireCnpjs,
               intelipostClientId,
+              correiosIntegrationEnabled,
             )
           : null,
       });
@@ -1271,7 +1419,7 @@ export const searchExternalOrder = async (req: Request, res: Response) => {
 
     if (!externalResult) {
       return res.status(404).json({
-        error: 'Nenhum resultado encontrado na SSW ou Intelipost para este identificador.',
+        error: 'Nenhum rastreio encontrado nas integradoras ativas.',
       });
     }
 
@@ -1334,6 +1482,8 @@ export const syncSingleOrder = async (req: Request, res: Response) => {
 
     const sswRequireCnpjs = await getCompanySswRequireCnpjs(user.companyId);
     const intelipostClientId = await getCompanyIntelipostClientId(user.companyId);
+    const correiosIntegrationEnabled =
+      await getCompanyCorreiosIntegrationEnabled(user.companyId);
     const checkoutQuote = order
       ? await loadCheckoutQuoteForOrder(user.companyId, order)
       : null;
@@ -1346,6 +1496,7 @@ export const syncSingleOrder = async (req: Request, res: Response) => {
             order,
             sswRequireCnpjs,
             intelipostClientId,
+            correiosIntegrationEnabled,
             checkoutQuote,
           )
         : null,

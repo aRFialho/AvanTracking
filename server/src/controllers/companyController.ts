@@ -65,6 +65,8 @@ export const createCompany = async (req: Request, res: Response) => {
           req.body?.intelipostIntegrationEnabled,
         ) ?? true,
         sswRequireEnabled: normalizeBooleanSetting(req.body?.sswRequireEnabled) ?? true,
+        correiosIntegrationEnabled:
+          normalizeBooleanSetting(req.body?.correiosIntegrationEnabled) ?? true,
         intelipostClientId: intelipostClientId ? String(intelipostClientId).trim() : null,
         sswRequireCnpjs: normalizeSswRequireCnpjs(sswRequireCnpjs),
         integrationCarrierExceptions: normalizeIntegrationCarrierExceptions(
@@ -113,6 +115,7 @@ export const getCurrentCompany = async (req: Request, res: Response) => {
         trayIntegrationEnabled: true,
         intelipostIntegrationEnabled: true,
         sswRequireEnabled: true,
+        correiosIntegrationEnabled: true,
         intelipostClientId: true,
         sswRequireCnpjs: true,
         integrationCarrierExceptions: true,
@@ -162,6 +165,9 @@ export const updateCurrentCompanyIntegration = async (
       req.body?.intelipostIntegrationEnabled,
     );
     const sswRequireEnabled = normalizeBooleanSetting(req.body?.sswRequireEnabled);
+    const correiosIntegrationEnabled = normalizeBooleanSetting(
+      req.body?.correiosIntegrationEnabled,
+    );
 
     if (intelipostClientId !== undefined && !intelipostClientId) {
       return res.status(400).json({ error: 'ID da Intelipost obrigatorio' });
@@ -176,6 +182,9 @@ export const updateCurrentCompanyIntegration = async (
           ? { intelipostIntegrationEnabled }
           : {}),
         ...(sswRequireEnabled !== undefined ? { sswRequireEnabled } : {}),
+        ...(correiosIntegrationEnabled !== undefined
+          ? { correiosIntegrationEnabled }
+          : {}),
         ...(sswRequireCnpjs !== undefined ? { sswRequireCnpjs } : {}),
         ...(integrationCarrierExceptions !== undefined
           ? { integrationCarrierExceptions }
@@ -188,6 +197,7 @@ export const updateCurrentCompanyIntegration = async (
         trayIntegrationEnabled: true,
         intelipostIntegrationEnabled: true,
         sswRequireEnabled: true,
+        correiosIntegrationEnabled: true,
         intelipostClientId: true,
         sswRequireCnpjs: true,
         integrationCarrierExceptions: true,

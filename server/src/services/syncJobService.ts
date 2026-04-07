@@ -12,16 +12,14 @@ import { prisma } from '../lib/prisma';
 
 const trackingService = new TrackingService();
 const MAX_LOGS = 1000;
-const AUTO_SYNC_INTERVAL_MS = 0;
+const AUTO_SYNC_INTERVAL_MS = 12 * 60 * 60 * 1000;
 const AUTO_SYNC_SCHEDULE_TIMES = [
-  { hour: 6, minute: 0 },
-  { hour: 10, minute: 0 },
-  { hour: 14, minute: 0 },
-  { hour: 18, minute: 0 },
-  { hour: 22, minute: 0 },
+  { hour: 7, minute: 0 },
+  { hour: 17, minute: 0 },
 ];
 const SAO_PAULO_TIMEZONE = 'America/Sao_Paulo';
 const SAO_PAULO_UTC_OFFSET_HOURS = 3;
+const BUSINESS_WEEKDAYS = new Set(['MON', 'TUE', 'WED', 'THU', 'FRI']);
 
 type CompanyJobMap = Map<string, SyncJobStatus>;
 type ScheduleEntry = {
@@ -241,6 +239,7 @@ class SyncJobService {
   private getSaoPauloDateParts(date: Date) {
     const formatter = new Intl.DateTimeFormat('en-CA', {
       timeZone: SAO_PAULO_TIMEZONE,
+      weekday: 'short',
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
@@ -255,6 +254,9 @@ class SyncJobService {
       Number(parts.find((part) => part.type === type)?.value || 0);
 
     return {
+      weekday: String(parts.find((part) => part.type === 'weekday')?.value || '')
+        .slice(0, 3)
+        .toUpperCase(),
       year: read('year'),
       month: read('month'),
       day: read('day'),
@@ -282,19 +284,26 @@ class SyncJobService {
   }
 
   private resolveNextRunDate(now = new Date()) {
-    const base = this.getSaoPauloDateParts(now);
+    for (let dayOffset = 0; dayOffset < 8; dayOffset += 1) {
+      const candidateBase = new Date(now.getTime() + dayOffset * 24 * 60 * 60 * 1000);
+      const base = this.getSaoPauloDateParts(candidateBase);
 
-    for (const slot of AUTO_SYNC_SCHEDULE_TIMES) {
-      const candidate = this.createSaoPauloDate(
-        base.year,
-        base.month,
-        base.day,
-        slot.hour,
-        slot.minute,
-      );
+      if (!BUSINESS_WEEKDAYS.has(base.weekday)) {
+        continue;
+      }
 
-      if (candidate.getTime() > now.getTime()) {
-        return candidate;
+      for (const slot of AUTO_SYNC_SCHEDULE_TIMES) {
+        const candidate = this.createSaoPauloDate(
+          base.year,
+          base.month,
+          base.day,
+          slot.hour,
+          slot.minute,
+        );
+
+        if (candidate.getTime() > now.getTime()) {
+          return candidate;
+        }
       }
     }
 

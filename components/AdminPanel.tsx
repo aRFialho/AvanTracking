@@ -33,6 +33,7 @@ interface Company {
   trayIntegrationEnabled?: boolean;
   intelipostIntegrationEnabled?: boolean;
   sswRequireEnabled?: boolean;
+  correiosIntegrationEnabled?: boolean;
   intelipostClientId?: string | null;
   sswRequireCnpjs?: string[];
   integrationCarrierExceptions?: string[];
@@ -106,6 +107,9 @@ const normalizeIntegrationSearchText = (value: string) =>
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .trim();
+
+const INTEGRATION_LOGO_CLASS =
+  "mt-3 h-8 w-auto object-contain rounded-lg px-2 py-1 dark:bg-white/5 dark:ring-1 dark:ring-white/10 dark:drop-shadow-[0_0_10px_rgba(255,255,255,0.22)]";
 
 const escapeHtml = (value: string) =>
   value
@@ -221,6 +225,8 @@ export const AdminPanel: React.FC = () => {
   const [intelipostIntegrationEnabled, setIntelipostIntegrationEnabled] =
     useState(true);
   const [sswRequireEnabled, setSswRequireEnabled] = useState(true);
+  const [correiosIntegrationEnabled, setCorreiosIntegrationEnabled] =
+    useState(true);
   const [intelipostClientId, setIntelipostClientId] = useState("");
   const [sswRequireCnpjs, setSswRequireCnpjs] = useState<string[]>([""]);
   const [integrationCarrierExceptions, setIntegrationCarrierExceptions] = useState<string[]>([""]);
@@ -367,6 +373,7 @@ export const AdminPanel: React.FC = () => {
       setTrayIntegrationEnabled(data.trayIntegrationEnabled !== false);
       setIntelipostIntegrationEnabled(data.intelipostIntegrationEnabled !== false);
       setSswRequireEnabled(data.sswRequireEnabled !== false);
+      setCorreiosIntegrationEnabled(data.correiosIntegrationEnabled !== false);
       setIntelipostClientId(data.intelipostClientId || "");
       setSswRequireCnpjs(
         Array.isArray(data.sswRequireCnpjs) && data.sswRequireCnpjs.length > 0
@@ -384,6 +391,7 @@ export const AdminPanel: React.FC = () => {
       setTrayIntegrationEnabled(true);
       setIntelipostIntegrationEnabled(true);
       setSswRequireEnabled(true);
+      setCorreiosIntegrationEnabled(true);
       setIntelipostClientId("");
       setSswRequireCnpjs([""]);
       setIntegrationCarrierExceptions([""]);
@@ -733,7 +741,8 @@ export const AdminPanel: React.FC = () => {
     field:
       | "trayIntegrationEnabled"
       | "intelipostIntegrationEnabled"
-      | "sswRequireEnabled",
+      | "sswRequireEnabled"
+      | "correiosIntegrationEnabled",
     value: boolean,
   ) => {
     if (!currentCompany) return;
@@ -762,6 +771,9 @@ export const AdminPanel: React.FC = () => {
         data.company?.intelipostIntegrationEnabled !== false,
       );
       setSswRequireEnabled(data.company?.sswRequireEnabled !== false);
+      setCorreiosIntegrationEnabled(
+        data.company?.correiosIntegrationEnabled !== false,
+      );
     } catch (err: any) {
       alert(err.message || "Erro ao atualizar a integracao.");
       await fetchCurrentCompany();
@@ -950,10 +962,10 @@ export const AdminPanel: React.FC = () => {
     integrationCardMatches("tray integracao principal pedidos loja autorizacao") ||
     integrationCardMatches("intelipost tracking externo client id rastreio") ||
     integrationCardMatches("ssw require tracking nf cnpj rastreio") ||
+    integrationCardMatches("correios api rastro codigo objeto rastreio pac sedex") ||
     integrationCardMatches("excecao de transportadora regras importacao ignorar") ||
     integrationCardMatches("bling erp implementacao futuro") ||
     integrationCardMatches("sysemp shopping de precos implementacao futuro") ||
-    integrationCardMatches("correios implementacao futuro") ||
     integrationCardMatches("magazord implementacao futuro");
 
   const IntegrationToggle: React.FC<{
@@ -1514,7 +1526,7 @@ export const AdminPanel: React.FC = () => {
                     <img
                       src="/logo-tray.png"
                       alt="Tray"
-                      className="mt-3 h-8 w-auto object-contain"
+                      className={INTEGRATION_LOGO_CLASS}
                     />
                     <h4 className="mt-2 text-lg font-bold text-slate-800 dark:text-white">Tray</h4>
                     <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
@@ -1633,7 +1645,7 @@ export const AdminPanel: React.FC = () => {
                     <img
                       src="/intelipost.png"
                       alt="Intelipost"
-                      className="mt-3 h-8 w-auto object-contain"
+                      className={INTEGRATION_LOGO_CLASS}
                     />
                     <h4 className="mt-2 text-lg font-bold text-slate-800 dark:text-white">Intelipost</h4>
                     <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
@@ -1698,7 +1710,7 @@ export const AdminPanel: React.FC = () => {
                     <img
                       src="/ssw.png"
                       alt="SSW"
-                      className="mt-3 h-8 w-auto object-contain"
+                      className={INTEGRATION_LOGO_CLASS}
                     />
                     <h4 className="mt-2 text-lg font-bold text-slate-800 dark:text-white">SSW Require</h4>
                     <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
@@ -1780,6 +1792,52 @@ export const AdminPanel: React.FC = () => {
             </div>
             )}
 
+            {integrationCardMatches("correios api rastro codigo objeto rastreio pac sedex") && (
+            <div className="glass-card rounded-2xl overflow-hidden border border-slate-200 dark:border-white/10">
+              <div className="p-5 border-b border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-white/5">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Tracking por codigo de objeto</p>
+                    <img
+                      src="/correios.png"
+                      alt="Correios"
+                      className={INTEGRATION_LOGO_CLASS}
+                    />
+                    <h4 className="mt-2 text-lg font-bold text-slate-800 dark:text-white">Correios</h4>
+                    <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+                      Ativa o rastreio pela API Rastro dos Correios usando o codigo de objeto padronizado no campo de rastreio do pedido.
+                    </p>
+                  </div>
+                  <div className="flex flex-col items-end gap-2">
+                    <IntegrationToggle
+                      enabled={correiosIntegrationEnabled}
+                      disabled={isSavingIntegrationToggle || !currentCompany}
+                      onChange={(nextValue) =>
+                        handleSaveIntegrationToggle("correiosIntegrationEnabled", nextValue)
+                      }
+                    />
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                      {correiosIntegrationEnabled ? "Ativa" : "Desativada"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-5 space-y-4">
+                <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700 dark:border-blue-900/30 dark:bg-blue-900/10 dark:text-blue-300">
+                  Esta integracao consulta a API dos Correios apenas quando a transportadora do pedido for <span className="font-semibold">PAC</span>, <span className="font-semibold">SEDEX</span> ou <span className="font-semibold">Correios</span>.
+                </div>
+
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
+                  <p className="font-semibold text-slate-700 dark:text-white">Regra de uso</p>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    Quando ativa, o Avantracking usa o codigo de envio recebido da plataforma como codigo de objeto dos Correios. Quando desativada, a API nao e consultada para essa empresa.
+                  </p>
+                </div>
+              </div>
+            </div>
+            )}
+
             {integrationCardMatches("excecao de transportadora regras importacao ignorar") && (
             <div className="glass-card rounded-2xl overflow-hidden border border-slate-200 dark:border-white/10">
               <div className="p-5 border-b border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-white/5">
@@ -1851,7 +1909,7 @@ export const AdminPanel: React.FC = () => {
                     <img
                       src="/bling.png"
                       alt="Bling ERP"
-                      className="mt-3 h-8 w-auto object-contain"
+                      className={INTEGRATION_LOGO_CLASS}
                     />
                     <h4 className="mt-2 text-lg font-bold text-slate-800 dark:text-white">Bling ERP</h4>
                     <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
@@ -1876,36 +1934,11 @@ export const AdminPanel: React.FC = () => {
                     <img
                       src="/sysemp.png"
                       alt="SYSEMP"
-                      className="mt-3 h-8 w-auto object-contain"
+                      className={INTEGRATION_LOGO_CLASS}
                     />
                     <h4 className="mt-2 text-lg font-bold text-slate-800 dark:text-white">SYSEMP - Shopping de Precos</h4>
                     <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
                       Espaco preparado para a futura integracao com comparador de precos e operacao comercial.
-                    </p>
-                  </div>
-                  <div className="flex flex-col items-end gap-2">
-                    <IntegrationToggle enabled={false} disabled={true} />
-                    <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Em implementacao</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-            )}
-
-            {integrationCardMatches("correios implementacao futuro") && (
-            <div className="glass-card rounded-2xl overflow-hidden border border-dashed border-slate-300 dark:border-white/10">
-              <div className="p-5">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Em implementacao</p>
-                    <img
-                      src="/correios.png"
-                      alt="Correios"
-                      className="mt-3 h-8 w-auto object-contain"
-                    />
-                    <h4 className="mt-2 text-lg font-bold text-slate-800 dark:text-white">Correios</h4>
-                    <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-                      Card reservado para futura integracao com servicos e rastreio dos Correios.
                     </p>
                   </div>
                   <div className="flex flex-col items-end gap-2">
@@ -1926,7 +1959,7 @@ export const AdminPanel: React.FC = () => {
                     <img
                       src="/magazord.png"
                       alt="Magazord"
-                      className="mt-3 h-8 w-auto object-contain"
+                      className={INTEGRATION_LOGO_CLASS}
                     />
                     <h4 className="mt-2 text-lg font-bold text-slate-800 dark:text-white">Magazord</h4>
                     <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
