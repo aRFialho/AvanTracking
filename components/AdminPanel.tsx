@@ -31,10 +31,16 @@ interface Company {
   name: string;
   cnpj?: string;
   trayIntegrationEnabled?: boolean;
+  blingIntegrationEnabled?: boolean;
+  magazordIntegrationEnabled?: boolean;
+  sysempIntegrationEnabled?: boolean;
   intelipostIntegrationEnabled?: boolean;
   sswRequireEnabled?: boolean;
   correiosIntegrationEnabled?: boolean;
   intelipostClientId?: string | null;
+  magazordApiBaseUrl?: string | null;
+  magazordApiUser?: string | null;
+  magazordApiPasswordConfigured?: boolean;
   sswRequireCnpjs?: string[];
   integrationCarrierExceptions?: string[];
   createdAt: string;
@@ -205,6 +211,9 @@ export const AdminPanel: React.FC = () => {
   const [activeTab, setActiveTab] = useState<
     "users" | "companies" | "integration" | "patch-notes"
   >(() => getInitialTab(canManageAdminPanel));
+  const [integrationSubTab, setIntegrationSubTab] = useState<
+    "erp" | "tracking" | "settings"
+  >("erp");
   const [users, setUsers] = useState<UserData[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
@@ -222,15 +231,25 @@ export const AdminPanel: React.FC = () => {
   const [currentCompany, setCurrentCompany] = useState<Company | null>(null);
   const [integrationSearch, setIntegrationSearch] = useState("");
   const [trayIntegrationEnabled, setTrayIntegrationEnabled] = useState(true);
+  const [blingIntegrationEnabled, setBlingIntegrationEnabled] = useState(false);
+  const [magazordIntegrationEnabled, setMagazordIntegrationEnabled] =
+    useState(false);
+  const [sysempIntegrationEnabled, setSysempIntegrationEnabled] = useState(false);
   const [intelipostIntegrationEnabled, setIntelipostIntegrationEnabled] =
     useState(true);
   const [sswRequireEnabled, setSswRequireEnabled] = useState(true);
   const [correiosIntegrationEnabled, setCorreiosIntegrationEnabled] =
     useState(true);
   const [intelipostClientId, setIntelipostClientId] = useState("");
+  const [magazordApiBaseUrl, setMagazordApiBaseUrl] = useState("");
+  const [magazordApiUser, setMagazordApiUser] = useState("");
+  const [magazordApiPassword, setMagazordApiPassword] = useState("");
+  const [magazordApiPasswordConfigured, setMagazordApiPasswordConfigured] =
+    useState(false);
   const [sswRequireCnpjs, setSswRequireCnpjs] = useState<string[]>([""]);
   const [integrationCarrierExceptions, setIntegrationCarrierExceptions] = useState<string[]>([""]);
   const [isSavingIntelipost, setIsSavingIntelipost] = useState(false);
+  const [isSavingMagazord, setIsSavingMagazord] = useState(false);
   const [isSavingSswRequire, setIsSavingSswRequire] = useState(false);
   const [isSavingCarrierExceptions, setIsSavingCarrierExceptions] = useState(false);
   const [isSavingIntegrationToggle, setIsSavingIntegrationToggle] = useState(false);
@@ -358,6 +377,42 @@ export const AdminPanel: React.FC = () => {
     }
   };
 
+  const applyCompanyIntegrationState = (companyData: Company | null) => {
+    setCurrentCompany(companyData);
+    setTrayIntegrationEnabled(companyData?.trayIntegrationEnabled !== false);
+    setBlingIntegrationEnabled(companyData?.blingIntegrationEnabled === true);
+    setMagazordIntegrationEnabled(
+      companyData?.magazordIntegrationEnabled === true,
+    );
+    setSysempIntegrationEnabled(companyData?.sysempIntegrationEnabled === true);
+    setIntelipostIntegrationEnabled(
+      companyData?.intelipostIntegrationEnabled !== false,
+    );
+    setSswRequireEnabled(companyData?.sswRequireEnabled !== false);
+    setCorreiosIntegrationEnabled(
+      companyData?.correiosIntegrationEnabled !== false,
+    );
+    setIntelipostClientId(companyData?.intelipostClientId || "");
+    setMagazordApiBaseUrl(companyData?.magazordApiBaseUrl || "");
+    setMagazordApiUser(companyData?.magazordApiUser || "");
+    setMagazordApiPassword("");
+    setMagazordApiPasswordConfigured(
+      companyData?.magazordApiPasswordConfigured === true,
+    );
+    setSswRequireCnpjs(
+      Array.isArray(companyData?.sswRequireCnpjs) &&
+        companyData.sswRequireCnpjs.length > 0
+        ? companyData.sswRequireCnpjs
+        : [""],
+    );
+    setIntegrationCarrierExceptions(
+      Array.isArray(companyData?.integrationCarrierExceptions) &&
+        companyData.integrationCarrierExceptions.length > 0
+        ? companyData.integrationCarrierExceptions
+        : [""],
+    );
+  };
+
   const fetchCurrentCompany = async () => {
     try {
       const response = await fetchWithAuth("/api/companies/current");
@@ -369,32 +424,9 @@ export const AdminPanel: React.FC = () => {
         );
       }
 
-      setCurrentCompany(data);
-      setTrayIntegrationEnabled(data.trayIntegrationEnabled !== false);
-      setIntelipostIntegrationEnabled(data.intelipostIntegrationEnabled !== false);
-      setSswRequireEnabled(data.sswRequireEnabled !== false);
-      setCorreiosIntegrationEnabled(data.correiosIntegrationEnabled !== false);
-      setIntelipostClientId(data.intelipostClientId || "");
-      setSswRequireCnpjs(
-        Array.isArray(data.sswRequireCnpjs) && data.sswRequireCnpjs.length > 0
-          ? data.sswRequireCnpjs
-          : [""],
-      );
-      setIntegrationCarrierExceptions(
-        Array.isArray(data.integrationCarrierExceptions) &&
-          data.integrationCarrierExceptions.length > 0
-          ? data.integrationCarrierExceptions
-          : [""],
-      );
+      applyCompanyIntegrationState(data);
     } catch {
-      setCurrentCompany(null);
-      setTrayIntegrationEnabled(true);
-      setIntelipostIntegrationEnabled(true);
-      setSswRequireEnabled(true);
-      setCorreiosIntegrationEnabled(true);
-      setIntelipostClientId("");
-      setSswRequireCnpjs([""]);
-      setIntegrationCarrierExceptions([""]);
+      applyCompanyIntegrationState(null);
     }
   };
 
@@ -661,13 +693,7 @@ export const AdminPanel: React.FC = () => {
         );
       }
 
-      setCurrentCompany(data.company || null);
-      setSswRequireCnpjs(
-        Array.isArray(data.company?.sswRequireCnpjs) &&
-          data.company.sswRequireCnpjs.length > 0
-          ? data.company.sswRequireCnpjs
-          : [""],
-      );
+      applyCompanyIntegrationState(data.company || null);
       alert(data.message || "CNPJs do SSW Require atualizados com sucesso.");
     } catch (err: any) {
       alert(err.message || "Erro ao salvar os CNPJs do SSW Require.");
@@ -722,13 +748,7 @@ export const AdminPanel: React.FC = () => {
         );
       }
 
-      setCurrentCompany(data.company || null);
-      setIntegrationCarrierExceptions(
-        Array.isArray(data.company?.integrationCarrierExceptions) &&
-          data.company.integrationCarrierExceptions.length > 0
-          ? data.company.integrationCarrierExceptions
-          : [""],
-      );
+      applyCompanyIntegrationState(data.company || null);
       alert(data.message || "Excecoes de transportadora atualizadas com sucesso.");
     } catch (err: any) {
       alert(err.message || "Erro ao salvar as excecoes de transportadora.");
@@ -740,12 +760,41 @@ export const AdminPanel: React.FC = () => {
   const handleSaveIntegrationToggle = async (
     field:
       | "trayIntegrationEnabled"
+      | "blingIntegrationEnabled"
+      | "magazordIntegrationEnabled"
+      | "sysempIntegrationEnabled"
       | "intelipostIntegrationEnabled"
       | "sswRequireEnabled"
       | "correiosIntegrationEnabled",
     value: boolean,
   ) => {
     if (!currentCompany) return;
+
+    const isErpToggle =
+      field === "trayIntegrationEnabled" ||
+      field === "blingIntegrationEnabled" ||
+      field === "magazordIntegrationEnabled" ||
+      field === "sysempIntegrationEnabled";
+
+    if (isErpToggle && value) {
+      const activeErpField =
+        trayIntegrationEnabled
+          ? "trayIntegrationEnabled"
+          : blingIntegrationEnabled
+            ? "blingIntegrationEnabled"
+            : magazordIntegrationEnabled
+              ? "magazordIntegrationEnabled"
+              : sysempIntegrationEnabled
+                ? "sysempIntegrationEnabled"
+                : null;
+
+      if (activeErpField && activeErpField !== field) {
+        alert(
+          "Nao e permitido ativar um segundo ERP. Desative o ERP atual antes de ativar outro.",
+        );
+        return;
+      }
+    }
 
     setIsSavingIntegrationToggle(true);
     try {
@@ -765,20 +814,52 @@ export const AdminPanel: React.FC = () => {
         );
       }
 
-      setCurrentCompany(data.company || null);
-      setTrayIntegrationEnabled(data.company?.trayIntegrationEnabled !== false);
-      setIntelipostIntegrationEnabled(
-        data.company?.intelipostIntegrationEnabled !== false,
-      );
-      setSswRequireEnabled(data.company?.sswRequireEnabled !== false);
-      setCorreiosIntegrationEnabled(
-        data.company?.correiosIntegrationEnabled !== false,
-      );
+      applyCompanyIntegrationState(data.company || null);
     } catch (err: any) {
       alert(err.message || "Erro ao atualizar a integracao.");
       await fetchCurrentCompany();
     } finally {
       setIsSavingIntegrationToggle(false);
+    }
+  };
+
+  const handleSaveMagazord = async () => {
+    if (!currentCompany) return;
+
+    const trimmedBaseUrl = magazordApiBaseUrl.trim();
+    const trimmedUser = magazordApiUser.trim();
+
+    setIsSavingMagazord(true);
+    try {
+      const payload: Record<string, string> = {
+        magazordApiBaseUrl: trimmedBaseUrl,
+        magazordApiUser: trimmedUser,
+      };
+
+      if (magazordApiPassword.trim()) {
+        payload.magazordApiPassword = magazordApiPassword.trim();
+      }
+
+      const response = await fetchWithAuth("/api/companies/current/integration", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(
+          data.error || "Nao foi possivel salvar as credenciais da Magazord.",
+        );
+      }
+
+      applyCompanyIntegrationState(data.company || null);
+      alert(data.message || "Credenciais da Magazord atualizadas com sucesso.");
+    } catch (err: any) {
+      alert(err.message || "Erro ao salvar as credenciais da Magazord.");
+    } finally {
+      setIsSavingMagazord(false);
     }
   };
 
@@ -959,14 +1040,18 @@ export const AdminPanel: React.FC = () => {
     );
   };
   const hasVisibleIntegrations =
-    integrationCardMatches("tray integracao principal pedidos loja autorizacao") ||
-    integrationCardMatches("intelipost tracking externo client id rastreio") ||
-    integrationCardMatches("ssw require tracking nf cnpj rastreio") ||
-    integrationCardMatches("correios api rastro codigo objeto rastreio pac sedex") ||
-    integrationCardMatches("excecao de transportadora regras importacao ignorar") ||
-    integrationCardMatches("bling erp implementacao futuro") ||
-    integrationCardMatches("sysemp shopping de precos implementacao futuro") ||
-    integrationCardMatches("magazord implementacao futuro");
+    integrationSubTab === "erp"
+      ? integrationCardMatches("tray integracao principal pedidos loja autorizacao") ||
+        integrationCardMatches("magazord erp pedidos basic auth usuario senha api") ||
+        integrationCardMatches("bling erp implementacao futuro") ||
+        integrationCardMatches("sysemp shopping de precos implementacao futuro")
+      : integrationSubTab === "tracking"
+        ? integrationCardMatches("intelipost tracking externo client id rastreio") ||
+          integrationCardMatches("ssw require tracking nf cnpj rastreio") ||
+          integrationCardMatches("correios api rastro codigo objeto rastreio pac sedex")
+        : integrationCardMatches(
+            "configuracoes regras de importacao excecao de transportadora ignorar",
+          );
 
   const IntegrationToggle: React.FC<{
     enabled: boolean;
@@ -1494,14 +1579,62 @@ export const AdminPanel: React.FC = () => {
                     As configuracoes abaixo sao compartilhadas por todos os usuarios desta empresa.
                   </p>
                   <div className="mt-3">
+                    <div className="mb-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setIntegrationSubTab("erp")}
+                        className={clsx(
+                          "inline-flex items-center rounded-full px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] transition-colors",
+                          integrationSubTab === "erp"
+                            ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900"
+                            : "border border-slate-200 bg-white text-slate-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300",
+                        )}
+                      >
+                        ERPs
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIntegrationSubTab("tracking")}
+                        className={clsx(
+                          "inline-flex items-center rounded-full px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] transition-colors",
+                          integrationSubTab === "tracking"
+                            ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900"
+                            : "border border-slate-200 bg-white text-slate-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300",
+                        )}
+                      >
+                        Rastreio
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIntegrationSubTab("settings")}
+                        className={clsx(
+                          "inline-flex items-center rounded-full px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] transition-colors",
+                          integrationSubTab === "settings"
+                            ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900"
+                            : "border border-slate-200 bg-white text-slate-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300",
+                        )}
+                      >
+                        Configuracoes
+                      </button>
+                    </div>
                     <label className="block text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400 mb-2">
-                      Buscar integracao
+                      {integrationSubTab === "erp"
+                        ? "Buscar ERP"
+                        : integrationSubTab === "tracking"
+                          ? "Buscar integracao de rastreio"
+                          : "Buscar configuracao"}
                     </label>
                     <input
                       type="text"
                       value={integrationSearch}
                       onChange={(e) => setIntegrationSearch(e.target.value)}
-                      placeholder="Tray, Intelipost, SSW, Correios..."
+                      placeholder={
+                        integrationSubTab === "erp"
+                          ? "Tray, Magazord, Bling, SYSEMP..."
+                          : integrationSubTab === "tracking"
+                            ? "Intelipost, SSW, Correios..."
+                            : "Excecao de transportadora, importacao..."
+                      }
                       className="w-full bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white focus:border-blue-500 outline-none"
                     />
                   </div>
@@ -1512,12 +1645,18 @@ export const AdminPanel: React.FC = () => {
 
           {!hasVisibleIntegrations && (
             <div className="glass-card rounded-2xl border border-slate-200 dark:border-white/10 p-6 text-sm text-slate-500 dark:text-slate-400">
-              Nenhuma integracao encontrada para a busca informada.
+              {integrationSubTab === "erp"
+                ? "Nenhum ERP encontrado para a busca informada."
+                : integrationSubTab === "tracking"
+                  ? "Nenhuma integracao de rastreio encontrada para a busca informada."
+                  : "Nenhuma configuracao encontrada para a busca informada."}
             </div>
           )}
 
+          {(integrationSubTab === "erp" || integrationSubTab === "tracking") && (
+          <>
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-            {integrationCardMatches("tray integracao principal pedidos loja autorizacao") && (
+            {integrationSubTab === "erp" && integrationCardMatches("tray integracao principal pedidos loja autorizacao") && (
             <div className="glass-card rounded-2xl overflow-hidden border border-slate-200 dark:border-white/10">
               <div className="p-5 border-b border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-white/5">
                 <div className="flex items-start justify-between gap-4">
@@ -1636,7 +1775,7 @@ export const AdminPanel: React.FC = () => {
             </div>
             )}
 
-            {integrationCardMatches("intelipost tracking externo client id rastreio") && (
+            {integrationSubTab === "tracking" && integrationCardMatches("intelipost tracking externo client id rastreio") && (
             <div className="glass-card rounded-2xl overflow-hidden border border-slate-200 dark:border-white/10">
               <div className="p-5 border-b border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-white/5">
                 <div className="flex items-start justify-between gap-4">
@@ -1701,7 +1840,7 @@ export const AdminPanel: React.FC = () => {
             </div>
             )}
 
-            {integrationCardMatches("ssw require tracking nf cnpj rastreio") && (
+            {integrationSubTab === "tracking" && integrationCardMatches("ssw require tracking nf cnpj rastreio") && (
             <div className="glass-card rounded-2xl overflow-hidden border border-slate-200 dark:border-white/10">
               <div className="p-5 border-b border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-white/5">
                 <div className="flex items-start justify-between gap-4">
@@ -1792,7 +1931,7 @@ export const AdminPanel: React.FC = () => {
             </div>
             )}
 
-            {integrationCardMatches("correios api rastro codigo objeto rastreio pac sedex") && (
+            {integrationSubTab === "tracking" && integrationCardMatches("correios api rastro codigo objeto rastreio pac sedex") && (
             <div className="glass-card rounded-2xl overflow-hidden border border-slate-200 dark:border-white/10">
               <div className="p-5 border-b border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-white/5">
                 <div className="flex items-start justify-between gap-4">
@@ -1838,69 +1977,107 @@ export const AdminPanel: React.FC = () => {
             </div>
             )}
 
-            {integrationCardMatches("excecao de transportadora regras importacao ignorar") && (
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+            {integrationSubTab === "erp" && integrationCardMatches("magazord erp pedidos basic auth usuario senha api") && (
             <div className="glass-card rounded-2xl overflow-hidden border border-slate-200 dark:border-white/10">
               <div className="p-5 border-b border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-white/5">
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Regras de importacao</p>
-                    <h4 className="mt-2 text-lg font-bold text-slate-800 dark:text-white">Excecao de transportadora</h4>
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">ERP com Basic Auth</p>
+                    <img
+                      src="/magazord.png"
+                      alt="Magazord"
+                      className={INTEGRATION_LOGO_CLASS}
+                    />
+                    <h4 className="mt-2 text-lg font-bold text-slate-800 dark:text-white">Magazord</h4>
                     <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-                      Controle fino para ignorar pedidos da plataforma por nome exato de transportadora nesta empresa.
+                      Consulta por API com usuario e senha da integradora, sem OAuth, sem refresh token e sem fluxo de autorizacao por app.
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={handleAddCarrierException}
-                    className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-medium text-white bg-blue-600 hover:bg-blue-700 transition-colors"
-                  >
-                    <Plus className="w-4 h-4" />
-                    Adicionar
-                  </button>
+                  <div className="flex flex-col items-end gap-2">
+                    <IntegrationToggle
+                      enabled={magazordIntegrationEnabled}
+                      disabled={isSavingIntegrationToggle || !currentCompany}
+                      onChange={(nextValue) =>
+                        handleSaveIntegrationToggle("magazordIntegrationEnabled", nextValue)
+                      }
+                    />
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                      {magazordIntegrationEnabled ? "Ativa" : "Desativada"}
+                    </span>
+                  </div>
                 </div>
               </div>
 
-              <div className="p-5 space-y-3">
-                {integrationCarrierExceptions.map((carrierName, index) => (
-                  <div key={`${index}-${carrierName}`} className="flex flex-col gap-3 sm:flex-row">
+              <div className="p-5 space-y-4">
+                <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700 dark:border-blue-900/30 dark:bg-blue-900/10 dark:text-blue-300">
+                  Pela documentacao atual, a Magazord usa <span className="font-semibold">Basic Auth</span>. Basta informar a URL base da API, o usuario e a senha/codigo de acesso da conta.
+                </div>
+
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
+                  <p className="font-semibold text-slate-700 dark:text-white">Regra de ERP unico</p>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    Ao ativar a Magazord, os demais ERPs da empresa sao desativados automaticamente. Integracoes de rastreio continuam independentes.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">URL base da API</label>
+                  <input
+                    type="text"
+                    value={magazordApiBaseUrl}
+                    onChange={(e) => setMagazordApiBaseUrl(e.target.value)}
+                    placeholder="https://sua-api.magazord.com.br"
+                    className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white focus:border-blue-500 outline-none"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Usuario da API</label>
                     <input
                       type="text"
-                      value={carrierName}
-                      onChange={(e) => handleChangeCarrierException(index, e.target.value)}
-                      placeholder="Nome exato da transportadora"
-                      className="w-full bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white focus:border-blue-500 outline-none"
+                      value={magazordApiUser}
+                      onChange={(e) => setMagazordApiUser(e.target.value)}
+                      placeholder="usuario_api"
+                      className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white focus:border-blue-500 outline-none"
                     />
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveCarrierException(index)}
-                      disabled={integrationCarrierExceptions.length === 1}
-                      className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-medium border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 hover:border-red-500 hover:text-red-600 disabled:opacity-50 transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                      Remover
-                    </button>
                   </div>
-                ))}
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Senha / codigo de acesso</label>
+                    <input
+                      type="password"
+                      value={magazordApiPassword}
+                      onChange={(e) => setMagazordApiPassword(e.target.value)}
+                      placeholder={magazordApiPasswordConfigured ? "Senha ja cadastrada" : "Informe a senha da API"}
+                      className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white focus:border-blue-500 outline-none"
+                    />
+                  </div>
+                </div>
 
                 <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-                  <p className="text-[11px] text-slate-400">A comparacao usa o texto normalizado exato recebido da plataforma.</p>
+                  <p className="text-[11px] text-slate-400">
+                    {magazordApiPasswordConfigured
+                      ? "Ja existe uma senha Magazord salva para esta empresa. Preencha novamente apenas se quiser substituir."
+                      : "Ainda nao existe senha Magazord cadastrada para esta empresa."}
+                  </p>
 
                   <button
                     type="button"
-                    onClick={handleSaveCarrierExceptions}
-                    disabled={isSavingCarrierExceptions || !currentCompany}
+                    onClick={handleSaveMagazord}
+                    disabled={isSavingMagazord || !currentCompany}
                     className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-medium text-white bg-slate-700 hover:bg-slate-800 disabled:opacity-50 transition-colors"
                   >
-                    {isSavingCarrierExceptions ? "Salvando..." : "Salvar excecoes"}
+                    {isSavingMagazord ? "Salvando..." : "Salvar Magazord"}
                   </button>
                 </div>
               </div>
             </div>
             )}
-          </div>
 
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-            {integrationCardMatches("bling erp implementacao futuro") && (
+            {integrationSubTab === "erp" && integrationCardMatches("bling erp implementacao futuro") && (
             <div className="glass-card rounded-2xl overflow-hidden border border-dashed border-slate-300 dark:border-white/10">
               <div className="p-5">
                 <div className="flex items-start justify-between gap-4">
@@ -1925,7 +2102,7 @@ export const AdminPanel: React.FC = () => {
             </div>
             )}
 
-            {integrationCardMatches("sysemp shopping de precos implementacao futuro") && (
+            {integrationSubTab === "erp" && integrationCardMatches("sysemp shopping de precos implementacao futuro") && (
             <div className="glass-card rounded-2xl overflow-hidden border border-dashed border-slate-300 dark:border-white/10">
               <div className="p-5">
                 <div className="flex items-start justify-between gap-4">
@@ -1950,31 +2127,84 @@ export const AdminPanel: React.FC = () => {
             </div>
             )}
 
-            {integrationCardMatches("magazord implementacao futuro") && (
-            <div className="glass-card rounded-2xl overflow-hidden border border-dashed border-slate-300 dark:border-white/10">
-              <div className="p-5">
+          </div>
+          </>
+          )}
+
+          {integrationSubTab === "settings" && (
+          <div className="grid grid-cols-1 gap-6">
+            {integrationCardMatches("configuracoes regras de importacao excecao de transportadora ignorar") && (
+            <div className="glass-card rounded-2xl overflow-hidden border border-slate-200 dark:border-white/10">
+              <div className="p-5 border-b border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-white/5">
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Em implementacao</p>
-                    <img
-                      src="/magazord.png"
-                      alt="Magazord"
-                      className={INTEGRATION_LOGO_CLASS}
-                    />
-                    <h4 className="mt-2 text-lg font-bold text-slate-800 dark:text-white">Magazord</h4>
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Configuracoes</p>
+                    <h4 className="mt-2 text-lg font-bold text-slate-800 dark:text-white">Regras de importacao</h4>
                     <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-                      Espaco preparado para futura integracao com a plataforma Magazord.
+                      Controle fino para ignorar pedidos da plataforma por nome exato de transportadora nesta empresa.
                     </p>
                   </div>
-                  <div className="flex flex-col items-end gap-2">
-                    <IntegrationToggle enabled={false} disabled={true} />
-                    <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Em implementacao</span>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={handleAddCarrierException}
+                    className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-medium text-white bg-blue-600 hover:bg-blue-700 transition-colors"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Adicionar
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-5 space-y-5">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 dark:border-white/10 dark:bg-white/5">
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+                    Excecao de transportadora
+                  </p>
+                  <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+                    Adicione o nome exato da transportadora para impedir a importacao desses pedidos nesta empresa.
+                  </p>
+                </div>
+
+                <div className="space-y-3">
+                  {integrationCarrierExceptions.map((carrierName, index) => (
+                    <div key={`${index}-${carrierName}`} className="flex flex-col gap-3 sm:flex-row">
+                      <input
+                        type="text"
+                        value={carrierName}
+                        onChange={(e) => handleChangeCarrierException(index, e.target.value)}
+                        placeholder="Nome exato da transportadora"
+                        className="w-full bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white focus:border-blue-500 outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveCarrierException(index)}
+                        disabled={integrationCarrierExceptions.length === 1}
+                        className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-medium border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 hover:border-red-500 hover:text-red-600 disabled:opacity-50 transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        Remover
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-[11px] text-slate-400">A comparacao usa o texto normalizado exato recebido da plataforma.</p>
+
+                  <button
+                    type="button"
+                    onClick={handleSaveCarrierExceptions}
+                    disabled={isSavingCarrierExceptions || !currentCompany}
+                    className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-medium text-white bg-slate-700 hover:bg-slate-800 disabled:opacity-50 transition-colors"
+                  >
+                    {isSavingCarrierExceptions ? "Salvando..." : "Salvar excecoes"}
+                  </button>
                 </div>
               </div>
             </div>
             )}
           </div>
+          )}
         </div>
       )}
 

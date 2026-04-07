@@ -116,6 +116,7 @@ class SyncJobService {
       finishedAt: null,
       lastUpdatedAt: now,
       error: null,
+      warnings: [],
       logs: [],
     };
 
@@ -170,12 +171,17 @@ class SyncJobService {
       job.status = 'completed';
       job.currentOrderNumber = null;
       job.finishedAt = new Date().toISOString();
+      job.warnings = Array.isArray(results.warnings) ? results.warnings : [];
       this.touch(job);
       this.pushLog(
         job,
         'success',
         `Sincronização finalizada. ${job.success} sucesso(s), ${job.failed} falha(s).`,
       );
+
+      for (const warning of job.warnings) {
+        this.pushLog(job, 'info', `Aviso: ${warning}`);
+      }
 
       try {
         const requester = this.requesters.get(job.companyId);

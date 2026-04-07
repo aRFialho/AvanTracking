@@ -176,6 +176,7 @@ const MainApp: React.FC = () => {
   const [isInitialDashboardLoading, setIsInitialDashboardLoading] = useState(true);
   const previousSyncStatusRef = useRef<SyncJobStatus["status"] | null>(null);
   const previousTraySyncStatusRef = useRef<SyncJobStatus["status"] | null>(null);
+  const lastSyncWarningJobRef = useRef<string | null>(null);
 
   const normalizeOrderRecord = useCallback((order: Order) => {
     const trackingHistory = normalizeTrackingHistory(
@@ -482,6 +483,15 @@ const MainApp: React.FC = () => {
       setLastSyncTime(
         syncJob?.finishedAt ? new Date(syncJob.finishedAt) : new Date(),
       );
+      if (
+        syncJob?.jobId &&
+        syncJob.jobId !== lastSyncWarningJobRef.current &&
+        Array.isArray(syncJob.warnings) &&
+        syncJob.warnings.length > 0
+      ) {
+        lastSyncWarningJobRef.current = syncJob.jobId;
+        alert(syncJob.warnings.join("\n\n"));
+      }
     }
 
     previousSyncStatusRef.current = currentStatus;

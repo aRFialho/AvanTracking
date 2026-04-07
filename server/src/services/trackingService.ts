@@ -238,6 +238,8 @@ const toIsoString = (value: Date | null | undefined) =>
   value instanceof Date ? value.toISOString() : null;
 
 const DATABASE_RETRY_DELAYS_MS = [5000, 15000, 30000, 60000];
+const CORREIOS_DISABLED_WARNING =
+  'Ha pedidos Correios ativos porem a integracao esta desabilitada, habilite ou adicione Correio, Pac e Sedex a excecao de transportadoras.';
 
 const wait = (ms: number) =>
   new Promise((resolve) => setTimeout(resolve, ms));
@@ -690,15 +692,21 @@ export class TrackingService {
       const shouldUseCorreiosProvider = correiosTrackingService.shouldUseForCarrier(
         order.freightType,
       );
-      const correiosTrackingData = await this.fetchFromCorreios({
-        trackingCode: order.trackingCode,
-        freightType: order.freightType,
-        companyId: order.companyId || companyId || null,
-      });
+      const companyTrackingConfig = await this.resolveCompanyTrackingConfig(
+        order.companyId || companyId || null,
+      );
+      const shouldTryCorreios =
+        shouldUseCorreiosProvider &&
+        companyTrackingConfig.correiosIntegrationEnabled !== false;
+      const correiosTrackingData = shouldTryCorreios
+        ? await this.fetchFromCorreios({
+            trackingCode: order.trackingCode,
+            freightType: order.freightType,
+            companyId: order.companyId || companyId || null,
+          })
+        : null;
 
-      const sswTrackingData = shouldUseCorreiosProvider
-        ? null
-        : correiosTrackingData
+      const sswTrackingData = correiosTrackingData
         ? null
         : await this.fetchFromSsw({
             orderNumber: order.orderNumber,
@@ -708,7 +716,7 @@ export class TrackingService {
           });
 
       const intelipostTrackingData =
-        shouldUseCorreiosProvider || correiosTrackingData || sswTrackingData
+        correiosTrackingData || sswTrackingData
           ? null
           : await this.fetchFromIntelipost(
               order.orderNumber,
@@ -728,9 +736,12 @@ export class TrackingService {
 
       if (!trackingData) {
         const syncedAt = new Date();
-        const noDataErrorMessage = shouldUseCorreiosProvider
-          ? 'Sem dados da API dos Correios'
-          : 'Sem dados da SSW e da Intelipost';
+        const noDataErrorMessage =
+          shouldUseCorreiosProvider && !shouldTryCorreios
+            ? 'Integracao Correios desabilitada e sem dados nas demais integradoras'
+            : shouldUseCorreiosProvider
+              ? 'Sem dados dos Correios e das demais integradoras'
+              : 'Sem dados da SSW e da Intelipost';
         await prisma.order.update({
           where: { id: orderId },
           data: {
@@ -741,9 +752,10 @@ export class TrackingService {
 
         return {
           success: false,
-          message: shouldUseCorreiosProvider
-            ? 'Sem dados de rastreio na API dos Correios'
-            : 'Sem dados de rastreio na SSW e na Intelipost',
+          message:
+            shouldUseCorreiosProvider
+              ? 'Sem dados de rastreio nas integradoras ativas'
+              : 'Sem dados de rastreio na SSW e na Intelipost',
           change: {
             ...baseChange,
             lastApiSync: syncedAt.toISOString(),
@@ -966,6 +978,7 @@ export class TrackingService {
         total: eligibleOrders.length,
         success: 0,
         failed: 0,
+        warnings: [] as string[],
         errors: [] as string[],
         report: {
           companyId: companyId || '',
@@ -980,6 +993,17 @@ export class TrackingService {
       };
 
       const syncDelayMs = Math.max(0, Number(process.env.SYNC_DELAY_MS ?? 100));
+      const companyTrackingConfig = await this.resolveCompanyTrackingConfig(companyId);
+      const hasCorreiosOrders = eligibleOrders.some((order) =>
+        correiosTrackingService.shouldUseForCarrier(order.freightType),
+      );
+
+      if (
+        hasCorreiosOrders &&
+        companyTrackingConfig.correiosIntegrationEnabled === false
+      ) {
+        results.warnings.push(CORREIOS_DISABLED_WARNING);
+      }
 
       hooks?.onStart?.({ total: eligibleOrders.length });
 

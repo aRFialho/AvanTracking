@@ -156,6 +156,7 @@ class TraySyncJobService {
       finishedAt: null,
       lastUpdatedAt: now,
       error: null,
+      warnings: [],
       logs: [],
     };
 

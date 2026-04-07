@@ -62,11 +62,17 @@ model Company {
     name        String
     cnpj        String?
     trayIntegrationEnabled Boolean @default(true)
+    blingIntegrationEnabled Boolean @default(false)
+    magazordIntegrationEnabled Boolean @default(false)
+    sysempIntegrationEnabled Boolean @default(false)
     intelipostIntegrationEnabled Boolean @default(true)
     sswRequireEnabled Boolean @default(true)
     correiosIntegrationEnabled Boolean @default(true)
     databaseUrl String? // URL do banco de dados específico da empresa
     intelipostClientId String?
+    magazordApiBaseUrl String?
+    magazordApiUser String?
+    magazordApiPassword String? @db.Text
     sswRequireCnpjs String[] @default([])
     integrationCarrierExceptions String[] @default([])
     createdAt   DateTime @default(now())

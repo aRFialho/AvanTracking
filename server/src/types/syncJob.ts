@@ -18,6 +18,7 @@ export interface SyncJobStatus {
   finishedAt: string | null;
   lastUpdatedAt: string;
   error: string | null;
+  warnings: string[];
   logs: SyncLogEntry[];
 }
 
