@@ -107,6 +107,9 @@ const inferTrackingSourceLabel = (order: Order) => {
   const normalizedTrackingKey = String(order.trackingCode || "")
     .replace(/[^a-zA-Z0-9]/g, "")
     .toUpperCase();
+  const looksLikeCorreiosObjectCode = /^[A-Z]{2}\d{9}[A-Z]{2}$/.test(
+    normalizedTrackingKey,
+  );
 
   if (/ssw\.inf\.br/i.test(trackingUrl)) {
     if (!normalizedInvoice && normalizedTrackingKey.length >= 44) {
@@ -124,7 +127,10 @@ const inferTrackingSourceLabel = (order: Order) => {
     return "Intelipost";
   }
 
-  if (/rastreamento\.correios\.com\.br|correios/i.test(trackingUrl)) {
+  if (
+    looksLikeCorreiosObjectCode &&
+    /rastreamento\.correios\.com\.br|correios/i.test(trackingUrl)
+  ) {
     return "Correios";
   }
 

@@ -341,7 +341,9 @@ class CorreiosTrackingService {
 
   buildTrackingUrl(objectCode: string | null | undefined) {
     const normalizedCode = normalizeAlphaNumeric(objectCode);
-    if (!normalizedCode) return null;
+    if (!normalizedCode || !looksLikeCorreiosObjectCode(normalizedCode)) {
+      return null;
+    }
     return buildPublicTrackingUrl(normalizedCode);
   }
 
