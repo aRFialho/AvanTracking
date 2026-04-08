@@ -4,7 +4,7 @@ import { syncJobService } from '../services/syncJobService';
 import { TrackingService } from '../services/trackingService';
 import { importOrdersForCompany } from '../services/orderImportService';
 import { correiosTrackingService } from '../services/correiosTrackingService';
-import { sswTrackingService } from '../services/sswTrackingService';
+import { matchSswTrackingToOrder, sswTrackingService } from '../services/sswTrackingService';
 import { syncReportService } from '../services/syncReportService';
 import { toUserFacingDatabaseErrorMessage } from '../utils/prismaError';
 import { resolvePlatformCreatedDate } from '../utils/orderDates';
@@ -549,6 +549,12 @@ const resolveVerifiedOrderTrackingUrl = async (
     orderNumber?: string | null;
     freightType?: string | null;
     apiRawPayload?: any;
+    customerName?: string | null;
+    cpf?: string | null;
+    cnpj?: string | null;
+    city?: string | null;
+    state?: string | null;
+    zipCode?: string | null;
   },
   sswRequireCnpjs: string[] = [],
   intelipostClientId?: string | null,
@@ -570,25 +576,71 @@ const resolveVerifiedOrderTrackingUrl = async (
   const invoiceIdentifier = normalizeDigits(order.invoiceNumber);
   const trackingDigits = normalizeDigits(order.trackingCode);
   const trackingKey = normalizeAlphaNumeric(order.trackingCode);
-  const standardIdentifier = invoiceIdentifier || trackingDigits;
+  const shouldValidateAgainstOrder = Boolean(
+    order.customerName || order.cpf || order.cnpj || order.city || order.state,
+  );
+  const standardCandidates = [
+    invoiceIdentifier
+      ? { identifier: invoiceIdentifier, lookupPriority: 2 }
+      : null,
+    trackingDigits && trackingDigits !== invoiceIdentifier
+      ? { identifier: trackingDigits, lookupPriority: 1 }
+      : null,
+  ].filter(Boolean) as Array<{ identifier: string; lookupPriority: number }>;
 
-  if (standardIdentifier && sswRequireCnpjs.length > 0) {
+  const acceptedSswUrls: Array<{
+    score: number;
+    lookupPriority: number;
+    url: string;
+  }> = [];
+
+  for (const candidate of standardCandidates) {
     for (const cnpj of sswRequireCnpjs) {
       const result = await sswTrackingService.fetchTrackingByInvoice(
         cnpj,
-        standardIdentifier,
+        candidate.identifier,
       );
 
-      if (result) {
-        return buildSswTrackingUrl(standardIdentifier, cnpj);
+      if (!result) {
+        continue;
       }
+
+      if (!shouldValidateAgainstOrder) {
+        return buildSswTrackingUrl(candidate.identifier, cnpj);
+      }
+
+      const match = matchSswTrackingToOrder(order, result);
+      if (!match.isMatch) {
+        continue;
+      }
+
+      acceptedSswUrls.push({
+        score: match.score,
+        lookupPriority: candidate.lookupPriority,
+        url: buildSswTrackingUrl(candidate.identifier, cnpj),
+      });
     }
+  }
+
+  if (acceptedSswUrls.length > 0) {
+    acceptedSswUrls.sort((left, right) => {
+      if (right.score !== left.score) {
+        return right.score - left.score;
+      }
+      return right.lookupPriority - left.lookupPriority;
+    });
+    return acceptedSswUrls[0].url;
   }
 
   if (!invoiceIdentifier && trackingKey && isXmlTrackingKey(trackingKey)) {
     const xmlResult = await sswTrackingService.fetchTrackingByKey(trackingKey);
     if (xmlResult) {
-      return buildSswTrackingUrl(trackingKey);
+      const match = shouldValidateAgainstOrder
+        ? matchSswTrackingToOrder(order, xmlResult)
+        : null;
+      if (!shouldValidateAgainstOrder || match?.isMatch) {
+        return buildSswTrackingUrl(trackingKey);
+      }
     }
   }
 
@@ -1304,6 +1356,12 @@ export const openOrderTracking = async (req: Request, res: Response) => {
         apiRawPayload: true,
         freightType: true,
         status: true,
+        customerName: true,
+        cpf: true,
+        cnpj: true,
+        city: true,
+        state: true,
+        zipCode: true,
       },
     });
 

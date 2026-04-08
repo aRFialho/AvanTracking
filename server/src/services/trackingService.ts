@@ -7,7 +7,7 @@ import type {
 import { normalizeExcludedPlatformFreight } from '../utils/orderExclusion';
 import { isDatabaseUnavailableError, toUserFacingDatabaseErrorMessage } from '../utils/prismaError';
 import { correiosTrackingService } from './correiosTrackingService';
-import { sswTrackingService } from './sswTrackingService';
+import { matchSswTrackingToOrder, sswTrackingService } from './sswTrackingService';
 import { prisma } from '../lib/prisma';
 
 const INTELIPOST_API_URL = 'https://tracking-graphql.intelipost.com.br/';
@@ -363,6 +363,12 @@ export class TrackingService {
     invoiceNumber: string | null;
     trackingCode: string | null;
     companyId: string | null;
+    customerName?: string | null;
+    cpf?: string | null;
+    cnpj?: string | null;
+    city?: string | null;
+    state?: string | null;
+    zipCode?: string | null;
   }) {
     const normalizedInvoiceNumber = String(order.invoiceNumber || '')
       .replace(/\D/g, '')
@@ -384,25 +390,85 @@ export class TrackingService {
     const { sswRequireCnpjs } = await this.resolveCompanyTrackingConfig(
       order.companyId,
     );
+    const shouldValidateAgainstOrder = Boolean(
+      order.customerName || order.cpf || order.cnpj || order.city || order.state,
+    );
+    const standardCandidates = [
+      normalizedInvoiceNumber
+        ? {
+            identifier: normalizedInvoiceNumber,
+            lookupMode: 'INVOICE' as SswLookupMode,
+          }
+        : null,
+      normalizedTrackingDigits && normalizedTrackingDigits !== normalizedInvoiceNumber
+        ? {
+            identifier: normalizedTrackingDigits,
+            lookupMode: 'TRACKING_CODE' as SswLookupMode,
+          }
+        : null,
+    ].filter(Boolean) as Array<{
+      identifier: string;
+      lookupMode: SswLookupMode;
+    }>;
 
-    const standardIdentifier = normalizedInvoiceNumber || normalizedTrackingDigits;
+    const acceptedStandardMatches: Array<{
+      score: number;
+      lookupMode: SswLookupMode;
+      result: ReturnType<typeof matchSswTrackingToOrder>;
+      payload: any;
+    }> = [];
 
-    if (standardIdentifier) {
+    for (const candidate of standardCandidates) {
       for (const cnpj of sswRequireCnpjs) {
         const result = await sswTrackingService.fetchTrackingByInvoice(
           cnpj,
-          standardIdentifier,
+          candidate.identifier,
         );
 
-        if (result) {
+        if (!result) {
+          continue;
+        }
+
+        if (!shouldValidateAgainstOrder) {
           return {
             ...result,
-            lookupMode: normalizedInvoiceNumber
-              ? ('INVOICE' as SswLookupMode)
-              : ('TRACKING_CODE' as SswLookupMode),
+            lookupMode: candidate.lookupMode,
+            matchedCnpj: cnpj,
           };
         }
+
+        const match = matchSswTrackingToOrder(order, result);
+        if (!match.isMatch) {
+          continue;
+        }
+
+        acceptedStandardMatches.push({
+          score: match.score,
+          lookupMode: candidate.lookupMode,
+          result: match,
+          payload: {
+            ...result,
+            lookupMode: candidate.lookupMode,
+            matchedCnpj: cnpj,
+            matchScore: match.score,
+            matchReasons: match.reasons,
+          },
+        });
       }
+    }
+
+    if (acceptedStandardMatches.length > 0) {
+      acceptedStandardMatches.sort((left, right) => {
+        if (right.score !== left.score) {
+          return right.score - left.score;
+        }
+        if (left.lookupMode === right.lookupMode) {
+          return 0;
+        }
+        return left.lookupMode === 'INVOICE' ? -1 : 1;
+      });
+
+      return acceptedStandardMatches[0].payload;
     }
 
     if (hasXmlTrackingKey) {
@@ -411,6 +477,13 @@ export class TrackingService {
       );
 
       if (result) {
+        if (shouldValidateAgainstOrder) {
+          const match = matchSswTrackingToOrder(order, result);
+          if (!match.isMatch) {
+            return null;
+          }
+        }
+
         return {
           ...result,
           lookupMode: 'XML_KEY' as SswLookupMode,

@@ -21,10 +21,41 @@ export type SswTrackingResult = {
   carrierEstimatedDate: Date | null;
   freightType: string | null;
   events: SswTrackingEvent[];
+  matchMetadata: SswTrackingMatchMetadata;
   rawPayload: {
     trackingUrl: string;
     htmlSnippet: string;
   };
+};
+
+export type SswTrackingMatchMetadata = {
+  queriedCnpj: string | null;
+  queriedIdentifier: string | null;
+  recipientName: string | null;
+  recipientDocument: string | null;
+  deliveredToName: string | null;
+  deliveredToDocument: string | null;
+  destinationCity: string | null;
+  destinationState: string | null;
+  invoiceIdentifiers: string[];
+};
+
+export type SswOrderMatchInput = {
+  customerName?: string | null;
+  cpf?: string | null;
+  cnpj?: string | null;
+  city?: string | null;
+  state?: string | null;
+  zipCode?: string | null;
+  invoiceNumber?: string | null;
+  trackingCode?: string | null;
+};
+
+export type SswOrderMatchResult = {
+  isMatch: boolean;
+  score: number;
+  reasons: string[];
+  metadata: SswTrackingMatchMetadata;
 };
 
 const decodeHtmlEntities = (value: string) =>
@@ -208,6 +239,294 @@ const extractLocationFromText = (text: string) => {
   return { city: null, state: null };
 };
 
+const normalizeDigits = (value: string | null | undefined) =>
+  String(value || '').replace(/\D/g, '').trim();
+
+const normalizeComparableText = (value: string | null | undefined) =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const NAME_STOPWORDS = new Set(['DA', 'DE', 'DO', 'DAS', 'DOS', 'E']);
+
+const tokenizeComparableName = (value: string | null | undefined) =>
+  normalizeComparableText(value)
+    .split(' ')
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 3 && !NAME_STOPWORDS.has(token));
+
+const compareDocuments = (
+  leftValue: string | null | undefined,
+  rightValue: string | null | undefined,
+) => {
+  const left = normalizeDigits(leftValue);
+  const right = normalizeDigits(rightValue);
+
+  if (!left || !right) {
+    return false;
+  }
+
+  if (left === right) {
+    return true;
+  }
+
+  const shortestLength = Math.min(left.length, right.length);
+  if (shortestLength < 11) {
+    return false;
+  }
+
+  return left.endsWith(right) || right.endsWith(left);
+};
+
+const compareCities = (
+  leftValue: string | null | undefined,
+  rightValue: string | null | undefined,
+) => {
+  const left = normalizeComparableText(leftValue);
+  const right = normalizeComparableText(rightValue);
+
+  if (!left || !right) {
+    return false;
+  }
+
+  return left === right || left.includes(right) || right.includes(left);
+};
+
+const getNameMatchStrength = (
+  expectedName: string | null | undefined,
+  actualName: string | null | undefined,
+) => {
+  const expected = normalizeComparableText(expectedName);
+  const actual = normalizeComparableText(actualName);
+
+  if (!expected || !actual) {
+    return 0;
+  }
+
+  if (expected === actual) {
+    return 4;
+  }
+
+  if (
+    expected.length >= 6 &&
+    actual.length >= 6 &&
+    (expected.includes(actual) || actual.includes(expected))
+  ) {
+    return 3;
+  }
+
+  const expectedTokens = tokenizeComparableName(expectedName);
+  const actualTokens = tokenizeComparableName(actualName);
+
+  if (expectedTokens.length === 0 || actualTokens.length === 0) {
+    return 0;
+  }
+
+  const actualTokenSet = new Set(actualTokens);
+  const overlap = expectedTokens.filter((token) => actualTokenSet.has(token));
+  const ratio = overlap.length / Math.max(expectedTokens.length, actualTokens.length);
+
+  if (ratio >= 0.75 || overlap.length >= 3) {
+    return 3;
+  }
+
+  if (ratio >= 0.5 && overlap.length >= 2) {
+    return 2;
+  }
+
+  if (ratio >= 0.34 && overlap.length >= 1) {
+    return 1;
+  }
+
+  return 0;
+};
+
+const findNextLineValue = (lines: string[], labelPattern: RegExp) => {
+  const labelIndex = lines.findIndex((line) => labelPattern.test(line));
+  if (labelIndex === -1) {
+    return null;
+  }
+
+  for (let index = labelIndex + 1; index < lines.length; index += 1) {
+    const candidate = String(lines[index] || '').trim();
+    if (!candidate) {
+      continue;
+    }
+    if (candidate.endsWith(':')) {
+      break;
+    }
+    return candidate;
+  }
+
+  return null;
+};
+
+const extractInvoiceIdentifiers = (lines: string[], queriedIdentifier: string) => {
+  const invoiceValue = findNextLineValue(lines, /^N\s*Fiscal\b/i);
+  const normalizedCandidates = new Set<string>();
+  const normalizedQueriedIdentifier = normalizeDigits(queriedIdentifier);
+
+  if (invoiceValue) {
+    const digitGroups = String(invoiceValue).match(/\d+/g) || [];
+    const joinedDigits = digitGroups.join('');
+    const lastDigitGroup = digitGroups[digitGroups.length - 1] || '';
+
+    if (joinedDigits) {
+      normalizedCandidates.add(joinedDigits);
+    }
+    if (lastDigitGroup) {
+      normalizedCandidates.add(lastDigitGroup);
+    }
+  }
+
+  if (normalizedQueriedIdentifier) {
+    normalizedCandidates.add(normalizedQueriedIdentifier);
+  }
+
+  return Array.from(normalizedCandidates);
+};
+
+const extractTrackingMatchMetadata = (
+  lines: string[],
+  text: string,
+  fallbackCnpj: string,
+  queriedIdentifier: string,
+  events: SswTrackingEvent[],
+): SswTrackingMatchMetadata => {
+  const recipientLine = findNextLineValue(lines, /^Destinat/i);
+  const recipientName = recipientLine
+    ? recipientLine
+        .split(/\s+-\s+/)
+        .pop()
+        ?.trim() || recipientLine.trim()
+    : null;
+  const deliveredToNameMatch = text.match(
+    /recebido por\s+([A-ZÀ-Ú0-9 .,'-]+?)(?:,\s*parentesco|,\s*doc\b|\.|\(|$)/i,
+  );
+  const deliveredToDocumentMatch = text.match(
+    /doc\s*n\.?\s*:?\s*([0-9./\s-]+)/i,
+  );
+  const destinationMatch = text.match(
+    /destino\s*:?\s*([A-Z]{2})\/([A-ZÀ-Ú0-9' -]+)/i,
+  );
+  const latestEventWithLocation = events.find((event) => event.city || event.state) || null;
+
+  return {
+    queriedCnpj: normalizeDigits(fallbackCnpj) || null,
+    queriedIdentifier: normalizeDigits(queriedIdentifier) || queriedIdentifier || null,
+    recipientName,
+    recipientDocument: null,
+    deliveredToName: deliveredToNameMatch?.[1]?.trim() || null,
+    deliveredToDocument: deliveredToDocumentMatch?.[1]?.trim() || null,
+    destinationCity:
+      destinationMatch?.[2]?.trim() ||
+      latestEventWithLocation?.city ||
+      null,
+    destinationState:
+      destinationMatch?.[1]?.trim() ||
+      latestEventWithLocation?.state ||
+      null,
+    invoiceIdentifiers: extractInvoiceIdentifiers(lines, queriedIdentifier),
+  };
+};
+
+export const matchSswTrackingToOrder = (
+  order: SswOrderMatchInput,
+  result: SswTrackingResult,
+): SswOrderMatchResult => {
+  const metadata = result.matchMetadata;
+  const expectedDocument = normalizeDigits(order.cpf || order.cnpj);
+  const orderIdentifierCandidates = Array.from(
+    new Set(
+      [order.invoiceNumber, order.trackingCode]
+        .map((value) => normalizeDigits(value))
+        .filter(Boolean),
+    ),
+  );
+
+  const reasons: string[] = [];
+  let score = 0;
+
+  const documentCandidates = [metadata.deliveredToDocument, metadata.recipientDocument].filter(
+    Boolean,
+  );
+  const hasDocumentMatch =
+    Boolean(expectedDocument) &&
+    documentCandidates.some((candidate) =>
+      compareDocuments(expectedDocument, candidate),
+    );
+  if (hasDocumentMatch) {
+    score += 6;
+    reasons.push('documento do cliente confere');
+  }
+
+  const nameCandidates = [metadata.recipientName, metadata.deliveredToName].filter(Boolean);
+  const nameStrength = nameCandidates.reduce((currentBest, candidate) => {
+    const nextStrength = getNameMatchStrength(order.customerName, candidate);
+    return Math.max(currentBest, nextStrength);
+  }, 0);
+  if (nameStrength >= 4) {
+    score += 4;
+    reasons.push('nome do cliente confere');
+  } else if (nameStrength >= 3) {
+    score += 3;
+    reasons.push('nome do cliente muito proximo');
+  } else if (nameStrength >= 2) {
+    score += 2;
+    reasons.push('nome do cliente parcialmente confirmado');
+  }
+
+  const destinationCityMatch = compareCities(order.city, metadata.destinationCity);
+  const destinationStateMatch =
+    normalizeComparableText(order.state) &&
+    normalizeComparableText(metadata.destinationState) &&
+    normalizeComparableText(order.state) === normalizeComparableText(metadata.destinationState);
+  const hasDestinationMatch = Boolean(destinationCityMatch && (destinationStateMatch || !metadata.destinationState));
+  if (destinationCityMatch) {
+    score += destinationStateMatch ? 2 : 1;
+    reasons.push(
+      destinationStateMatch
+        ? 'destino do pedido confere'
+        : 'cidade de destino confere',
+    );
+  }
+
+  const hasIdentifierMatch = orderIdentifierCandidates.some((candidate) =>
+    metadata.invoiceIdentifiers.some((identifier) => {
+      const normalizedIdentifier = normalizeDigits(identifier);
+      if (!candidate || !normalizedIdentifier) {
+        return false;
+      }
+      if (candidate === normalizedIdentifier) {
+        return true;
+      }
+      return (
+        candidate.length >= 3 &&
+        normalizedIdentifier.length >= 3 &&
+        (candidate.endsWith(normalizedIdentifier) ||
+          normalizedIdentifier.endsWith(candidate))
+      );
+    }),
+  );
+  if (hasIdentifierMatch) {
+    score += 1;
+    reasons.push('identificador consultado bate com o pedido');
+  }
+
+  const hasRecipientMatch = nameStrength >= 2;
+
+  return {
+    isMatch: hasDocumentMatch || hasRecipientMatch || hasDestinationMatch,
+    score,
+    reasons,
+    metadata,
+  };
+};
+
 const mapSswStatusToEnum = (text: string): OrderStatus | null => {
   const normalized = text.toLowerCase();
 
@@ -294,6 +613,8 @@ const buildResultFromHtml = (
   html: string,
   trackingUrl: string,
   invoiceNumber: string,
+  fallbackCnpj: string,
+  fallbackIdentifier: string,
 ): SswTrackingResult | null => {
   const normalizedHtml = String(html || '');
   const htmlSnippet = normalizedHtml.slice(0, 12000);
@@ -344,6 +665,13 @@ const buildResultFromHtml = (
     carrierEstimatedDate: parseCarrierForecastFromText(text),
     freightType: null,
     events,
+    matchMetadata: extractTrackingMatchMetadata(
+      lines,
+      text,
+      fallbackCnpj,
+      fallbackIdentifier,
+      events,
+    ),
     rawPayload: {
       trackingUrl,
       htmlSnippet,
@@ -417,6 +745,8 @@ class SswTrackingService {
           sessionHtml,
           trackingUrl,
           displayIdentifier,
+          fallbackCnpj,
+          fallbackIdentifier,
         );
 
         if (directResult) {
@@ -452,6 +782,8 @@ class SswTrackingService {
           registerHtml,
           SSW_REGISTER_URL,
           displayIdentifier,
+          fallbackCnpj,
+          fallbackIdentifier,
         );
 
         if (registeredResult) {
@@ -490,6 +822,8 @@ class SswTrackingService {
                 String(selectionResponse.data || ''),
                 SSW_SELECT_URL,
                 displayIdentifier,
+                fallbackCnpj,
+                fallbackIdentifier,
               );
 
               if (selectedResult) {
@@ -519,6 +853,8 @@ class SswTrackingService {
         String(detailResponse.data || ''),
         SSW_DETAIL_URL,
         displayIdentifier,
+        fallbackCnpj,
+        fallbackIdentifier,
       );
     } catch (error) {
       console.error('Erro ao consultar SSW:', error);
