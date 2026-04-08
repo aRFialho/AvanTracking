@@ -889,6 +889,7 @@ const MainApp: React.FC = () => {
 
   const handleOrdersUploaded = async (newOrders: Order[]) => {
     console.log("Enviando", newOrders.length, "pedidos para API...");
+    const importChunkSize = 150;
 
     const processedOrders = newOrders.filter((order) => {
       if (order.status === OrderStatus.CANCELED) return false;
@@ -907,34 +908,69 @@ const MainApp: React.FC = () => {
     }
 
     try {
-      const response = await fetchWithAuth("/api/orders/import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orders: processedOrders }),
-      });
+      const chunkMessages: string[] = [];
+      let totalCreated = 0;
+      let totalUpdated = 0;
+      let totalSkipped = 0;
+      let totalTrackingEvents = 0;
+      const importErrors: string[] = [];
 
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(data.error || `HTTP ${response.status}`);
+      for (let index = 0; index < processedOrders.length; index += importChunkSize) {
+        const chunk = processedOrders.slice(index, index + importChunkSize);
+        const response = await fetchWithAuth("/api/orders/import", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ orders: chunk }),
+        });
+
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(data.error || `HTTP ${response.status}`);
+        }
+
+        if (typeof data.message === "string" && data.message.trim()) {
+          chunkMessages.push(data.message.trim());
+        }
+
+        totalCreated += Number(data?.results?.created || 0);
+        totalUpdated += Number(data?.results?.updated || 0);
+        totalSkipped += Number(data?.results?.skipped || 0);
+        totalTrackingEvents += Number(data?.results?.totalTrackingEvents || 0);
+
+        if (Array.isArray(data?.results?.errors)) {
+          importErrors.push(
+            ...data.results.errors.filter(
+              (item: unknown): item is string =>
+                typeof item === "string" && item.trim().length > 0,
+            ),
+          );
+        }
       }
 
       await loadOrdersFromDatabase();
       setCurrentView("dashboard");
 
-      if (data.message) {
-        showToast({
-          tone: "success",
-          title: "Importacao concluida",
-          message: data.message,
-        });
-      }
+      const summaryMessage =
+        `Importacao concluida: ${totalCreated} criados, ${totalUpdated} atualizados, ` +
+        `${totalSkipped} ignorados, ${totalTrackingEvents} evento(s) iniciais de rastreio.` +
+        (importErrors.length > 0
+          ? ` ${importErrors.length} pedido(s) apresentaram erro.`
+          : "");
+
+      showToast({
+        tone: importErrors.length > 0 ? "warning" : "success",
+        title: "Importacao concluida",
+        message: summaryMessage,
+      });
     } catch (error) {
       console.error("Erro ao enviar para API:", error);
       showToast({
         tone: "error",
         title: "Falha na importacao",
         message:
-          "Erro ao importar pedidos. Verifique o console e os logs do servidor.",
+          error instanceof Error
+            ? error.message
+            : "Erro ao importar pedidos. Verifique o console e os logs do servidor.",
       });
     }
   };

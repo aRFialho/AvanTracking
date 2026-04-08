@@ -192,6 +192,15 @@ export const importOrdersForCompany = async (companyId: string, orders: any[]) =
     throw new Error('Nenhum pedido valido para importar');
   }
 
+  const normalizedOrders = Array.from(
+    new Map(
+      orders.map((order, index) => [
+        safeString(order?.orderNumber) || `__missing_order_${index}`,
+        order,
+      ]),
+    ).values(),
+  );
+
   const company = await (prisma.company as any).findUnique({
     where: { id: companyId },
     select: {
@@ -200,7 +209,7 @@ export const importOrdersForCompany = async (companyId: string, orders: any[]) =
     },
   });
 
-  const orderNumbers = orders
+  const orderNumbers = normalizedOrders
     .map((order) => safeString(order?.orderNumber))
     .filter((value): value is string => Boolean(value));
 
@@ -230,8 +239,9 @@ export const importOrdersForCompany = async (companyId: string, orders: any[]) =
   let totalTrackingEvents = 0;
   const createdOrders: TraySyncOrderReport[] = [];
   const updatedOrders: TraySyncOrderReport[] = [];
+  const errors: string[] = [];
 
-  for (const orderData of orders) {
+  for (const orderData of normalizedOrders) {
     const orderNumber = safeString(orderData?.orderNumber);
     if (!orderNumber) {
       skipped += 1;
@@ -248,66 +258,76 @@ export const importOrdersForCompany = async (companyId: string, orders: any[]) =
       continue;
     }
 
-    const status = mapStatus(String(orderData.status || 'PENDING'));
-    const normalizedChannelFreight = normalizeExcludedPlatformFreight(
-      orderData?.freightType,
-      company?.name,
-    );
-    const resolvedStatus = normalizedChannelFreight
-      ? OrderStatus.CHANNEL_LOGISTICS
-      : status;
-    const orderPayload = buildOrderData(
-      {
-        ...orderData,
-        freightType: normalizedChannelFreight || orderData?.freightType,
-      },
-      resolvedStatus,
-    );
-    const trackingEventsData = buildTrackingEventsData(orderData, resolvedStatus);
-    const existing = existingMap.get(orderNumber);
+    try {
+      const status = mapStatus(String(orderData.status || 'PENDING'));
+      const normalizedChannelFreight = normalizeExcludedPlatformFreight(
+        orderData?.freightType,
+        company?.name,
+      );
+      const resolvedStatus = normalizedChannelFreight
+        ? OrderStatus.CHANNEL_LOGISTICS
+        : status;
+      const orderPayload = buildOrderData(
+        {
+          ...orderData,
+          freightType: normalizedChannelFreight || orderData?.freightType,
+        },
+        resolvedStatus,
+      );
+      const trackingEventsData = buildTrackingEventsData(orderData, resolvedStatus);
+      const existing = existingMap.get(orderNumber);
 
-    if (existing) {
-      await prisma.order.update({
-        where: { id: existing.id },
-        data: orderPayload,
-      });
-
-      if (existing._count.trackingEvents === 0 && trackingEventsData.length > 0) {
-        await prisma.trackingEvent.createMany({
-          data: trackingEventsData.map((event) => ({
-            ...event,
-            orderId: existing.id,
-          })),
+      if (existing) {
+        await prisma.order.update({
+          where: { id: existing.id },
+          data: orderPayload,
         });
-        totalTrackingEvents += trackingEventsData.length;
+
+        if (existing._count.trackingEvents === 0 && trackingEventsData.length > 0) {
+          await prisma.trackingEvent.createMany({
+            data: trackingEventsData.map((event) => ({
+              ...event,
+              orderId: existing.id,
+            })),
+          });
+          totalTrackingEvents += trackingEventsData.length;
+        }
+
+        updated += 1;
+        updatedOrders.push(buildTraySyncOrderReport(existing.id, orderPayload));
+        continue;
       }
 
-      updated += 1;
-      updatedOrders.push(buildTraySyncOrderReport(existing.id, orderPayload));
-      continue;
-    }
-
-    const createdOrder = await prisma.order.create({
-      data: {
-        companyId,
-        ...orderPayload,
-        trackingEvents: {
-          create: trackingEventsData,
+      const createdOrder = await prisma.order.create({
+        data: {
+          companyId,
+          ...orderPayload,
+          trackingEvents: {
+            create: trackingEventsData,
+          },
         },
-      },
-      select: {
-        id: true,
-      },
-    });
+        select: {
+          id: true,
+        },
+      });
 
-    created += 1;
-    totalTrackingEvents += trackingEventsData.length;
-    createdOrders.push(buildTraySyncOrderReport(createdOrder.id, orderPayload));
+      created += 1;
+      totalTrackingEvents += trackingEventsData.length;
+      createdOrders.push(buildTraySyncOrderReport(createdOrder.id, orderPayload));
+    } catch (error) {
+      skipped += 1;
+      errors.push(
+        `Pedido ${orderNumber}: ${
+          error instanceof Error ? error.message : 'erro desconhecido'
+        }`,
+      );
+    }
   }
 
   const message =
     `Importacao concluida: ${created} criados, ${updated} atualizados, ` +
-    `${skipped} ignorados, ${totalTrackingEvents} evento(s) iniciais de rastreio.`;
+    `${skipped} ignorados, ${totalTrackingEvents} evento(s) iniciais de rastreio.` +
+    (errors.length > 0 ? ` ${errors.length} pedido(s) com erro.` : '');
 
   return {
     message,
@@ -316,7 +336,7 @@ export const importOrdersForCompany = async (companyId: string, orders: any[]) =
       updated,
       skipped,
       totalTrackingEvents,
-      errors: [] as string[],
+      errors,
       createdOrders,
       updatedOrders,
     },
