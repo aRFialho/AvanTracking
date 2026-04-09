@@ -20,6 +20,7 @@ const FINALIZED_STATUSES: OrderStatus[] = [
   OrderStatus.DELIVERED,
   OrderStatus.CANCELED,
 ];
+const TRACKING_PROVIDER_SOURCES = new Set(['SSW', 'INTELIPOST', 'CORREIOS']);
 
 const INTELIPOST_QUERY = `
 query ($clientId: ID, $orderNumber: String, $orderHash: String) {
@@ -222,12 +223,20 @@ const isRouteStatus = (status: OrderStatus) => ROUTE_STATUSES.includes(status);
 
 const shouldSkipTerminalSync = (order: {
   status: OrderStatus;
+  apiRawPayload?: any;
   trackingEvents?: Array<{
     status: string;
     description: string;
     eventDate: Date;
   }>;
 }) => {
+  if (order.status === OrderStatus.DELIVERED) {
+    const trackingSource = String(order.apiRawPayload?.source || '')
+      .trim()
+      .toUpperCase();
+    return TRACKING_PROVIDER_SOURCES.has(trackingSource);
+  }
+
   return FINALIZED_STATUSES.includes(order.status);
 };
 
@@ -666,7 +675,13 @@ export class TrackingService {
     };
   }
 
-  async syncOrder(orderId: string, companyId?: string | null) {
+  async syncOrder(
+    orderId: string,
+    companyId?: string | null,
+    options?: {
+      forceFinalized?: boolean;
+    },
+  ) {
     try {
       const order = await prisma.order.findUnique({
         where: { id: orderId },
@@ -697,7 +712,7 @@ export class TrackingService {
 
       const baseChange = this.buildChangeBase(order);
 
-      if (shouldSkipTerminalSync(order)) {
+      if (!options?.forceFinalized && shouldSkipTerminalSync(order)) {
         const terminalMessage = getTerminalSyncSkipMessage(order.status);
         return {
           success: false,
@@ -709,7 +724,7 @@ export class TrackingService {
         };
       }
 
-      if (shouldSkipTerminalSync(order)) {
+      if (!options?.forceFinalized && shouldSkipTerminalSync(order)) {
         return {
           success: false,
           message: 'Pedido jÃƒÂ¡ finalizado',
@@ -1001,6 +1016,9 @@ export class TrackingService {
 
   async syncAllActive(
     companyId?: string | null,
+    options?: {
+      forceFinalized?: boolean;
+    },
     hooks?: {
       onStart?: (data: { total: number }) => void;
       onOrderStart?: (data: { orderNumber: string; index: number; total: number }) => void;
@@ -1028,6 +1046,7 @@ export class TrackingService {
           orderNumber: true,
           status: true,
           freightType: true,
+          apiRawPayload: true,
           trackingEvents: {
             orderBy: { eventDate: 'desc' },
             take: 5,
@@ -1041,9 +1060,9 @@ export class TrackingService {
         orderBy: { createdAt: 'asc' },
       });
 
-      const eligibleOrders = activeOrders.filter(
-        (order) => !shouldSkipTerminalSync(order),
-      );
+      const eligibleOrders = options?.forceFinalized
+        ? activeOrders
+        : activeOrders.filter((order) => !shouldSkipTerminalSync(order));
 
       const beforeSnapshot = await this.buildSnapshot(companyId);
       const changes: SyncOrderChangeReport[] = [];
@@ -1090,7 +1109,7 @@ export class TrackingService {
           total: eligibleOrders.length,
         });
 
-        const result = await this.syncOrder(order.id, companyId);
+        const result = await this.syncOrder(order.id, companyId, options);
         const durationMs = Date.now() - startedAt;
 
         if (result.success) {

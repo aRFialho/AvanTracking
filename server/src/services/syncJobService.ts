@@ -132,7 +132,7 @@ class SyncJobService {
 
   private async run(job: SyncJobStatus, trigger: SyncTrigger) {
     try {
-      const results = await trackingService.syncAllActive(job.companyId, {
+      const results = await trackingService.syncAllActive(job.companyId, undefined, {
         onStart: ({ total }) => {
           job.total = total;
           this.touch(job);
