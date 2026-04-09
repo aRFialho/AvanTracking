@@ -30,6 +30,7 @@ model User {
     name     String
     password String // bcrypt hash
     role     Role   @default(USER)
+    userGlobalId String? @unique(map: "User_userGlobalId_unique")
 
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
@@ -61,6 +62,9 @@ model Company {
     id          String   @id @default(uuid())
     name        String
     cnpj        String?
+    tenantGlobalId String? @unique(map: "Company_tenantGlobalId_unique")
+    documentType String? // CNPJ | CPF
+    documentNumber String? // somente digitos
     trayIntegrationEnabled Boolean @default(true)
     blingIntegrationEnabled Boolean @default(false)
     magazordIntegrationEnabled Boolean @default(false)
@@ -68,7 +72,7 @@ model Company {
     intelipostIntegrationEnabled Boolean @default(true)
     sswRequireEnabled Boolean @default(true)
     correiosIntegrationEnabled Boolean @default(true)
-    databaseUrl String? // URL do banco de dados específico da empresa
+    databaseUrl String? // URL do banco de dados especÃ­fico da empresa
     intelipostClientId String?
     magazordApiBaseUrl String?
     magazordApiUser String?
@@ -80,6 +84,8 @@ model Company {
     orders      Order[]
     trayAuth    TrayAuth?
     trayCheckoutQuotes TrayCheckoutQuote[]
+
+    @@index([documentType, documentNumber], map: "Company_document_idx")
 }
 
 model ReleaseNote {
@@ -113,10 +119,10 @@ model Carrier {
 model Order {
     id String @id @default(uuid())
 
-    // Identificação
+    // IdentificaÃ§Ã£o
     orderNumber   String
     invoiceNumber String? // NF
-    trackingCode  String? // Código de rastreio
+    trackingCode  String? // CÃ³digo de rastreio
 
     // Cliente
     customerName  String
@@ -126,13 +132,13 @@ model Order {
     phone         String?
     mobile        String?
 
-    // Canal / Logística
+    // Canal / LogÃ­stica
     salesChannel         String
     freightType          String?
     freightValue         Float? // Frete pago original
     quotedFreightValue   Float? // Frete cotado pela API
-    quotedFreightDate    DateTime? // Data da última cotação
-    quotedFreightDetails Json? // Detalhes da cotação (JSON com todas as opções)
+    quotedFreightDate    DateTime? // Data da Ãºltima cotaÃ§Ã£o
+    quotedFreightDetails Json? // Detalhes da cotaÃ§Ã£o (JSON com todas as opÃ§Ãµes)
     originalQuotedFreightValue Float? // Cotacao original salva no checkout/gateway
     originalQuotedFreightDate DateTime? // Data da cotacao original do checkout
     originalQuotedFreightDetails Json? // Snapshot da cotacao original
@@ -146,7 +152,7 @@ model Order {
     carrierId String?
     carrier   Carrier? @relation(fields: [carrierId], references: [id])
 
-    // Endereço
+    // EndereÃ§o
     address      String
     number       String
     complement   String?
@@ -178,7 +184,7 @@ model Order {
     // Auditoria
     createdAt DateTime @default(now())
 
-    // Relações
+    // RelaÃ§Ãµes
     trackingEvents TrackingEvent[]
     createdById    String?
     createdBy      User?           @relation("UserOrders", fields: [createdById], references: [id])
