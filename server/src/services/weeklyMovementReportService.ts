@@ -3,7 +3,6 @@ import path from 'path';
 import crypto from 'crypto';
 import { OrderStatus } from '@prisma/client';
 import { sendBrevoEmail } from './emailTransportService';
-import { resolvePlatformCreatedDate } from '../utils/orderDates';
 import { prisma } from '../lib/prisma';
 const APP_LOGO_URL =
   'https://res.cloudinary.com/dhqxp3tuo/image/upload/v1771249579/ChatGPT_Image_13_de_fev._de_2026_16_40_14_kldj3k.png';
@@ -98,10 +97,8 @@ type WeeklyReportOrder = {
   estimatedDeliveryDate: Date | null;
   carrierEstimatedDeliveryDate: Date | null;
   createdAt: Date;
-  platformCreatedAt: Date | null;
   lastUpdate: Date;
   lastApiSync: Date | null;
-  apiRawPayload: unknown;
 };
 
 class WeeklyMovementReportService {
@@ -242,7 +239,7 @@ class WeeklyMovementReportService {
         formatDateOnly(order.shippingDate),
         formatDateOnly(order.estimatedDeliveryDate),
         formatDateOnly(order.carrierEstimatedDeliveryDate),
-        formatDateTime(order.platformCreatedAt),
+        formatDateTime(order.createdAt),
         formatDateTime(order.lastUpdate),
         formatDateTime(order.lastApiSync),
       ]);
@@ -514,28 +511,21 @@ class WeeklyMovementReportService {
         estimatedDeliveryDate: true,
         carrierEstimatedDeliveryDate: true,
         createdAt: true,
-        apiRawPayload: true,
         lastUpdate: true,
         lastApiSync: true,
       },
       orderBy: [{ lastUpdate: 'desc' }],
     });
 
-    const normalizedOrders: WeeklyReportOrder[] = orders.map((order) => ({
-      ...order,
-      platformCreatedAt: resolvePlatformCreatedDate(order),
-    }));
-
-    const movedOrders = normalizedOrders.filter(
+    const movedOrders = orders.filter(
       (order) =>
-        (Boolean(order.platformCreatedAt) &&
-          order.platformCreatedAt! >= periodStart) ||
+        order.createdAt >= periodStart ||
         order.lastUpdate >= periodStart ||
         (order.lastApiSync && order.lastApiSync >= periodStart),
     );
 
-    const delayedOrders = normalizedOrders.filter((order) => order.isDelayed).length;
-    const statusSummary = this.buildStatusSummary(normalizedOrders);
+    const delayedOrders = orders.filter((order) => order.isDelayed).length;
+    const statusSummary = this.buildStatusSummary(orders);
     const reportId = crypto.randomUUID();
     const baseUrl = getPublicBaseUrl();
     const reportUrl = `${baseUrl}/reports/weekly-summary/${reportId}.html`;
@@ -546,7 +536,7 @@ class WeeklyMovementReportService {
       periodEnd,
       reportUrl,
       csvUrl,
-      totalOrders: normalizedOrders.length,
+      totalOrders: orders.length,
       delayedOrders,
       movedOrders,
       statusSummary,

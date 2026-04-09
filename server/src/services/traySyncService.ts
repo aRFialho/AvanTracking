@@ -156,7 +156,7 @@ export class TraySyncService {
       });
       hooks?.onLog?.(`Buscando pedidos Tray com status "${trayStatus}".`);
 
-      const trayOrders = await trayApi.syncAllOrders(
+      const importedTrayOrdersCount = await trayApi.syncAllOrders(
         {
           status: trayStatus,
           modified,
@@ -269,10 +269,10 @@ export class TraySyncService {
         status: trayStatus,
         index: index + 1,
         total: statusesToSync.length,
-        imported: trayOrders.length,
+        imported: importedTrayOrdersCount,
       });
       hooks?.onLog?.(
-        `Status "${trayStatus}" finalizado com ${trayOrders.length} pedido(s) novo(s).`,
+        `Status "${trayStatus}" finalizado com ${importedTrayOrdersCount} pedido(s) novo(s).`,
       );
     }
 

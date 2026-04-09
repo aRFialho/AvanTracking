@@ -3,7 +3,6 @@ import path from 'path';
 import crypto from 'crypto';
 import { OrderStatus } from '@prisma/client';
 import { sendBrevoEmail } from './emailTransportService';
-import { resolvePlatformCreatedDate } from '../utils/orderDates';
 import { prisma } from '../lib/prisma';
 const APP_LOGO_URL =
   'https://res.cloudinary.com/dhqxp3tuo/image/upload/v1771249579/ChatGPT_Image_13_de_fev._de_2026_16_40_14_kldj3k.png';
@@ -35,10 +34,8 @@ type ReportOrder = {
   estimatedDeliveryDate: Date | null;
   carrierEstimatedDeliveryDate: Date | null;
   createdAt: Date;
-  platformCreatedAt: Date | null;
   lastUpdate: Date;
   lastApiSync: Date | null;
-  apiRawPayload: unknown;
 };
 
 type StatusSummaryItem = {
@@ -243,9 +240,8 @@ class MonthlyMovementReportService {
   ) {
     return orders.filter(
       (order) =>
-        (Boolean(order.platformCreatedAt) &&
-          order.platformCreatedAt! >= periodStart &&
-          order.platformCreatedAt! < periodEndExclusive) ||
+        (order.createdAt >= periodStart &&
+          order.createdAt < periodEndExclusive) ||
         (order.lastUpdate >= periodStart &&
           order.lastUpdate < periodEndExclusive) ||
         (order.lastApiSync &&
@@ -347,7 +343,7 @@ class MonthlyMovementReportService {
         formatDateOnly(order.shippingDate),
         formatDateOnly(order.estimatedDeliveryDate),
         formatDateOnly(order.carrierEstimatedDeliveryDate),
-        formatDateTime(order.platformCreatedAt),
+        formatDateTime(order.createdAt),
         formatDateTime(order.lastUpdate),
         formatDateTime(order.lastApiSync),
       ]);
@@ -366,7 +362,7 @@ class MonthlyMovementReportService {
         formatDateOnly(order.shippingDate),
         formatDateOnly(order.estimatedDeliveryDate),
         formatDateOnly(order.carrierEstimatedDeliveryDate),
-        formatDateTime(order.platformCreatedAt),
+        formatDateTime(order.createdAt),
         formatDateTime(order.lastUpdate),
         formatDateTime(order.lastApiSync),
       ]);
@@ -688,25 +684,19 @@ class MonthlyMovementReportService {
         estimatedDeliveryDate: true,
         carrierEstimatedDeliveryDate: true,
         createdAt: true,
-        apiRawPayload: true,
         lastUpdate: true,
         lastApiSync: true,
       },
       orderBy: [{ lastUpdate: 'desc' }],
     });
 
-    const normalizedOrders: ReportOrder[] = orders.map((order) => ({
-      ...order,
-      platformCreatedAt: resolvePlatformCreatedDate(order),
-    }));
-
     const currentMovedOrders = this.getMovementOrders(
-      normalizedOrders,
+      orders,
       currentPeriodStart,
       currentPeriodEndExclusive,
     );
     const previousMovedOrders = this.getMovementOrders(
-      normalizedOrders,
+      orders,
       previousPeriodStart,
       previousPeriodEndExclusive,
     );
@@ -716,17 +706,15 @@ class MonthlyMovementReportService {
     const previousDelayedOrders = previousMovedOrders.filter(
       (order) => order.isDelayed,
     ).length;
-    const currentCreatedOrders = normalizedOrders.filter(
+    const currentCreatedOrders = orders.filter(
       (order) =>
-        Boolean(order.platformCreatedAt) &&
-        order.platformCreatedAt! >= currentPeriodStart &&
-        order.platformCreatedAt! < currentPeriodEndExclusive,
+        order.createdAt >= currentPeriodStart &&
+        order.createdAt < currentPeriodEndExclusive,
     ).length;
-    const previousCreatedOrders = normalizedOrders.filter(
+    const previousCreatedOrders = orders.filter(
       (order) =>
-        Boolean(order.platformCreatedAt) &&
-        order.platformCreatedAt! >= previousPeriodStart &&
-        order.platformCreatedAt! < previousPeriodEndExclusive,
+        order.createdAt >= previousPeriodStart &&
+        order.createdAt < previousPeriodEndExclusive,
     ).length;
     const statusSummary = this.buildStatusSummary(
       currentMovedOrders,
@@ -745,7 +733,7 @@ class MonthlyMovementReportService {
       previousPeriodEnd,
       reportUrl,
       csvUrl,
-      totalOrders: normalizedOrders.length,
+      totalOrders: orders.length,
       currentMovedOrders,
       previousMovedOrders,
       currentDelayedOrders,

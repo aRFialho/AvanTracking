@@ -1075,6 +1075,52 @@ const formatOrderForResponse = (
   };
 };
 
+const formatOrderListResponse = (order: any) => {
+  const carrierEstimatedDeliveryDate =
+    resolveCarrierEstimatedDateFromTrackingEvents(order.trackingEvents) ||
+    order.carrierEstimatedDeliveryDate ||
+    null;
+  const quotedFreightValue = order.quotedFreightValue ?? null;
+  const originalQuotedFreightValue =
+    order.originalQuotedFreightValue ?? quotedFreightValue;
+  const originalQuotedFreightDate =
+    order.originalQuotedFreightDate ?? order.quotedFreightDate ?? null;
+  const recalculatedFreightValue = order.recalculatedFreightValue ?? null;
+  const recalculatedFreightDate = order.recalculatedFreightDate ?? null;
+
+  return {
+    ...order,
+    orderNumber: String(order.orderNumber),
+    status: order.status as OrderStatus,
+    platformCreatedAt: resolvePlatformCreatedDate(order),
+    carrierEstimatedDeliveryDate,
+    trackingSourceLabel: null,
+    quotedFreightValue,
+    quotedFreightDate: order.quotedFreightDate ?? null,
+    quotedFreightDetails: null,
+    quotedCarrierName: null,
+    originalQuotedFreightValue,
+    originalQuotedFreightDate,
+    originalQuotedFreightDetails: null,
+    originalQuotedFreightQuotationId: null,
+    originalQuotedCarrierName: null,
+    recalculatedFreightValue,
+    recalculatedFreightDate,
+    recalculatedFreightDetails: null,
+    recalculatedQuotedCarrierName: null,
+    isPlatformDelayed: isActiveDelayedByDate(
+      order.status as OrderStatus,
+      order.estimatedDeliveryDate,
+    ),
+    freightCarrierMatchesQuote: null,
+    freightCarrierMatchesOriginalQuote: null,
+    freightCarrierMatchesRecalculatedQuote: null,
+    trackingHistory: mapTrackingEventsToHistory(order.trackingEvents),
+    lastUpdate: getMovementDate(order),
+    trackingUrl: null,
+  };
+};
+
 export const importOrders = async (req: Request, res: Response) => {
   console.log('Importando pedidos em lote...');
 
@@ -1128,35 +1174,20 @@ export const getOrders = async (req: Request, res: Response) => {
         invoiceNumber: true,
         trackingCode: true,
         customerName: true,
-        corporateName: true,
         cpf: true,
-        cnpj: true,
-        phone: true,
-        mobile: true,
         salesChannel: true,
         freightType: true,
         freightValue: true,
         quotedFreightValue: true,
         quotedFreightDate: true,
-        quotedFreightDetails: true,
         originalQuotedFreightValue: true,
         originalQuotedFreightDate: true,
-        originalQuotedFreightDetails: true,
-        originalQuotedFreightQuotationId: true,
         recalculatedFreightValue: true,
         recalculatedFreightDate: true,
-        recalculatedFreightDetails: true,
         shippingDate: true,
-        address: true,
-        number: true,
-        complement: true,
-        neighborhood: true,
         city: true,
         state: true,
-        zipCode: true,
         totalValue: true,
-        recipient: true,
-        maxShippingDeadline: true,
         estimatedDeliveryDate: true,
         carrierEstimatedDeliveryDate: true,
         status: true,
@@ -1166,6 +1197,7 @@ export const getOrders = async (req: Request, res: Response) => {
         createdAt: true,
         trackingEvents: {
           orderBy: { eventDate: 'desc' },
+          take: 12,
           select: {
             status: true,
             description: true,
@@ -1178,24 +1210,10 @@ export const getOrders = async (req: Request, res: Response) => {
       orderBy: { createdAt: 'desc' },
     });
 
-    const sswRequireCnpjs = await getCompanySswRequireCnpjs(user.companyId);
-    const intelipostClientId = await getCompanyIntelipostClientId(user.companyId);
-    const correiosIntegrationEnabled =
-      await getCompanyCorreiosIntegrationEnabled(user.companyId);
-    const checkoutQuotesMap = await loadCheckoutQuotesMap(user.companyId, orders);
-
     return res.json(
       orders
         .filter((order) => !shouldExcludeOrderFromPlatform(order))
-        .map((order) =>
-          formatOrderForResponse(
-            order,
-            sswRequireCnpjs,
-            intelipostClientId,
-            correiosIntegrationEnabled,
-            checkoutQuotesMap.get(extractOrderQuotationId(order) || ''),
-          ),
-        ),
+        .map((order) => formatOrderListResponse(order)),
     );
   } catch (error) {
     console.error('Erro ao buscar pedidos:', error);

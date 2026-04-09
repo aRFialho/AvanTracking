@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Order, OrderStatus } from "../types";
 import {
   X,
@@ -144,18 +144,48 @@ interface OrderDetailProps {
 }
 
 export const OrderDetail: React.FC<OrderDetailProps> = ({
-  order,
+  order: initialOrder,
   onClose,
   onOrderUpdated,
 }) => {
+  const [resolvedOrder, setResolvedOrder] = useState<Order>(initialOrder);
   const [isEditingFreightType, setIsEditingFreightType] = useState(false);
-  const [freightTypeDraft, setFreightTypeDraft] = useState(order.freightType || "");
+  const [freightTypeDraft, setFreightTypeDraft] = useState(
+    initialOrder.freightType || "",
+  );
   const [isSavingFreightType, setIsSavingFreightType] = useState(false);
   const [freightTypeError, setFreightTypeError] = useState("");
+  const order = resolvedOrder;
   const trackingHistory = normalizeTrackingHistory(order.trackingHistory);
   const sortedHistory = [...trackingHistory].sort(
     (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
   );
+
+  useEffect(() => {
+    let isMounted = true;
+    setResolvedOrder(initialOrder);
+
+    fetchWithAuth(`/api/orders/${initialOrder.id}`)
+      .then(async (response) => {
+        const data = await response.json().catch(() => null);
+        if (!response.ok || !data) {
+          throw new Error("Nao foi possivel carregar os detalhes do pedido.");
+        }
+
+        if (isMounted) {
+          setResolvedOrder(data as Order);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setResolvedOrder(initialOrder);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [initialOrder.id]);
 
   const handleStartFreightEdit = () => {
     setFreightTypeDraft(order.freightType || "");
@@ -195,6 +225,7 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({
         );
       }
 
+      setResolvedOrder(data.order as Order);
       onOrderUpdated?.(data.order as Order);
       setIsEditingFreightType(false);
     } catch (error) {

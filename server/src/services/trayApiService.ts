@@ -515,12 +515,12 @@ export class TrayApiService {
   } = {}, hooks?: {
     onLog?: (message: string) => void;
     onOrdersBatch?: (orders: any[]) => Promise<void> | void;
-  }): Promise<any[]> {
+  }): Promise<number> {
     const statusLabel = String(params.status || 'todos');
     console.log(`Iniciando etapa da Tray para status "${statusLabel}"...`);
     console.log('Rate limit ativo: 180 requisicoes/minuto');
 
-    const allOrders: any[] = [];
+    let importedOrdersCount = 0;
     let currentPage = 1;
     let hasMorePages = true;
 
@@ -562,8 +562,8 @@ export class TrayApiService {
 
         try {
           const completeData = await this.getOrderComplete(orderId);
-          allOrders.push(completeData.Order);
           pageOrders.push(completeData.Order);
+          importedOrdersCount += 1;
         } catch (error) {
           console.error(`Erro ao buscar pedido ${orderId}, pulando...`);
           hooks?.onLog?.(`Erro ao buscar pedido ${orderId}; item ignorado.`);
@@ -583,10 +583,10 @@ export class TrayApiService {
     }
 
     console.log(
-      `Total de ${allOrders.length} pedidos retornados pela Tray para o status "${statusLabel}"`,
+      `Total de ${importedOrdersCount} pedidos retornados pela Tray para o status "${statusLabel}"`,
     );
     hooks?.onLog?.(
-      `Total de ${allOrders.length} pedido(s) novo(s) retornados pela Tray para o status "${statusLabel}".`,
+      `Total de ${importedOrdersCount} pedido(s) novo(s) retornados pela Tray para o status "${statusLabel}".`,
     );
 
     const finalStats = trayRateLimiter.getStats();
@@ -594,7 +594,7 @@ export class TrayApiService {
       `Estatisticas finais: ${finalStats.requestsInWindow} requisicoes utilizadas (${finalStats.utilizationPercent}%)`,
     );
 
-    return allOrders;
+    return importedOrdersCount;
   }
 
   mapTrayOrderToSystem(
