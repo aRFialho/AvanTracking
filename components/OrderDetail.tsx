@@ -137,6 +137,26 @@ const inferTrackingSourceLabel = (order: Order) => {
   return "-";
 };
 
+const createManualDataDraft = (order: Order) => ({
+  customerName: order.customerName || "",
+  corporateName: order.corporateName || "",
+  cpf: order.cpf || "",
+  cnpj: order.cnpj || "",
+  phone: order.phone || "",
+  mobile: order.mobile || "",
+  recipient: order.recipient || "",
+  address: order.address || "",
+  number: order.number || "",
+  complement: order.complement || "",
+  neighborhood: order.neighborhood || "",
+  city: order.city || "",
+  state: order.state || "",
+  zipCode: order.zipCode || "",
+  invoiceNumber: order.invoiceNumber || "",
+  trackingCode: order.trackingCode || "",
+  trackingUrl: order.trackingUrl || "",
+});
+
 interface OrderDetailProps {
   order: Order;
   onClose: () => void;
@@ -155,6 +175,12 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({
   );
   const [isSavingFreightType, setIsSavingFreightType] = useState(false);
   const [freightTypeError, setFreightTypeError] = useState("");
+  const [isEditingManualData, setIsEditingManualData] = useState(false);
+  const [manualDataDraft, setManualDataDraft] = useState(
+    createManualDataDraft(initialOrder),
+  );
+  const [isSavingManualData, setIsSavingManualData] = useState(false);
+  const [manualDataError, setManualDataError] = useState("");
   const order = resolvedOrder;
   const trackingHistory = normalizeTrackingHistory(order.trackingHistory);
   const sortedHistory = [...trackingHistory].sort(
@@ -174,11 +200,13 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({
 
         if (isMounted) {
           setResolvedOrder(data as Order);
+          setManualDataDraft(createManualDataDraft(data as Order));
         }
       })
       .catch(() => {
         if (isMounted) {
           setResolvedOrder(initialOrder);
+          setManualDataDraft(createManualDataDraft(initialOrder));
         }
       });
 
@@ -226,6 +254,7 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({
       }
 
       setResolvedOrder(data.order as Order);
+      setManualDataDraft(createManualDataDraft(data.order as Order));
       onOrderUpdated?.(data.order as Order);
       setIsEditingFreightType(false);
     } catch (error) {
@@ -236,6 +265,67 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({
       );
     } finally {
       setIsSavingFreightType(false);
+    }
+  };
+
+  const handleStartManualEdit = () => {
+    setManualDataDraft(createManualDataDraft(order));
+    setManualDataError("");
+    setIsEditingManualData(true);
+  };
+
+  const handleCancelManualEdit = () => {
+    setManualDataDraft(createManualDataDraft(order));
+    setManualDataError("");
+    setIsEditingManualData(false);
+  };
+
+  const handleManualFieldChange = (
+    field: keyof ReturnType<typeof createManualDataDraft>,
+    value: string,
+  ) => {
+    setManualDataDraft((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  };
+
+  const handleSaveManualData = async () => {
+    if (!manualDataDraft.customerName.trim()) {
+      setManualDataError("Informe o nome do cliente.");
+      return;
+    }
+
+    setIsSavingManualData(true);
+    setManualDataError("");
+
+    try {
+      const response = await fetchWithAuth(`/api/orders/${order.id}/manual-data`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(manualDataDraft),
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || !data?.order) {
+        throw new Error(
+          data?.error || "Nao foi possivel atualizar os dados do pedido.",
+        );
+      }
+
+      setResolvedOrder(data.order as Order);
+      setManualDataDraft(createManualDataDraft(data.order as Order));
+      onOrderUpdated?.(data.order as Order);
+      setIsEditingManualData(false);
+    } catch (error) {
+      setManualDataError(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel atualizar os dados do pedido.",
+      );
+    } finally {
+      setIsSavingManualData(false);
     }
   };
 
@@ -264,11 +354,26 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({
             <div className="lg:col-span-2 space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="p-4 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50/30 dark:bg-white/5">
-                  <div className="flex items-center gap-2 mb-2 text-slate-800 dark:text-white font-semibold text-sm">
-                    <User className="w-4 h-4 text-accent" /> Cliente
+                  <div className="flex items-center justify-between gap-3 mb-2">
+                    <div className="flex items-center gap-2 text-slate-800 dark:text-white font-semibold text-sm">
+                      <User className="w-4 h-4 text-accent" /> Cliente
+                    </div>
+                    {!isEditingManualData && (
+                      <button
+                        type="button"
+                        onClick={handleStartManualEdit}
+                        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-[11px] font-medium text-slate-600 transition-colors hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5 dark:hover:text-white"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                        Editar dados
+                      </button>
+                    )}
                   </div>
                   <p className="font-medium text-slate-700 dark:text-slate-200">
                     {order.customerName}
+                  </p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    Destinatario: {order.recipient || "-"}
                   </p>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                     Documento: {formatDocument(order.cpf || order.cnpj || "") || "-"}
@@ -409,6 +514,21 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({
                       <span className="text-slate-500 dark:text-slate-400">Codigo de envio:</span>{" "}
                       <span className="break-all whitespace-normal">{order.trackingCode || "-"}</span>
                     </p>
+                    <p className="md:col-span-2">
+                      <span className="text-slate-500 dark:text-slate-400">Link de rastreio:</span>{" "}
+                      {order.trackingUrl ? (
+                        <a
+                          href={order.trackingUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="break-all whitespace-normal text-blue-600 hover:underline dark:text-blue-300"
+                        >
+                          {order.trackingUrl}
+                        </a>
+                      ) : (
+                        "-"
+                      )}
+                    </p>
                   </div>
                 </div>
 
@@ -438,6 +558,191 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({
                     {formatCarrierForecast(order.carrierEstimatedDeliveryDate)}
                   </p>
                 </div>
+
+                {isEditingManualData && (
+                  <div className="p-4 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50/30 dark:bg-white/5 md:col-span-2">
+                    <div className="flex items-center gap-2 mb-3 text-slate-800 dark:text-white font-semibold text-sm">
+                      <Pencil className="w-4 h-4 text-accent" /> Edicao manual do pedido
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <input
+                        type="text"
+                        value={manualDataDraft.customerName}
+                        onChange={(event) =>
+                          handleManualFieldChange("customerName", event.target.value)
+                        }
+                        placeholder="Nome do cliente"
+                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
+                      />
+                      <input
+                        type="text"
+                        value={manualDataDraft.recipient}
+                        onChange={(event) =>
+                          handleManualFieldChange("recipient", event.target.value)
+                        }
+                        placeholder="Destinatario"
+                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
+                      />
+                      <input
+                        type="text"
+                        value={manualDataDraft.cpf}
+                        onChange={(event) =>
+                          handleManualFieldChange("cpf", event.target.value)
+                        }
+                        placeholder="CPF"
+                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
+                      />
+                      <input
+                        type="text"
+                        value={manualDataDraft.cnpj}
+                        onChange={(event) =>
+                          handleManualFieldChange("cnpj", event.target.value)
+                        }
+                        placeholder="CNPJ"
+                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
+                      />
+                      <input
+                        type="text"
+                        value={manualDataDraft.phone}
+                        onChange={(event) =>
+                          handleManualFieldChange("phone", event.target.value)
+                        }
+                        placeholder="Telefone"
+                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
+                      />
+                      <input
+                        type="text"
+                        value={manualDataDraft.mobile}
+                        onChange={(event) =>
+                          handleManualFieldChange("mobile", event.target.value)
+                        }
+                        placeholder="Celular"
+                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
+                      />
+                      <input
+                        type="text"
+                        value={manualDataDraft.address}
+                        onChange={(event) =>
+                          handleManualFieldChange("address", event.target.value)
+                        }
+                        placeholder="Endereco"
+                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white md:col-span-2"
+                      />
+                      <input
+                        type="text"
+                        value={manualDataDraft.number}
+                        onChange={(event) =>
+                          handleManualFieldChange("number", event.target.value)
+                        }
+                        placeholder="Numero"
+                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
+                      />
+                      <input
+                        type="text"
+                        value={manualDataDraft.complement}
+                        onChange={(event) =>
+                          handleManualFieldChange("complement", event.target.value)
+                        }
+                        placeholder="Complemento"
+                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
+                      />
+                      <input
+                        type="text"
+                        value={manualDataDraft.neighborhood}
+                        onChange={(event) =>
+                          handleManualFieldChange("neighborhood", event.target.value)
+                        }
+                        placeholder="Bairro"
+                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
+                      />
+                      <input
+                        type="text"
+                        value={manualDataDraft.zipCode}
+                        onChange={(event) =>
+                          handleManualFieldChange("zipCode", event.target.value)
+                        }
+                        placeholder="CEP"
+                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
+                      />
+                      <input
+                        type="text"
+                        value={manualDataDraft.city}
+                        onChange={(event) =>
+                          handleManualFieldChange("city", event.target.value)
+                        }
+                        placeholder="Cidade"
+                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
+                      />
+                      <input
+                        type="text"
+                        value={manualDataDraft.state}
+                        onChange={(event) =>
+                          handleManualFieldChange("state", event.target.value)
+                        }
+                        placeholder="UF"
+                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
+                      />
+                      <input
+                        type="text"
+                        value={manualDataDraft.invoiceNumber}
+                        onChange={(event) =>
+                          handleManualFieldChange("invoiceNumber", event.target.value)
+                        }
+                        placeholder="Nota fiscal"
+                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
+                      />
+                      <input
+                        type="text"
+                        value={manualDataDraft.trackingCode}
+                        onChange={(event) =>
+                          handleManualFieldChange("trackingCode", event.target.value)
+                        }
+                        placeholder="Codigo de envio"
+                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
+                      />
+                      <input
+                        type="text"
+                        value={manualDataDraft.trackingUrl}
+                        onChange={(event) =>
+                          handleManualFieldChange("trackingUrl", event.target.value)
+                        }
+                        placeholder="Link de rastreio"
+                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white md:col-span-2"
+                      />
+                    </div>
+
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={handleSaveManualData}
+                        disabled={isSavingManualData}
+                        className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-60"
+                      >
+                        {isSavingManualData ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Check className="h-3.5 w-3.5" />
+                        )}
+                        Salvar dados
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleCancelManualEdit}
+                        disabled={isSavingManualData}
+                        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+
+                    {manualDataError && (
+                      <p className="mt-3 text-xs text-red-600 dark:text-red-300">
+                        {manualDataError}
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
 
               {order.isDelayed && order.status !== OrderStatus.DELIVERED && (

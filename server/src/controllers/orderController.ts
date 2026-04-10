@@ -33,6 +33,28 @@ const safeDate = (value: any): Date | null => {
   }
 };
 
+const splitDocumentFields = (value: unknown) => {
+  const normalized = normalizeDigits(value);
+  if (!normalized) {
+    return {
+      cpf: null as string | null,
+      cnpj: null as string | null,
+    };
+  }
+
+  if (normalized.length === 14) {
+    return {
+      cpf: null,
+      cnpj: normalized,
+    };
+  }
+
+  return {
+    cpf: normalized,
+    cnpj: null,
+  };
+};
+
 const mapTrackingEventsToHistory = (trackingEvents: any[] | undefined) => {
   if (!Array.isArray(trackingEvents)) return [];
 
@@ -226,10 +248,33 @@ const getStoredTrackingUrl = (
     apiRawPayload?: any;
   },
 ) =>
+  safeString(order.apiRawPayload?.manualTrackingUrl) ||
   safeString(order.apiRawPayload?.trackingUrl) ||
   safeString(order.apiRawPayload?.logistic_provider?.live_tracking_url) ||
   safeString(order.apiRawPayload?.tracking_url) ||
   null;
+
+const mergeApiRawPayload = (currentPayload: any, updates: Record<string, any>) => {
+  const basePayload =
+    currentPayload && typeof currentPayload === 'object' && !Array.isArray(currentPayload)
+      ? { ...currentPayload }
+      : {};
+
+  for (const [key, value] of Object.entries(updates)) {
+    if (value === undefined) {
+      continue;
+    }
+
+    if (value === null || value === '') {
+      delete basePayload[key];
+      continue;
+    }
+
+    basePayload[key] = value;
+  }
+
+  return Object.keys(basePayload).length > 0 ? basePayload : null;
+};
 
 const resolveTrackingSourceLabel = (
   order: {
@@ -794,23 +839,32 @@ const buildExternalOrderResponse = (
       .sort((left, right) => right.eventDate.getTime() - left.eventDate.getTime());
     const latestEvent = orderedEvents[0] || null;
     const lookupMode = safeString(result.lookupMode) || 'INVOICE';
+    const recipientName =
+      safeString(result.matchMetadata?.recipientName) ||
+      safeString(result.matchMetadata?.deliveredToName) ||
+      'Consulta externa';
+    const recipientDocument =
+      safeString(result.matchMetadata?.deliveredToDocument) ||
+      safeString(result.matchMetadata?.recipientDocument);
+    const documentFields = splitDocumentFields(recipientDocument);
+    const trackingUrl = safeString(result.rawPayload?.trackingUrl);
 
     return {
       id: `external-${normalizeAlphaNumeric(identifier) || normalizeDigits(identifier) || Date.now()}` ,
       orderNumber: String(identifier),
       invoiceNumber: lookupMode === 'INVOICE' ? normalizeDigits(identifier) : null,
       trackingCode: lookupMode === 'XML_KEY' ? identifier : null,
-      trackingUrl: safeString(result.rawPayload?.trackingUrl),
+      trackingUrl,
       trackingSourceLabel:
         lookupMode === 'XML_KEY'
           ? 'SSW com Codigo XML'
           : lookupMode === 'TRACKING_CODE'
             ? 'SSW com codigo envio/NF'
             : 'SSW com NF',
-      customerName: 'Consulta externa',
+      customerName: recipientName,
       corporateName: null,
-      cpf: null,
-      cnpj: null,
+      cpf: documentFields.cpf,
+      cnpj: documentFields.cnpj,
       phone: null,
       mobile: null,
       salesChannel: 'Externo',
@@ -826,11 +880,17 @@ const buildExternalOrderResponse = (
       number: '',
       complement: null,
       neighborhood: '',
-      city: latestEvent?.city || '',
-      state: latestEvent?.state || '',
+      city:
+        safeString(result.matchMetadata?.destinationCity) ||
+        latestEvent?.city ||
+        '',
+      state:
+        safeString(result.matchMetadata?.destinationState) ||
+        latestEvent?.state ||
+        '',
       zipCode: '',
       totalValue: 0,
-      recipient: null,
+      recipient: recipientName,
       maxShippingDeadline: null,
       estimatedDeliveryDate: result.carrierEstimatedDate || null,
       carrierEstimatedDeliveryDate: result.carrierEstimatedDate || null,
@@ -845,19 +905,28 @@ const buildExternalOrderResponse = (
       })),
       lastApiSync: new Date(),
       lastUpdate: latestEvent?.eventDate || new Date(),
+      apiRawPayload: {
+        source: 'SSW',
+        lookupMode,
+        trackingUrl,
+        matchMetadata: result.matchMetadata ?? null,
+        rawPayload: result.rawPayload ?? null,
+      },
     };
   }
 
   if (source === 'CORREIOS') {
     const events = Array.isArray(result.events) ? result.events : [];
     const latestEvent = events[0] || null;
+    const trackingCode = normalizeAlphaNumeric(result.objectCode || identifier);
+    const trackingUrl = buildCorreiosTrackingUrl(result.objectCode || identifier);
 
     return {
       id: `external-${normalizeAlphaNumeric(identifier) || Date.now()}`,
       orderNumber: String(identifier),
       invoiceNumber: null,
-      trackingCode: normalizeAlphaNumeric(result.objectCode || identifier),
-      trackingUrl: buildCorreiosTrackingUrl(result.objectCode || identifier),
+      trackingCode,
+      trackingUrl,
       trackingSourceLabel: 'Correios',
       customerName: 'Consulta externa',
       corporateName: null,
@@ -897,6 +966,12 @@ const buildExternalOrderResponse = (
       })),
       lastApiSync: new Date(),
       lastUpdate: latestEvent?.eventDate || new Date(),
+      apiRawPayload: {
+        source: 'CORREIOS',
+        trackingUrl,
+        objectCode: trackingCode,
+        rawPayload: result.rawPayload ?? null,
+      },
     };
   }
 
@@ -937,16 +1012,17 @@ const buildExternalOrderResponse = (
   );
 
   const resolvedOrderNumber = safeString(result?.order?.order_number) || identifier;
+  const trackingUrl = buildIntelipostTrackingUrl(
+    intelipostClientId,
+    resolvedOrderNumber,
+  );
 
   return {
     id: `external-${normalizeAlphaNumeric(resolvedOrderNumber) || Date.now()}` ,
     orderNumber: resolvedOrderNumber,
     invoiceNumber: null,
     trackingCode: null,
-    trackingUrl: buildIntelipostTrackingUrl(
-      intelipostClientId,
-      resolvedOrderNumber,
-    ),
+    trackingUrl,
     trackingSourceLabel: 'Intelipost',
     customerName: 'Consulta externa',
     corporateName: null,
@@ -980,6 +1056,14 @@ const buildExternalOrderResponse = (
     trackingHistory,
     lastApiSync: new Date(),
     lastUpdate: safeDate(latestTrackingEvent?.date) || new Date(),
+    apiRawPayload: {
+      source: 'INTELIPOST',
+      trackingUrl,
+      tracking: result?.tracking ?? null,
+      logistic_provider: result?.logistic_provider ?? null,
+      end_customer: result?.end_customer ?? null,
+      rawPayload: result ?? null,
+    },
   };
 };
 
@@ -1349,6 +1433,102 @@ export const updateOrderFreightType = async (req: Request, res: Response) => {
   }
 };
 
+export const updateOrderManualData = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    // @ts-ignore
+    const user = req.user;
+
+    if (typeof id !== 'string') {
+      return res.status(400).json({ error: 'ID invalido' });
+    }
+
+    if (!user?.companyId) {
+      return res.status(403).json({ error: 'Acesso negado. Usuario sem empresa.' });
+    }
+
+    const order = await prisma.order.findUnique({
+      where: { id },
+      include: {
+        carrier: true,
+        trackingEvents: {
+          orderBy: { eventDate: 'desc' },
+        },
+      },
+    });
+
+    if (!order || order.companyId !== user.companyId) {
+      return res.status(404).json({ error: 'Pedido nao encontrado' });
+    }
+
+    const customerName = safeString(req.body?.customerName);
+    if (!customerName) {
+      return res.status(400).json({ error: 'Informe o nome do cliente.' });
+    }
+
+    const trackingUrl = safeString(req.body?.trackingUrl);
+    const updatedOrder = await prisma.order.update({
+      where: { id },
+      data: {
+        customerName,
+        corporateName: safeString(req.body?.corporateName),
+        cpf: safeString(req.body?.cpf),
+        cnpj: safeString(req.body?.cnpj),
+        phone: safeString(req.body?.phone),
+        mobile: safeString(req.body?.mobile),
+        invoiceNumber: safeString(req.body?.invoiceNumber),
+        trackingCode: safeString(req.body?.trackingCode),
+        address: safeString(req.body?.address) || '',
+        number: safeString(req.body?.number) || '',
+        complement: safeString(req.body?.complement),
+        neighborhood: safeString(req.body?.neighborhood) || '',
+        city: safeString(req.body?.city) || '',
+        state: safeString(req.body?.state) || '',
+        zipCode: safeString(req.body?.zipCode) || '',
+        recipient: safeString(req.body?.recipient),
+        salesChannel: safeString(req.body?.salesChannel) || order.salesChannel,
+        apiRawPayload: mergeApiRawPayload(order.apiRawPayload, {
+          manualTrackingUrl: trackingUrl,
+          manualTrackingUpdatedAt: new Date().toISOString(),
+        }),
+        lastUpdate: new Date(),
+      },
+      include: {
+        carrier: true,
+        trackingEvents: {
+          orderBy: { eventDate: 'desc' },
+        },
+      },
+    });
+
+    const sswRequireCnpjs = await getCompanySswRequireCnpjs(user.companyId);
+    const intelipostClientId = await getCompanyIntelipostClientId(user.companyId);
+    const correiosIntegrationEnabled =
+      await getCompanyCorreiosIntegrationEnabled(user.companyId);
+    const checkoutQuote = await loadCheckoutQuoteForOrder(user.companyId, updatedOrder);
+
+    return res.json({
+      success: true,
+      message: 'Dados do pedido atualizados com sucesso.',
+      order: formatOrderForResponse(
+        updatedOrder,
+        sswRequireCnpjs,
+        intelipostClientId,
+        correiosIntegrationEnabled,
+        checkoutQuote,
+      ),
+    });
+  } catch (error) {
+    console.error('Erro ao atualizar dados manuais do pedido:', error);
+    return res.status(500).json({
+      error: toUserFacingDatabaseErrorMessage(
+        error,
+        'Erro ao atualizar dados do pedido',
+      ),
+    });
+  }
+};
+
 export const openOrderTracking = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -1500,15 +1680,47 @@ export const searchExternalOrder = async (req: Request, res: Response) => {
     }
 
     const intelipostClientId = await getCompanyIntelipostClientId(user.companyId);
+    const externalOrderPayload = buildExternalOrderResponse(
+      identifier,
+      externalResult.source,
+      externalResult.result,
+      intelipostClientId,
+    );
+
+    await importOrdersForCompany(user.companyId, [externalOrderPayload]);
+
+    const savedOrder = await prisma.order.findFirst({
+      where: {
+        companyId: user.companyId,
+        orderNumber: String(externalOrderPayload.orderNumber),
+      },
+      include: {
+        carrier: true,
+        trackingEvents: {
+          orderBy: { eventDate: 'desc' },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const sswRequireCnpjs = await getCompanySswRequireCnpjs(user.companyId);
+    const correiosIntegrationEnabled =
+      await getCompanyCorreiosIntegrationEnabled(user.companyId);
+    const checkoutQuote = savedOrder
+      ? await loadCheckoutQuoteForOrder(user.companyId, savedOrder)
+      : null;
 
     return res.json({
       source: externalResult.source,
-      order: buildExternalOrderResponse(
-        identifier,
-        externalResult.source,
-        externalResult.result,
-        intelipostClientId,
-      ),
+      order: savedOrder
+        ? formatOrderForResponse(
+            savedOrder,
+            sswRequireCnpjs,
+            intelipostClientId,
+            correiosIntegrationEnabled,
+            checkoutQuote,
+          )
+        : externalOrderPayload,
     });
   } catch (error) {
     console.error('Erro na busca externa:', error);

@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { importOrders, getOrders, getOrderById, syncSingleOrder, syncAllOrders, startSyncAllOrders, getSyncAllStatus, clearOrdersDatabase, openOrderTracking, searchExternalOrder, updateOrderFreightType } from '../controllers/orderController';
+import { importOrders, getOrders, getOrderById, syncSingleOrder, syncAllOrders, startSyncAllOrders, getSyncAllStatus, clearOrdersDatabase, openOrderTracking, searchExternalOrder, updateOrderFreightType, updateOrderManualData } from '../controllers/orderController';
 
 const router = Router();
 
@@ -20,6 +20,9 @@ router.get('/:id/open-tracking', openOrderTracking);
 
 // PATCH /api/orders/:id/freight-type - Atualizar transportadora manualmente
 router.patch('/:id/freight-type', updateOrderFreightType);
+
+// PATCH /api/orders/:id/manual-data - Atualizar dados manuais do pedido
+router.patch('/:id/manual-data', updateOrderManualData);
 
 // GET /api/orders/:id - Detalhes de um pedido
 router.get('/:id', getOrderById);

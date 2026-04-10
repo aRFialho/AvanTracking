@@ -3,6 +3,8 @@ import fs from 'fs/promises';
 import path from 'path';
 import { OrderStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { TrackingService } from './trackingService';
+import { importOrdersForCompany } from './orderImportService';
 
 const CLOSED_STATUSES: OrderStatus[] = [
   OrderStatus.DELIVERED,
@@ -245,6 +247,331 @@ const escapeCsv = (value: unknown) => {
 
 const formatDate = (value: Date | null | undefined) =>
   value ? new Date(value).toLocaleString('pt-BR') : '-';
+
+const formatDateOnly = (value: Date | null | undefined) =>
+  value ? new Date(value).toLocaleDateString('pt-BR') : '-';
+
+const normalizeDigits = (value: unknown) =>
+  String(value || '')
+    .replace(/\D/g, '')
+    .trim();
+
+const normalizeAlphaNumeric = (value: unknown) =>
+  String(value || '')
+    .replace(/[^A-Za-z0-9]/g, '')
+    .toUpperCase()
+    .trim();
+
+const safeString = (value: unknown) => {
+  const normalized = String(value || '').trim();
+  return normalized || null;
+};
+
+const safeDate = (value: unknown) => {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = new Date(value as string | number | Date);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const buildIntelipostTrackingUrl = (
+  clientId: string | null | undefined,
+  orderNumber: string | null | undefined,
+) => {
+  const normalizedClientId = normalizeDigits(clientId);
+  const normalizedOrderNumber = safeString(orderNumber);
+
+  if (!normalizedClientId || !normalizedOrderNumber) {
+    return null;
+  }
+
+  return `https://status.ondeestameupedido.com/tracking/${normalizedClientId}/${encodeURIComponent(normalizedOrderNumber)}`;
+};
+
+const looksLikeXmlIdentifier = (value: unknown) => {
+  const normalized = normalizeAlphaNumeric(value);
+  return Boolean(
+    normalized &&
+      (/^\d{44}$/.test(normalized) ||
+        (normalized.length >= 20 && /[A-Z]/.test(normalized) && /\d/.test(normalized))),
+  );
+};
+
+const looksLikeCorreiosObjectCode = (value: unknown) =>
+  /^[A-Z]{2}\d{9}[A-Z]{2}$/.test(normalizeAlphaNumeric(value));
+
+const TRACKING_INTENT_TERMS = [
+  'rastreio',
+  'rastreamento',
+  'rastrear',
+  'rastreie',
+  'rastrei',
+  'rastreia',
+  'tracking',
+  'acompanhar',
+  'acompanhe',
+  'acompanha',
+  'consulta',
+  'consultar',
+];
+
+type TrackingLookupKind =
+  | 'invoice'
+  | 'order'
+  | 'xml'
+  | 'tracking'
+  | 'customer'
+  | 'generic';
+
+type TrackingLookupRequest = {
+  kind: TrackingLookupKind;
+  value: string;
+  label: string;
+};
+
+const stripPoliteTail = (value: string) =>
+  value
+    .replace(/\b(?:pra mim|para mim|pra mi|para mi|por favor|pfv|pls|please|ai|a[ií])\b.*$/i, '')
+    .replace(/[?!.,;:]+$/g, '')
+    .trim();
+
+const hasTrackingIntent = (text: string) => {
+  const normalized = normalizeText(text);
+  return TRACKING_INTENT_TERMS.some((term) => normalized.includes(term));
+};
+
+const hasTrackingLinkIntent = (text: string) => {
+  const normalized = normalizeText(text);
+  return (
+    hasTrackingIntent(text) &&
+    [
+      'abrir',
+      'abre',
+      'abri',
+      'link',
+      'url',
+      'abrir rastreio',
+      'me manda o link',
+      'me envie o link',
+      'manda o link',
+    ].some((term) => normalized.includes(term))
+  );
+};
+
+const extractTrackingLookupRequest = (text: string): TrackingLookupRequest | null => {
+  const rawText = String(text || '').trim();
+  const normalized = normalizeText(rawText);
+
+  if (!hasTrackingIntent(rawText)) {
+    return null;
+  }
+
+  const patternMatches: Array<{
+    kind: TrackingLookupKind;
+    label: string;
+    patterns: RegExp[];
+  }> = [
+    {
+      kind: 'invoice',
+      label: 'NF',
+      patterns: [
+        /(?:nota fiscal|nota|nf)\s*(?:numero|n|no|#|:)?\s*([A-Za-z0-9./-]{3,})/i,
+      ],
+    },
+    {
+      kind: 'order',
+      label: 'pedido',
+      patterns: [
+        /(?:pedido)\s*(?:numero|n|no|#|:)?\s*([A-Za-z0-9./-]{3,})/i,
+      ],
+    },
+    {
+      kind: 'xml',
+      label: 'XML',
+      patterns: [
+        /(?:xml|chave xml|chave da nota|chave de acesso|chave)\s*(?:numero|n|no|#|:)?\s*([A-Za-z0-9-]{20,})/i,
+      ],
+    },
+    {
+      kind: 'tracking',
+      label: 'rastreio',
+      patterns: [
+        /(?:codigo de rastreio|codigo de envio|objeto|rastreio|tracking)\s*(?:numero|n|no|#|:)?\s*([A-Za-z0-9./-]{6,})/i,
+      ],
+    },
+  ];
+
+  for (const matcher of patternMatches) {
+    for (const pattern of matcher.patterns) {
+      const match = rawText.match(pattern);
+      const value = stripPoliteTail(match?.[1] || '');
+      if (value) {
+        return {
+          kind: matcher.kind,
+          value,
+          label: matcher.label,
+        };
+      }
+    }
+  }
+
+  const customerMatch = rawText.match(
+    /(?:do|da|de)?\s*cliente\s+(.+)$/i,
+  );
+  const customerValue = stripPoliteTail(customerMatch?.[1] || '');
+  if (customerValue) {
+    return {
+      kind: 'customer',
+      value: customerValue,
+      label: 'cliente',
+    };
+  }
+
+  const tokenCandidates = rawText.match(
+    /[A-Za-z]{2}\d{9}[A-Za-z]{2}|\d{4,}|[A-Za-z0-9-]{20,}/g,
+  );
+  const candidate = tokenCandidates?.[tokenCandidates.length - 1] || '';
+  const cleanedCandidate = stripPoliteTail(candidate);
+
+  if (!cleanedCandidate) {
+    return null;
+  }
+
+  if (looksLikeXmlIdentifier(cleanedCandidate)) {
+    return { kind: 'xml', value: cleanedCandidate, label: 'XML' };
+  }
+
+  if (looksLikeCorreiosObjectCode(cleanedCandidate)) {
+    return { kind: 'tracking', value: cleanedCandidate, label: 'rastreio' };
+  }
+
+  if (normalizeDigits(cleanedCandidate)) {
+    return { kind: 'generic', value: cleanedCandidate, label: 'identificador' };
+  }
+
+  if (normalized.includes('cliente')) {
+    return { kind: 'customer', value: cleanedCandidate, label: 'cliente' };
+  }
+
+  return null;
+};
+
+const mapTrackingEventsToHistory = (trackingEvents: any[] | undefined) =>
+  Array.isArray(trackingEvents)
+    ? trackingEvents.map((event) => ({
+        status: safeString(event?.status) || 'UNKNOWN',
+        description: safeString(event?.description) || 'Evento de rastreamento',
+        date: safeDate(event?.eventDate || event?.date) || new Date(),
+        city: safeString(event?.city) || '',
+        state: safeString(event?.state) || '',
+      }))
+    : [];
+
+const getStoredTrackingUrl = (order: { trackingUrl?: string | null; apiRawPayload?: any }) =>
+  safeString(order.trackingUrl) ||
+  safeString(order.apiRawPayload?.manualTrackingUrl) ||
+  safeString(order.apiRawPayload?.trackingUrl) ||
+  safeString(order.apiRawPayload?.logistic_provider?.live_tracking_url) ||
+  safeString(order.apiRawPayload?.tracking_url) ||
+  null;
+
+const resolveTrackingSourceLabel = (order: {
+  trackingSourceLabel?: string | null;
+  trackingCode?: string | null;
+  apiRawPayload?: any;
+}) => {
+  if (order.trackingSourceLabel) {
+    return order.trackingSourceLabel;
+  }
+
+  const source = String(order.apiRawPayload?.source || '').toUpperCase();
+  const lookupMode = String(order.apiRawPayload?.lookupMode || '').toUpperCase();
+  const trackingUrl = String(getStoredTrackingUrl(order) || '');
+
+  if (source === 'SSW' || /ssw\.inf\.br/i.test(trackingUrl)) {
+    if (lookupMode === 'XML_KEY') {
+      return 'SSW com Codigo XML';
+    }
+    if (lookupMode === 'TRACKING_CODE') {
+      return 'SSW com codigo envio/NF';
+    }
+    return 'SSW com NF';
+  }
+
+  if (source === 'CORREIOS' || /correios/i.test(trackingUrl)) {
+    return 'Correios';
+  }
+
+  if (
+    source === 'INTELIPOST' ||
+    /ondeestameupedido\.com|intelipost/i.test(trackingUrl)
+  ) {
+    return 'Intelipost';
+  }
+
+  return 'Nao identificado';
+};
+
+const splitDocumentFields = (value: unknown) => {
+  const normalized = normalizeDigits(value);
+  if (!normalized) {
+    return {
+      cpf: null as string | null,
+      cnpj: null as string | null,
+    };
+  }
+
+  if (normalized.length === 14) {
+    return { cpf: null, cnpj: normalized };
+  }
+
+  return { cpf: normalized, cnpj: null };
+};
+
+const mapIntelipostStatusToOrderStatus = (value: string) => {
+  const normalized = normalizeText(value).toUpperCase();
+
+  if (
+    normalized.includes('SAIU PARA ENTREGA') ||
+    normalized.includes('DELIVERY_ATTEMPT') ||
+    normalized.includes('TO_BE_DELIVERED')
+  ) {
+    return OrderStatus.DELIVERY_ATTEMPT;
+  }
+
+  if (normalized.includes('ENTREGUE') || normalized.includes('DELIVERED')) {
+    return OrderStatus.DELIVERED;
+  }
+
+  if (
+    normalized.includes('EM TRANSITO') ||
+    normalized.includes('TRANSITO') ||
+    normalized.includes('SHIPPED') ||
+    normalized.includes('IN TRANSIT')
+  ) {
+    return OrderStatus.SHIPPED;
+  }
+
+  if (
+    normalized.includes('CRIADO') ||
+    normalized.includes('CREATED') ||
+    normalized.includes('NEW')
+  ) {
+    return OrderStatus.CREATED;
+  }
+
+  if (
+    normalized.includes('FALHA') ||
+    normalized.includes('FAILURE') ||
+    normalized.includes('CLARIFY_DELIVERY_FAIL')
+  ) {
+    return OrderStatus.FAILURE;
+  }
+
+  return OrderStatus.PENDING;
+};
 
 const getPublicBaseUrl = () => {
   const configuredBaseUrl = String(
@@ -712,6 +1039,482 @@ const buildDelayClarificationPrompt = () =>
   ].join('\n');
 
 class ChatAssistantService {
+  private trackingService = new TrackingService();
+
+  private buildTrackingSummary(order: {
+    orderNumber: string;
+    invoiceNumber?: string | null;
+    trackingCode?: string | null;
+    customerName: string;
+    recipient?: string | null;
+    freightType?: string | null;
+    status: OrderStatus;
+    estimatedDeliveryDate?: Date | null;
+    carrierEstimatedDeliveryDate?: Date | null;
+    trackingUrl?: string | null;
+    trackingSourceLabel?: string | null;
+    apiRawPayload?: any;
+    trackingEvents?: any[];
+  }) {
+    const trackingHistory = mapTrackingEventsToHistory(order.trackingEvents);
+    const latestEvent = trackingHistory
+      .slice()
+      .sort(
+        (left, right) => new Date(right.date).getTime() - new Date(left.date).getTime(),
+      )[0];
+    const latestLocation =
+      latestEvent && (latestEvent.city || latestEvent.state)
+        ? ` (${[latestEvent.city, latestEvent.state].filter(Boolean).join('/')})`
+        : '';
+    const trackingUrl = getStoredTrackingUrl(order);
+    const lines = [
+      `Encontrei o rastreio atual do pedido ${order.orderNumber}.`,
+      `- Cliente: ${order.customerName || '-'}`,
+      `- Destinatario: ${order.recipient || '-'}`,
+      `- Status atual: ${STATUS_LABELS[order.status] || order.status}`,
+      `- Fonte do rastreio: ${resolveTrackingSourceLabel(order)}`,
+      `- Transportadora: ${order.freightType || '-'}`,
+      `- NF: ${order.invoiceNumber || '-'}`,
+      `- Codigo de envio: ${order.trackingCode || '-'}`,
+      `- Prazo da plataforma: ${formatDateOnly(order.estimatedDeliveryDate || null)}`,
+      `- Prazo da transportadora: ${formatDateOnly(order.carrierEstimatedDeliveryDate || null)}`,
+      latestEvent
+        ? `- Ultima movimentacao: ${formatDate(latestEvent.date)} - ${latestEvent.description}${latestLocation}`
+        : '- Ultima movimentacao: sem historico de rastreio',
+    ];
+
+    if (trackingUrl) {
+      lines.push(`- Link de rastreio: ${trackingUrl}`);
+    }
+
+    return lines.join('\n');
+  }
+
+  private buildTrackingLinkReply(order: {
+    orderNumber: string;
+    trackingUrl?: string | null;
+    apiRawPayload?: any;
+  }) {
+    const trackingUrl = getStoredTrackingUrl(order);
+
+    if (!trackingUrl) {
+      return `Nao encontrei um link direto de rastreio para o pedido ${order.orderNumber}.`;
+    }
+
+    return [
+      `Aqui esta o link direto de rastreio do pedido ${order.orderNumber}:`,
+      trackingUrl,
+    ].join('\n');
+  }
+
+  private buildCustomerDisambiguation(
+    customerName: string,
+    orders: Array<{
+      orderNumber: string;
+      invoiceNumber: string | null;
+      customerName: string;
+      status: OrderStatus;
+      lastUpdate: Date;
+    }>,
+  ) {
+    return [
+      `Encontrei mais de um pedido para o cliente ${customerName}.`,
+      '',
+      ...orders.slice(0, 5).map(
+        (order, index) =>
+          `${index + 1}. Pedido ${order.orderNumber} | NF ${order.invoiceNumber || '-'} | ${STATUS_LABELS[order.status] || order.status} | Ultima mov. ${formatDate(order.lastUpdate)}`,
+      ),
+      '',
+      'Se quiser, me peça por numero do pedido, NF ou XML para eu trazer o rastreio exato.',
+    ].join('\n');
+  }
+
+  private buildExternalOrderPayload(
+    request: TrackingLookupRequest,
+    source: 'SSW' | 'INTELIPOST' | 'CORREIOS',
+    result: any,
+  ) {
+    if (source === 'SSW') {
+      const events = Array.isArray(result.events) ? result.events : [];
+      const latestEvent = events
+        .slice()
+        .sort((left, right) => right.eventDate.getTime() - left.eventDate.getTime())[0];
+      const recipientName =
+        safeString(result.matchMetadata?.recipientName) ||
+        safeString(result.matchMetadata?.deliveredToName) ||
+        'Consulta externa';
+      const documentFields = splitDocumentFields(
+        safeString(result.matchMetadata?.deliveredToDocument) ||
+          safeString(result.matchMetadata?.recipientDocument),
+      );
+      const trackingUrl = safeString(result.rawPayload?.trackingUrl);
+
+      return {
+        orderNumber: request.kind === 'order' ? request.value : request.value,
+        invoiceNumber:
+          String(result.lookupMode || '').toUpperCase() === 'INVOICE'
+            ? normalizeDigits(request.value)
+            : null,
+        trackingCode:
+          String(result.lookupMode || '').toUpperCase() === 'XML_KEY'
+            ? normalizeAlphaNumeric(request.value)
+            : String(result.lookupMode || '').toUpperCase() === 'TRACKING_CODE'
+              ? normalizeDigits(request.value)
+              : null,
+        customerName: recipientName,
+        corporateName: null,
+        cpf: documentFields.cpf,
+        cnpj: documentFields.cnpj,
+        phone: null,
+        mobile: null,
+        salesChannel: 'Externo',
+        freightType: safeString(result.freightType) || 'SSW',
+        freightValue: 0,
+        shippingDate: latestEvent?.eventDate || new Date(),
+        address: '',
+        number: '',
+        complement: null,
+        neighborhood: '',
+        city: safeString(result.matchMetadata?.destinationCity) || latestEvent?.city || '',
+        state: safeString(result.matchMetadata?.destinationState) || latestEvent?.state || '',
+        zipCode: '',
+        totalValue: 0,
+        recipient: recipientName,
+        maxShippingDeadline: null,
+        estimatedDeliveryDate: result.carrierEstimatedDate || null,
+        carrierEstimatedDeliveryDate: result.carrierEstimatedDate || null,
+        status: result.status as OrderStatus,
+        isDelayed: false,
+        trackingHistory: events.map((event: any) => ({
+          status: safeString(event.status) || 'UNKNOWN',
+          description: safeString(event.description) || 'Evento de rastreamento',
+          date: safeDate(event.eventDate) || new Date(),
+          city: safeString(event.city) || '',
+          state: safeString(event.state) || '',
+        })),
+        apiRawPayload: {
+          source: 'SSW',
+          lookupMode: result.lookupMode || 'INVOICE',
+          trackingUrl,
+          matchMetadata: result.matchMetadata ?? null,
+          rawPayload: result.rawPayload ?? null,
+        },
+      };
+    }
+
+    if (source === 'CORREIOS') {
+      const events = Array.isArray(result.events) ? result.events : [];
+      const latestEvent = events[0] || null;
+      const trackingCode = normalizeAlphaNumeric(result.objectCode || request.value);
+      const trackingUrl = safeString(result.trackingUrl);
+
+      return {
+        orderNumber: trackingCode || request.value,
+        invoiceNumber: null,
+        trackingCode,
+        customerName: 'Consulta externa',
+        corporateName: null,
+        cpf: null,
+        cnpj: null,
+        phone: null,
+        mobile: null,
+        salesChannel: 'Externo',
+        freightType: 'Correios',
+        freightValue: 0,
+        shippingDate: latestEvent?.eventDate || new Date(),
+        address: '',
+        number: '',
+        complement: null,
+        neighborhood: '',
+        city: safeString(latestEvent?.city) || '',
+        state: safeString(latestEvent?.state) || '',
+        zipCode: '',
+        totalValue: 0,
+        recipient: null,
+        maxShippingDeadline: null,
+        estimatedDeliveryDate: result.carrierEstimatedDate || null,
+        carrierEstimatedDeliveryDate: result.carrierEstimatedDate || null,
+        status: result.status as OrderStatus,
+        isDelayed: false,
+        trackingHistory: events.map((event: any) => ({
+          status: safeString(event.status) || 'UNKNOWN',
+          description: safeString(event.description) || 'Evento de rastreamento',
+          date: safeDate(event.eventDate) || new Date(),
+          city: safeString(event.city) || '',
+          state: safeString(event.state) || '',
+        })),
+        apiRawPayload: {
+          source: 'CORREIOS',
+          trackingUrl,
+          objectCode: trackingCode,
+          rawPayload: result.rawPayload ?? null,
+        },
+      };
+    }
+
+    const trackingHistory = Array.isArray(result?.tracking?.history)
+      ? result.tracking.history.map((historyItem: any) => ({
+          status: safeString(historyItem?.macro_state?.code) || 'UNKNOWN',
+          description:
+            safeString(historyItem?.provider_message) ||
+            safeString(historyItem?.status_label) ||
+            'Evento de rastreamento',
+          date: safeDate(historyItem?.event_date) || new Date(),
+          city: safeString(result?.end_customer?.address?.city) || '',
+          state: safeString(result?.end_customer?.address?.state) || '',
+        }))
+      : [];
+    const latestEvent = trackingHistory
+      .slice()
+      .sort(
+        (left, right) => new Date(right.date).getTime() - new Date(left.date).getTime(),
+      )[0];
+    const resolvedOrderNumber = safeString(result?.order?.order_number) || request.value;
+    const trackingUrl = buildIntelipostTrackingUrl(
+      safeString(result?.client?.id),
+      resolvedOrderNumber,
+    );
+
+    return {
+      orderNumber: resolvedOrderNumber,
+      invoiceNumber: null,
+      trackingCode: null,
+      customerName: 'Consulta externa',
+      corporateName: null,
+      cpf: null,
+      cnpj: null,
+      phone: null,
+      mobile: null,
+      salesChannel: 'Externo',
+      freightType: safeString(result?.logistic_provider?.name) || 'Desconhecida',
+      freightValue: 0,
+      shippingDate: latestEvent?.date || new Date(),
+      address: '',
+      number: '',
+      complement: null,
+      neighborhood: '',
+      city: safeString(result?.end_customer?.address?.city) || '',
+      state: safeString(result?.end_customer?.address?.state) || '',
+      zipCode: '',
+      totalValue: 0,
+      recipient: null,
+      maxShippingDeadline: null,
+      estimatedDeliveryDate: safeDate(result?.tracking?.estimated_delivery_date_lp),
+      carrierEstimatedDeliveryDate: safeDate(result?.tracking?.estimated_delivery_date_lp),
+      status: mapIntelipostStatusToOrderStatus(
+        [
+          safeString(result?.tracking?.status),
+          safeString(result?.tracking?.status_label),
+          safeString(trackingHistory[0]?.status),
+          safeString(trackingHistory[0]?.description),
+        ]
+          .filter(Boolean)
+          .join(' '),
+      ),
+      isDelayed: false,
+      trackingHistory,
+      apiRawPayload: {
+        source: 'INTELIPOST',
+        trackingUrl,
+        tracking: result?.tracking ?? null,
+        logistic_provider: result?.logistic_provider ?? null,
+        end_customer: result?.end_customer ?? null,
+        client: result?.client ?? null,
+        rawPayload: result ?? null,
+      },
+    };
+  }
+
+  private async fetchTrackingOrderById(orderId: string) {
+    return prisma.order.findUnique({
+      where: { id: orderId },
+      select: {
+        id: true,
+        orderNumber: true,
+        invoiceNumber: true,
+        trackingCode: true,
+        customerName: true,
+        recipient: true,
+        freightType: true,
+        status: true,
+        estimatedDeliveryDate: true,
+        carrierEstimatedDeliveryDate: true,
+        apiRawPayload: true,
+        trackingEvents: {
+          orderBy: { eventDate: 'desc' },
+          take: 20,
+          select: {
+            status: true,
+            description: true,
+            city: true,
+            state: true,
+            eventDate: true,
+          },
+        },
+      },
+    });
+  }
+
+  async tryHandleTrackingRequest(input: {
+    companyId: string | null | undefined;
+    text: string;
+  }): Promise<StructuredResult> {
+    const shouldReturnLink = hasTrackingLinkIntent(input.text);
+    const request = extractTrackingLookupRequest(input.text);
+    if (!request) {
+      return { handled: false };
+    }
+
+    if (!input.companyId) {
+      return {
+        handled: true,
+        text: 'Nao encontrei uma empresa ativa para consultar o rastreio deste chat.',
+      };
+    }
+
+    if (request.kind === 'customer') {
+      const matches = await prisma.order.findMany({
+        where: {
+          companyId: input.companyId,
+          OR: [
+            { customerName: { contains: request.value, mode: 'insensitive' } },
+            { corporateName: { contains: request.value, mode: 'insensitive' } },
+            { recipient: { contains: request.value, mode: 'insensitive' } },
+          ],
+        },
+        select: {
+          id: true,
+          orderNumber: true,
+          invoiceNumber: true,
+          customerName: true,
+          status: true,
+          lastUpdate: true,
+        },
+        orderBy: [{ lastUpdate: 'desc' }],
+        take: 6,
+      });
+
+      if (matches.length === 0) {
+        return {
+          handled: true,
+          text: `Nao encontrei pedido para o cliente ${request.value} na empresa ativa.`,
+        };
+      }
+
+      if (matches.length > 1) {
+        return {
+          handled: true,
+          text: this.buildCustomerDisambiguation(request.value, matches),
+        };
+      }
+
+      const match = matches[0];
+      await this.trackingService
+        .syncOrder(match.id, input.companyId, { forceFinalized: true })
+        .catch(() => null);
+      const refreshedOrder = await this.fetchTrackingOrderById(match.id);
+
+      return {
+        handled: true,
+        text: refreshedOrder
+          ? shouldReturnLink
+            ? this.buildTrackingLinkReply(refreshedOrder)
+            : this.buildTrackingSummary(refreshedOrder)
+          : `Nao consegui montar o rastreio do cliente ${request.value} agora.`,
+      };
+    }
+
+    const normalizedDigits = normalizeDigits(request.value);
+    const normalizedAlphaNumeric = normalizeAlphaNumeric(request.value);
+    const localMatches = await prisma.order.findMany({
+      where: {
+        companyId: input.companyId,
+        OR: [
+          { orderNumber: request.value },
+          ...(normalizedDigits ? [{ orderNumber: normalizedDigits }] : []),
+          ...(normalizedDigits ? [{ invoiceNumber: normalizedDigits }] : []),
+          ...(normalizedDigits ? [{ trackingCode: normalizedDigits }] : []),
+          ...(normalizedAlphaNumeric ? [{ trackingCode: normalizedAlphaNumeric }] : []),
+        ],
+      },
+      select: {
+        id: true,
+        lastUpdate: true,
+      },
+      orderBy: [{ lastUpdate: 'desc' }],
+      take: 1,
+    });
+
+    if (localMatches[0]?.id) {
+      await this.trackingService
+        .syncOrder(localMatches[0].id, input.companyId, { forceFinalized: true })
+        .catch(() => null);
+      const refreshedOrder = await this.fetchTrackingOrderById(localMatches[0].id);
+
+      return {
+        handled: true,
+        text: refreshedOrder
+          ? shouldReturnLink
+            ? this.buildTrackingLinkReply(refreshedOrder)
+            : this.buildTrackingSummary(refreshedOrder)
+          : `Nao consegui montar o rastreio de ${request.label} ${request.value} agora.`,
+      };
+    }
+
+    const externalResult = await this.trackingService.searchExternalIdentifier(
+      request.value,
+      input.companyId,
+    );
+
+    if (!externalResult) {
+      return {
+        handled: true,
+        text: `Nao encontrei rastreio para ${request.label} ${request.value} nas integradoras ativas nem na base local.`,
+      };
+    }
+
+    const externalOrderPayload = this.buildExternalOrderPayload(
+      request,
+      externalResult.source,
+      externalResult.result,
+    );
+    await importOrdersForCompany(input.companyId, [externalOrderPayload]);
+
+    const savedOrder = await prisma.order.findFirst({
+      where: {
+        companyId: input.companyId,
+        orderNumber: String(externalOrderPayload.orderNumber),
+      },
+      select: {
+        id: true,
+      },
+      orderBy: [{ createdAt: 'desc' }],
+    });
+
+    const orderForSummary = savedOrder?.id
+      ? await this.fetchTrackingOrderById(savedOrder.id)
+      : {
+          ...externalOrderPayload,
+          trackingUrl: getStoredTrackingUrl(externalOrderPayload),
+          trackingSourceLabel: resolveTrackingSourceLabel(externalOrderPayload),
+          trackingEvents: Array.isArray(externalOrderPayload.trackingHistory)
+            ? externalOrderPayload.trackingHistory.map((event) => ({
+                ...event,
+                eventDate: event.date,
+              }))
+            : [],
+        };
+
+    return {
+      handled: true,
+      text: orderForSummary
+        ? shouldReturnLink
+          ? this.buildTrackingLinkReply(orderForSummary as any)
+          : this.buildTrackingSummary(orderForSummary as any)
+        : `Nao consegui montar o rastreio de ${request.label} ${request.value} agora.`,
+    };
+  }
+
   private async buildCarrierStatusSummary(companyId: string, filter: MatchedFilter) {
     if (!filter.carrierName) {
       return null;

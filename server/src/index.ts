@@ -51,6 +51,15 @@ app.post("/api/chat", authenticateToken, async (req, res) => {
       return res.status(400).json({ error: "Mensagem vazia." });
     }
 
+    const trackingResult = await chatAssistantService.tryHandleTrackingRequest({
+      companyId: req.user?.companyId,
+      text: input,
+    });
+
+    if (trackingResult.handled && trackingResult.text) {
+      return res.json({ text: trackingResult.text });
+    }
+
     const structuredResult = await chatAssistantService.tryHandleStructuredRequest({
       companyId: req.user?.companyId,
       userId: req.user?.id,

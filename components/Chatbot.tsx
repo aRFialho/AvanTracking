@@ -117,6 +117,34 @@ const hasStructuredContextHint = (normalized: string) =>
   normalized.includes("marketplace") ||
   normalized.includes("canal");
 
+const hasTrackingLookupIntent = (normalized: string) =>
+  [
+    "rastreio",
+    "rastreamento",
+    "rastrear",
+    "rastreie",
+    "rastrei",
+    "rastreia",
+    "tracking",
+    "acompanhar",
+    "acompanhe",
+    "acompanha",
+  ].some((term) => normalized.includes(term)) &&
+  (
+    normalized.includes("abrir") ||
+    normalized.includes("abre") ||
+    normalized.includes("link") ||
+    normalized.includes("url") ||
+    normalized.includes("pedido") ||
+    normalized.includes("nf") ||
+    normalized.includes("nota fiscal") ||
+    normalized.includes("xml") ||
+    normalized.includes("chave") ||
+    normalized.includes("cliente") ||
+    /[a-z]{2}\d{9}[a-z]{2}/i.test(normalized) ||
+    /\d{4,}/.test(normalized)
+  );
+
 const hasStructuredFilterLikeIntent = (normalized: string) =>
   (hasStructuredStatusHint(normalized) ||
     hasStructuredDelayHint(normalized) ||
@@ -160,7 +188,8 @@ const shouldUseStructuredChatRequest = (text: string) => {
     "listar pedidos",
     "mostrar pedidos",
     ].some((term) => normalized.includes(term)) ||
-    hasStructuredFilterLikeIntent(normalized)
+    hasStructuredFilterLikeIntent(normalized) ||
+    hasTrackingLookupIntent(normalized)
   );
 };
 
