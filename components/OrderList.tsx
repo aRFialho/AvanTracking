@@ -316,6 +316,9 @@ export const OrderList: React.FC<OrderListProps> = ({
   const [showFilters, setShowFilters] = useState(true);
   const [showTopPanel, setShowTopPanel] = useState(true);
   const [isColumnMenuOpen, setIsColumnMenuOpen] = useState(false);
+  const [activeFilterMenu, setActiveFilterMenu] = useState<
+    "carrier" | "marketplace" | "status" | null
+  >(null);
   const [visibleColumns, setVisibleColumns] =
     useState<VisibleColumnKey[]>(getStoredVisibleColumns);
   const [isTraySyncModalOpen, setIsTraySyncModalOpen] = useState(false);
@@ -342,11 +345,17 @@ export const OrderList: React.FC<OrderListProps> = ({
 
   // Filters State
   const [searchText, setSearchText] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>(
-    initialFilters?.status || "ALL",
+  const [selectedStatusFilters, setSelectedStatusFilters] = useState<string[]>(
+    initialFilters?.status && initialFilters.status !== "ALL"
+      ? [initialFilters.status]
+      : [],
   );
-  const [carrierFilter, setCarrierFilter] = useState<string>("ALL");
-  const [marketplaceFilter, setMarketplaceFilter] = useState<string>("ALL");
+  const [selectedCarrierFilters, setSelectedCarrierFilters] = useState<string[]>(
+    [],
+  );
+  const [selectedMarketplaceFilters, setSelectedMarketplaceFilters] = useState<
+    string[]
+  >([]);
   const [dateRangeStart, setDateRangeStart] = useState(
     initialFilters?.dateRangeStart || "",
   );
@@ -358,6 +367,7 @@ export const OrderList: React.FC<OrderListProps> = ({
     direction: SortDirection;
   } | null>(null);
   const columnMenuRef = useRef<HTMLDivElement | null>(null);
+  const filterMenuRef = useRef<HTMLDivElement | null>(null);
 
   // Custom Filter Logic from Dashboard
   const [customStatusFilter, setCustomStatusFilter] = useState<string[] | null>(
@@ -382,7 +392,11 @@ export const OrderList: React.FC<OrderListProps> = ({
   // Update filters if props change (re-navigation)
   React.useEffect(() => {
     if (initialFilters) {
-      if (initialFilters.status) setStatusFilter(initialFilters.status);
+      setSelectedStatusFilters(
+        initialFilters.status && initialFilters.status !== "ALL"
+          ? [initialFilters.status]
+          : [],
+      );
       if (initialFilters.customStatus)
         setCustomStatusFilter(initialFilters.customStatus);
       setOnlyDelayed(!!initialFilters.onlyDelayed);
@@ -427,6 +441,27 @@ export const OrderList: React.FC<OrderListProps> = ({
     };
   }, [isColumnMenuOpen]);
 
+  useEffect(() => {
+    if (!activeFilterMenu) {
+      return;
+    }
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        filterMenuRef.current &&
+        !filterMenuRef.current.contains(event.target as Node)
+      ) {
+        setActiveFilterMenu(null);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [activeFilterMenu]);
+
   const visibleColumnSet = useMemo(
     () => new Set<VisibleColumnKey>(visibleColumns),
     [visibleColumns],
@@ -463,6 +498,46 @@ export const OrderList: React.FC<OrderListProps> = ({
     [validOrders],
   );
 
+  const getMultiSelectLabel = (
+    selectedValues: string[],
+    allLabel: string,
+    selectedLabel: string,
+  ) => {
+    if (selectedValues.length === 0) {
+      return allLabel;
+    }
+
+    if (selectedValues.length === 1) {
+      return selectedValues[0];
+    }
+
+    return `${selectedValues.length} ${selectedLabel}`;
+  };
+
+  const toggleStatusFilter = (status: string) => {
+    setSelectedStatusFilters((current) =>
+      current.includes(status)
+        ? current.filter((item) => item !== status)
+        : [...current, status],
+    );
+  };
+
+  const toggleCarrierFilter = (carrier: string) => {
+    setSelectedCarrierFilters((current) =>
+      current.includes(carrier)
+        ? current.filter((item) => item !== carrier)
+        : [...current, carrier],
+    );
+  };
+
+  const toggleMarketplaceFilter = (marketplace: string) => {
+    setSelectedMarketplaceFilters((current) =>
+      current.includes(marketplace)
+        ? current.filter((item) => item !== marketplace)
+        : [...current, marketplace],
+    );
+  };
+
   const filteredOrders = useMemo(() => {
     return validOrders.filter((o) => {
       // 1. Text
@@ -476,18 +551,22 @@ export const OrderList: React.FC<OrderListProps> = ({
 
       // 2. Dropdowns
       const matchStatus =
-        (statusFilter === "ALL" ||
-          (statusFilter === DELAYED_STATUS_FILTER && isDelayedOrder(o)) ||
-          o.status === statusFilter ||
-          (statusFilter === OrderStatus.DELIVERY_ATTEMPT &&
-            isOrderOnRoute(o))) &&
+        (selectedStatusFilters.length === 0 ||
+          selectedStatusFilters.some(
+            (statusFilter) =>
+              (statusFilter === DELAYED_STATUS_FILTER && isDelayedOrder(o)) ||
+              o.status === statusFilter ||
+              (statusFilter === OrderStatus.DELIVERY_ATTEMPT &&
+                isOrderOnRoute(o)),
+          )) &&
         (!customStatusFilter || customStatusFilter.includes(o.status));
 
       const matchCarrier =
-        carrierFilter === "ALL" ||
-        normalizeCarrierName(o.freightType) === carrierFilter;
+        selectedCarrierFilters.length === 0 ||
+        selectedCarrierFilters.includes(normalizeCarrierName(o.freightType));
       const matchMkt =
-        marketplaceFilter === "ALL" || o.salesChannel === marketplaceFilter;
+        selectedMarketplaceFilters.length === 0 ||
+        selectedMarketplaceFilters.includes(o.salesChannel);
 
       // 3. Special Filters
       if (onlyDelayed && !isDelayedOrder(o)) return false;
@@ -555,9 +634,9 @@ export const OrderList: React.FC<OrderListProps> = ({
   }, [
     validOrders,
     searchText,
-    statusFilter,
-    carrierFilter,
-    marketplaceFilter,
+    selectedStatusFilters,
+    selectedCarrierFilters,
+    selectedMarketplaceFilters,
     dateRangeStart,
     dateRangeEnd,
     isNoMovementView,
@@ -680,9 +759,9 @@ export const OrderList: React.FC<OrderListProps> = ({
 
   const clearFilters = () => {
     setSearchText("");
-    setStatusFilter("ALL");
-    setCarrierFilter("ALL");
-    setMarketplaceFilter("ALL");
+    setSelectedStatusFilters([]);
+    setSelectedCarrierFilters([]);
+    setSelectedMarketplaceFilters([]);
     setDateRangeStart("");
     setDateRangeEnd("");
     setCustomStatusFilter(null);
@@ -691,6 +770,7 @@ export const OrderList: React.FC<OrderListProps> = ({
     setDueToday(false);
     setNoSync(false);
     setNoForecast(false);
+    setActiveFilterMenu(null);
   };
 
   // ✅ Função de sincronização
@@ -1566,7 +1646,10 @@ export const OrderList: React.FC<OrderListProps> = ({
         </div>
 
         {showFilters && (
-          <div className="p-5 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 animate-in slide-in-from-top-2 duration-200 bg-white dark:bg-dark-card">
+          <div
+            ref={filterMenuRef}
+            className="p-5 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 animate-in slide-in-from-top-2 duration-200 bg-white dark:bg-dark-card"
+          >
             {/* Search */}
             <div className="col-span-1 lg:col-span-4 flex gap-2">
               <div className="relative flex-1">
@@ -1582,59 +1665,192 @@ export const OrderList: React.FC<OrderListProps> = ({
             </div>
 
             {/* Dropdowns */}
-            <div className="space-y-1">
+            <div className="space-y-1 relative">
               <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase flex items-center gap-1">
                 <Truck className="w-3 h-3" /> Transportadora
               </label>
-              <select
-                value={carrierFilter}
-                onChange={(e) => setCarrierFilter(e.target.value)}
-                className="w-full p-2 border border-slate-200 dark:border-white/10 rounded-lg text-sm bg-white dark:bg-dark-card dark:text-white focus:border-accent outline-none"
+              <button
+                type="button"
+                onClick={() =>
+                  setActiveFilterMenu((current) =>
+                    current === "carrier" ? null : "carrier",
+                  )
+                }
+                className="w-full flex items-center justify-between gap-3 p-2 border border-slate-200 dark:border-white/10 rounded-lg text-sm bg-white dark:bg-dark-card dark:text-white focus:border-accent outline-none"
               >
-                <option value="ALL">Todas</option>
-                {carriers.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
+                <span className="truncate">
+                  {getMultiSelectLabel(
+                    selectedCarrierFilters,
+                    "Todas",
+                    "transportadoras",
+                  )}
+                </span>
+                <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
+              </button>
+              {activeFilterMenu === "carrier" && (
+                <div className="absolute z-30 mt-2 w-full min-w-[240px] rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-dark-card shadow-xl p-3 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-semibold text-slate-500 uppercase">
+                      Transportadoras
+                    </span>
+                    {selectedCarrierFilters.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedCarrierFilters([])}
+                        className="text-[11px] font-medium text-blue-600 hover:underline"
+                      >
+                        Limpar
+                      </button>
+                    )}
+                  </div>
+                  <div className="max-h-56 overflow-auto space-y-2 pr-1">
+                    {carriers.map((carrier) => (
+                      <label
+                        key={carrier}
+                        className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedCarrierFilters.includes(carrier)}
+                          onChange={() => toggleCarrierFilter(carrier)}
+                          className="rounded border-slate-300 text-accent focus:ring-accent"
+                        />
+                        <span className="truncate">{carrier}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
-            <div className="space-y-1">
+            <div className="space-y-1 relative">
               <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase flex items-center gap-1">
                 <ShoppingBag className="w-3 h-3" /> Marketplace
               </label>
-              <select
-                value={marketplaceFilter}
-                onChange={(e) => setMarketplaceFilter(e.target.value)}
-                className="w-full p-2 border border-slate-200 dark:border-white/10 rounded-lg text-sm bg-white dark:bg-dark-card dark:text-white focus:border-accent outline-none"
+              <button
+                type="button"
+                onClick={() =>
+                  setActiveFilterMenu((current) =>
+                    current === "marketplace" ? null : "marketplace",
+                  )
+                }
+                className="w-full flex items-center justify-between gap-3 p-2 border border-slate-200 dark:border-white/10 rounded-lg text-sm bg-white dark:bg-dark-card dark:text-white focus:border-accent outline-none"
               >
-                <option value="ALL">Todos</option>
-                {marketplaces.map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
-                ))}
-              </select>
+                <span className="truncate">
+                  {getMultiSelectLabel(
+                    selectedMarketplaceFilters,
+                    "Todos",
+                    "marketplaces",
+                  )}
+                </span>
+                <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
+              </button>
+              {activeFilterMenu === "marketplace" && (
+                <div className="absolute z-30 mt-2 w-full min-w-[240px] rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-dark-card shadow-xl p-3 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-semibold text-slate-500 uppercase">
+                      Marketplaces
+                    </span>
+                    {selectedMarketplaceFilters.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedMarketplaceFilters([])}
+                        className="text-[11px] font-medium text-blue-600 hover:underline"
+                      >
+                        Limpar
+                      </button>
+                    )}
+                  </div>
+                  <div className="max-h-56 overflow-auto space-y-2 pr-1">
+                    {marketplaces.map((marketplace) => (
+                      <label
+                        key={marketplace}
+                        className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedMarketplaceFilters.includes(marketplace)}
+                          onChange={() => toggleMarketplaceFilter(marketplace)}
+                          className="rounded border-slate-300 text-accent focus:ring-accent"
+                        />
+                        <span className="truncate">{marketplace}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
-            <div className="space-y-1">
+            <div className="space-y-1 relative">
               <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase flex items-center gap-1">
                 <Filter className="w-3 h-3" /> Status
               </label>
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="w-full p-2 border border-slate-200 dark:border-white/10 rounded-lg text-sm bg-white dark:bg-dark-card dark:text-white focus:border-accent outline-none"
+              <button
+                type="button"
+                onClick={() =>
+                  setActiveFilterMenu((current) =>
+                    current === "status" ? null : "status",
+                  )
+                }
+                className="w-full flex items-center justify-between gap-3 p-2 border border-slate-200 dark:border-white/10 rounded-lg text-sm bg-white dark:bg-dark-card dark:text-white focus:border-accent outline-none"
               >
-                <option value="ALL">Todos</option>
-                <option value={DELAYED_STATUS_FILTER}>Atrasado</option>
-                {Object.values(OrderStatus).map((s) => (
-                  <option key={s} value={s}>
-                    {STATUS_LABELS[s] || s}
-                  </option>
-                ))}
-              </select>
+                <span className="truncate">
+                  {getMultiSelectLabel(
+                    selectedStatusFilters.map(
+                      (status) =>
+                        status === DELAYED_STATUS_FILTER
+                          ? "Atrasado"
+                          : STATUS_LABELS[status] || status,
+                    ),
+                    "Todos",
+                    "status",
+                  )}
+                </span>
+                <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
+              </button>
+              {activeFilterMenu === "status" && (
+                <div className="absolute z-30 mt-2 w-full min-w-[240px] rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-dark-card shadow-xl p-3 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-semibold text-slate-500 uppercase">
+                      Status
+                    </span>
+                    {selectedStatusFilters.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedStatusFilters([])}
+                        className="text-[11px] font-medium text-blue-600 hover:underline"
+                      >
+                        Limpar
+                      </button>
+                    )}
+                  </div>
+                  <div className="max-h-56 overflow-auto space-y-2 pr-1">
+                    <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+                      <input
+                        type="checkbox"
+                        checked={selectedStatusFilters.includes(DELAYED_STATUS_FILTER)}
+                        onChange={() => toggleStatusFilter(DELAYED_STATUS_FILTER)}
+                        className="rounded border-slate-300 text-accent focus:ring-accent"
+                      />
+                      <span>Atrasado</span>
+                    </label>
+                    {Object.values(OrderStatus).map((status) => (
+                      <label
+                        key={status}
+                        className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedStatusFilters.includes(status)}
+                          onChange={() => toggleStatusFilter(status)}
+                          className="rounded border-slate-300 text-accent focus:ring-accent"
+                        />
+                        <span>{STATUS_LABELS[status] || status}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Date Range */}
