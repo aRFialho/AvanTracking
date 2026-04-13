@@ -4,6 +4,7 @@ import { importOrdersForCompany } from './orderImportService';
 import type { TraySyncOrderReport } from '../types/syncReport';
 import { prisma } from '../lib/prisma';
 import { TrayFreightService } from './trayFreightService';
+import { shouldSkipPlatformOrderImport } from '../utils/orderExclusion';
 import {
   needsFreightRecalculation,
   recalculateStoredOrderFreight,
@@ -78,6 +79,7 @@ export class TraySyncService {
       select: {
         name: true,
         trayIntegrationEnabled: true,
+        integrationCarrierExceptions: true,
       },
     });
 
@@ -129,16 +131,45 @@ export class TraySyncService {
     const storedOrders = await prisma.order.findMany({
       where: { companyId },
       select: {
+        id: true,
         orderNumber: true,
         invoiceNumber: true,
         trackingCode: true,
+        freightType: true,
+        status: true,
       },
     });
+    const ordersToRemoveByCarrierException = storedOrders.filter((order) =>
+      shouldSkipPlatformOrderImport({
+        freightType: order.freightType,
+        carrierExceptions: company?.integrationCarrierExceptions,
+      }),
+    );
+
+    if (ordersToRemoveByCarrierException.length > 0) {
+      await prisma.order.deleteMany({
+        where: {
+          id: {
+            in: ordersToRemoveByCarrierException.map((order) => order.id),
+          },
+        },
+      });
+      hooks?.onLog?.(
+        `${ordersToRemoveByCarrierException.length} pedido(s) existente(s) foram removidos por baterem com a excecao de transportadora antes do sync.`,
+      );
+    }
+
+    const removedOrderIds = new Set(
+      ordersToRemoveByCarrierException.map((order) => order.id),
+    );
+    const eligibleStoredOrders = storedOrders.filter(
+      (order) => !removedOrderIds.has(order.id),
+    );
     const existingOrderNumbers = new Set(
-      storedOrders.map((order) => String(order.orderNumber)),
+      eligibleStoredOrders.map((order) => String(order.orderNumber)),
     );
     const pendingIdentifierOrderNumbers = new Set(
-      storedOrders
+      eligibleStoredOrders
         .filter(
           (order) =>
             isBlankIdentifier(order.invoiceNumber) &&
@@ -146,10 +177,19 @@ export class TraySyncService {
         )
         .map((order) => String(order.orderNumber)),
     );
+    const pendingStatusCorrectionOrderNumbers = new Set(
+      eligibleStoredOrders
+        .filter((order) => String(order.status) === 'CHANNEL_LOGISTICS')
+        .map((order) => String(order.orderNumber)),
+    );
     const skipOrderNumbers = new Set(
-      storedOrders
+      eligibleStoredOrders
         .map((order) => String(order.orderNumber))
-        .filter((orderNumber) => !pendingIdentifierOrderNumbers.has(orderNumber)),
+        .filter(
+          (orderNumber) =>
+            !pendingIdentifierOrderNumbers.has(orderNumber) &&
+            !pendingStatusCorrectionOrderNumbers.has(orderNumber),
+        ),
     );
     const aggregateResults = {
       created: 0,
@@ -170,6 +210,11 @@ export class TraySyncService {
     if (pendingIdentifierOrderNumbers.size > 0) {
       hooks?.onLog?.(
         `${pendingIdentifierOrderNumbers.size} pedido(s) existente(s) sem NF e sem codigo de envio serao revisitados na Tray.`,
+      );
+    }
+    if (pendingStatusCorrectionOrderNumbers.size > 0) {
+      hooks?.onLog?.(
+        `${pendingStatusCorrectionOrderNumbers.size} pedido(s) com status legado "Logistica do Canal" serao revisitados para corrigir o status real.`,
       );
     }
 
@@ -195,7 +240,8 @@ export class TraySyncService {
               const orderNumber = String(order.id);
               return (
                 !existingOrderNumbers.has(orderNumber) ||
-                pendingIdentifierOrderNumbers.has(orderNumber)
+                pendingIdentifierOrderNumbers.has(orderNumber) ||
+                pendingStatusCorrectionOrderNumbers.has(orderNumber)
               );
             });
 
@@ -204,7 +250,8 @@ export class TraySyncService {
             }
 
             const revisitedOrders = ordersToProcess.filter((order) =>
-              pendingIdentifierOrderNumbers.has(String(order.id)),
+              pendingIdentifierOrderNumbers.has(String(order.id)) ||
+              pendingStatusCorrectionOrderNumbers.has(String(order.id)),
             );
             const mappedOrders = ordersToProcess.map((order) =>
               trayApi.mapTrayOrderToSystem(order, {
@@ -291,6 +338,7 @@ export class TraySyncService {
               const orderNumber = String(order.id);
               existingOrderNumbers.add(orderNumber);
               pendingIdentifierOrderNumbers.delete(orderNumber);
+              pendingStatusCorrectionOrderNumbers.delete(orderNumber);
               skipOrderNumbers.add(orderNumber);
             }
 
