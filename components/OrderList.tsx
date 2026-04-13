@@ -1619,7 +1619,12 @@ export const OrderList: React.FC<OrderListProps> = ({
       </div>
       <div className={clsx("space-y-4 shrink-0", !showTopPanel && "hidden")}>
       {/* 1. Filter Control Bar (Collapsible) */}
-      <div className="glass-card rounded-xl border border-slate-200 dark:border-dark-border shadow-sm shrink-0 overflow-hidden transition-all duration-300">
+      <div
+        className={clsx(
+          "glass-card rounded-xl border border-slate-200 dark:border-dark-border shadow-sm shrink-0 transition-all duration-300",
+          showFilters ? "overflow-visible relative z-20" : "overflow-hidden",
+        )}
+      >
         <div
           className="flex items-center justify-between p-4 bg-slate-50 dark:bg-dark-card border-b border-slate-100 dark:border-white/5 cursor-pointer"
           onClick={() => setShowFilters(!showFilters)}

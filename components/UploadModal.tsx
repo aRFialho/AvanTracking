@@ -129,14 +129,6 @@ export const UploadModal: React.FC<UploadModalProps> = ({ onUpload }) => {
       const normalizedFreight = normalizeFreightType(rawFreight);
 
       // 🛑 EXCLUDE CHANNEL LOGISTICS ORDERS IMMEDIATELY
-      const isChannelManaged =
-        ["ColetasME2", "Shopee Xpress", "Correios"].includes(normalizedFreight) ||
-        normalizedFreight.toLowerCase().includes("priorit");
-
-      if (isChannelManaged) {
-          return null;
-      }
-
       const estimatedDate = parseDate(getValue('Data estimada de entrega'));
       const maxDeadline = parseDate(getValue('Prazo máximo de envio'));
       const now = new Date();

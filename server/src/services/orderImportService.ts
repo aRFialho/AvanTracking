@@ -1,8 +1,5 @@
 import { OrderStatus } from '@prisma/client';
-import {
-  normalizeExcludedPlatformFreight,
-  shouldSkipPlatformOrderImport,
-} from '../utils/orderExclusion';
+import { shouldSkipPlatformOrderImport } from '../utils/orderExclusion';
 import type { TraySyncOrderReport } from '../types/syncReport';
 import { prisma } from '../lib/prisma';
 
@@ -260,21 +257,11 @@ export const importOrdersForCompany = async (companyId: string, orders: any[]) =
 
     try {
       const status = mapStatus(String(orderData.status || 'PENDING'));
-      const normalizedChannelFreight = normalizeExcludedPlatformFreight(
-        orderData?.freightType,
-        company?.name,
-      );
-      const resolvedStatus = normalizedChannelFreight
-        ? OrderStatus.CHANNEL_LOGISTICS
-        : status;
       const orderPayload = buildOrderData(
-        {
-          ...orderData,
-          freightType: normalizedChannelFreight || orderData?.freightType,
-        },
-        resolvedStatus,
+        orderData,
+        status,
       );
-      const trackingEventsData = buildTrackingEventsData(orderData, resolvedStatus);
+      const trackingEventsData = buildTrackingEventsData(orderData, status);
       const existing = existingMap.get(orderNumber);
 
       if (existing) {

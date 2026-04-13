@@ -2181,7 +2181,10 @@ export const AdminPanel: React.FC = () => {
 
                 <div className="space-y-3">
                   {integrationCarrierExceptions.map((carrierName, index) => (
-                    <div key={`${index}-${carrierName}`} className="flex flex-col gap-3 sm:flex-row">
+                    <div
+                      key={`carrier-exception-${index}`}
+                      className="flex flex-col gap-3 sm:flex-row"
+                    >
                       <input
                         type="text"
                         value={carrierName}
@@ -2417,7 +2420,10 @@ export const AdminPanel: React.FC = () => {
 
               <div className="mt-4 space-y-3">
                 {integrationCarrierExceptions.map((carrierName, index) => (
-                  <div key={`${index}-${carrierName}`} className="flex flex-col gap-3 sm:flex-row">
+                  <div
+                    key={`carrier-exception-${index}`}
+                    className="flex flex-col gap-3 sm:flex-row"
+                  >
                     <input
                       type="text"
                       value={carrierName}

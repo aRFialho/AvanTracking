@@ -212,8 +212,7 @@ const isXmlTrackingKey = (value: unknown) => {
   return normalized.length >= 20 && /[A-Z]/.test(normalized) && /\d/.test(normalized);
 };
 
-const shouldExcludeOrderFromPlatform = (order: any) =>
-  order.status === OrderStatus.CHANNEL_LOGISTICS;
+const shouldExcludeOrderFromPlatform = (_order: any) => false;
 
 const buildSswTrackingUrl = (identifier: string, cnpj?: string | null) =>
   cnpj

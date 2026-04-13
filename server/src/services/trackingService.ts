@@ -4,7 +4,6 @@ import type {
   SyncReportSnapshot,
   TrackingSyncReportPayload,
 } from '../types/syncReport';
-import { normalizeExcludedPlatformFreight } from '../utils/orderExclusion';
 import { isDatabaseUnavailableError, toUserFacingDatabaseErrorMessage } from '../utils/prismaError';
 import { correiosTrackingService } from './correiosTrackingService';
 import { matchSswTrackingToOrder, sswTrackingService } from './sswTrackingService';
@@ -735,47 +734,6 @@ export class TrackingService {
         };
       }
 
-      const excludedFreight = normalizeExcludedPlatformFreight(
-        order.freightType,
-        order.company?.name,
-      );
-      const isChannelManaged = Boolean(excludedFreight);
-
-      if (isChannelManaged) {
-        if (order.status !== OrderStatus.CHANNEL_LOGISTICS) {
-          const syncedAt = new Date();
-          await prisma.order.update({
-            where: { id: orderId },
-            data: {
-              freightType: excludedFreight,
-              status: OrderStatus.CHANNEL_LOGISTICS,
-              lastApiSync: syncedAt,
-            },
-          });
-
-          return {
-            success: true,
-            message: 'LogÃƒÂ­stica gerenciada pelo canal',
-            change: {
-              ...baseChange,
-              freightType: excludedFreight,
-              currentStatus: OrderStatus.CHANNEL_LOGISTICS,
-              lastApiSync: syncedAt.toISOString(),
-              changed:
-                String(order.status) !== String(OrderStatus.CHANNEL_LOGISTICS),
-            },
-          };
-        }
-
-        return {
-          success: true,
-          message: 'LogÃƒÂ­stica gerenciada pelo canal',
-          change: {
-            ...baseChange,
-              freightType: excludedFreight,
-          },
-        };
-      }
 
       const shouldUseCorreiosProvider = correiosTrackingService.shouldUseForCarrier(
         order.freightType,

@@ -1,7 +1,6 @@
 import axios, { AxiosInstance } from 'axios';
 import { trayAuthService } from './trayAuthService';
 import { trayRateLimiter } from './rateLimiter';
-import { normalizeExcludedPlatformFreight } from '../utils/orderExclusion';
 
 interface TrayPaging {
   total: number;
@@ -605,11 +604,6 @@ export class TrayApiService {
   ): any {
     const customer = trayOrder.Customer || {};
     const mainAddress = customer.CustomerAddresses?.[0]?.CustomerAddress || {};
-    const normalizedChannelFreight = normalizeExcludedPlatformFreight(
-      trayOrder.shipment,
-      options?.companyName,
-    );
-
     const statusMap: Record<string, string> = {
       'PEDIDO CADASTRADO': 'PENDING',
       'A ENVIAR': 'PENDING',
@@ -625,8 +619,7 @@ export class TrayApiService {
     };
 
     const trayStatus = (trayOrder.status || 'A ENVIAR').toUpperCase();
-    const mappedStatus =
-      normalizedChannelFreight ? 'CHANNEL_LOGISTICS' : statusMap[trayStatus] || 'PENDING';
+    const mappedStatus = statusMap[trayStatus] || 'PENDING';
     const salesChannel = 'Tray - ' + (trayOrder.point_sale || 'LOJA VIRTUAL');
     const orderInvoice =
       trayOrder.OrderInvoice?.[0]?.OrderInvoice ||
@@ -651,7 +644,7 @@ export class TrayApiService {
       phone: customer.phone || null,
       mobile: customer.cellphone || null,
       salesChannel,
-      freightType: normalizedChannelFreight || trayOrder.shipment || 'Nao informado',
+      freightType: trayOrder.shipment || 'Nao informado',
       freightValue: parseFloat(trayOrder.shipment_value || '0'),
       originalQuotedFreightValue:
         originalCheckoutQuote.originalQuotedFreightValue,

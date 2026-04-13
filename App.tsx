@@ -893,7 +893,6 @@ const MainApp: React.FC = () => {
 
     const processedOrders = newOrders.filter((order) => {
       if (order.status === OrderStatus.CANCELED) return false;
-      if (order.status === OrderStatus.CHANNEL_LOGISTICS) return false;
       return true;
     });
 
@@ -901,8 +900,7 @@ const MainApp: React.FC = () => {
       showToast({
         tone: "warning",
         title: "Importacao de pedidos",
-        message:
-          "Nenhum pedido valido para importar apos os filtros (Cancelados e Logistica do Canal ignorados).",
+        message: "Nenhum pedido valido para importar apos os filtros.",
       });
       return;
     }

@@ -5,40 +5,6 @@ const normalizeFreightText = (freightType: string | null | undefined) =>
     .trim()
     .toLowerCase();
 
-const DROSSI_CHANNEL_LOGISTICS_COMPANY = 'drossi interiores';
-
-const CHANNEL_MANAGED_FREIGHT_ALIASES: Array<{
-  match: (normalized: string) => boolean;
-  label: string;
-}> = [
-  {
-    match: (normalized) =>
-      [
-        'coletasme2',
-        'encomenda normal',
-        'normal ao endereco',
-        'padrao ao endereco',
-      ].includes(normalized) || normalized.includes('priorit'),
-    label: 'ColetasME2',
-  },
-  {
-    match: (normalized) =>
-      ['shopee xpress', 'retirada pelo comprador'].includes(normalized),
-    label: 'Shopee Xpress',
-  },
-  {
-    match: (normalized) =>
-      normalized.includes('correios') ||
-      normalized.includes('sedex') ||
-      normalized === 'pac' ||
-      normalized.startsWith('pac ') ||
-      normalized.endsWith(' pac') ||
-      normalized.includes(' pac ') ||
-      normalized.includes('pac tray'),
-    label: 'Correios',
-  },
-];
-
 const DEFAULT_IMPORT_EXCEPTION_ALIASES = [
   'retirada normal na agencia',
   'retirada na agencia',
@@ -58,27 +24,12 @@ export const normalizeCarrierExceptionList = (value: unknown) => {
 
 export const shouldApplyChannelLogisticsRules = (
   companyName: string | null | undefined,
-) => normalizeFreightText(companyName) === DROSSI_CHANNEL_LOGISTICS_COMPANY;
+) => false;
 
 export const normalizeExcludedPlatformFreight = (
   freightType: string | null | undefined,
   companyName?: string | null,
-) => {
-  if (!shouldApplyChannelLogisticsRules(companyName)) {
-    return null;
-  }
-
-  const normalized = normalizeFreightText(freightType);
-  if (!normalized) return null;
-
-  for (const alias of CHANNEL_MANAGED_FREIGHT_ALIASES) {
-    if (alias.match(normalized)) {
-      return alias.label;
-    }
-  }
-
-  return null;
-};
+) => null;
 
 export const shouldSkipPlatformOrderImport = ({
   freightType,
@@ -101,4 +52,9 @@ export const shouldSkipPlatformOrderImport = ({
 export const isExcludedPlatformFreight = (
   freightType: string | null | undefined,
   companyName?: string | null,
-) => Boolean(normalizeExcludedPlatformFreight(freightType, companyName));
+) => false;
+
+export const isStoredChannelManagedFreight = (
+  freightType: string | null | undefined,
+  companyName?: string | null,
+) => false;
