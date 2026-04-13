@@ -59,6 +59,9 @@ const resolveModifiedDate = (days: number) => {
   return modified.toISOString().slice(0, 10);
 };
 
+const isBlankIdentifier = (value: string | null | undefined) =>
+  typeof value !== 'string' || value.trim().length === 0;
+
 export class TraySyncService {
   async executeSync(
     companyId: string,
@@ -123,13 +126,30 @@ export class TraySyncService {
     const modified = resolveModifiedDate(days);
     const trayApi = new TrayApiService(companyId);
     const freightService = new TrayFreightService(companyId);
+    const storedOrders = await prisma.order.findMany({
+      where: { companyId },
+      select: {
+        orderNumber: true,
+        invoiceNumber: true,
+        trackingCode: true,
+      },
+    });
     const existingOrderNumbers = new Set(
-      (
-        await prisma.order.findMany({
-          where: { companyId },
-          select: { orderNumber: true },
-        })
-      ).map((order) => String(order.orderNumber)),
+      storedOrders.map((order) => String(order.orderNumber)),
+    );
+    const pendingIdentifierOrderNumbers = new Set(
+      storedOrders
+        .filter(
+          (order) =>
+            isBlankIdentifier(order.invoiceNumber) &&
+            isBlankIdentifier(order.trackingCode),
+        )
+        .map((order) => String(order.orderNumber)),
+    );
+    const skipOrderNumbers = new Set(
+      storedOrders
+        .map((order) => String(order.orderNumber))
+        .filter((orderNumber) => !pendingIdentifierOrderNumbers.has(orderNumber)),
     );
     const aggregateResults = {
       created: 0,
@@ -140,12 +160,18 @@ export class TraySyncService {
       createdOrders: [] as TraySyncOrderReport[],
       updatedOrders: [] as TraySyncOrderReport[],
     };
-    let importedOrdersCount = 0;
+    let processedOrdersCount = 0;
+    let revisitedOrdersCount = 0;
 
     hooks?.onStart?.({ total: statusesToSync.length });
     hooks?.onLog?.(
       `Sincronizacao Tray iniciada com janela de ${days} dias e ${statusesToSync.length} status.`,
     );
+    if (pendingIdentifierOrderNumbers.size > 0) {
+      hooks?.onLog?.(
+        `${pendingIdentifierOrderNumbers.size} pedido(s) existente(s) sem NF e sem codigo de envio serao revisitados na Tray.`,
+      );
+    }
 
     for (let index = 0; index < statusesToSync.length; index += 1) {
       const trayStatus = statusesToSync[index];
@@ -160,21 +186,27 @@ export class TraySyncService {
         {
           status: trayStatus,
           modified,
-          skipOrderNumbers: existingOrderNumbers,
+          skipOrderNumbers,
         },
         {
           onLog: hooks?.onLog,
           onOrdersBatch: async (batchOrders) => {
-            const freshOrders = batchOrders.filter((order) => {
+            const ordersToProcess = batchOrders.filter((order) => {
               const orderNumber = String(order.id);
-              return !existingOrderNumbers.has(orderNumber);
+              return (
+                !existingOrderNumbers.has(orderNumber) ||
+                pendingIdentifierOrderNumbers.has(orderNumber)
+              );
             });
 
-            if (freshOrders.length === 0) {
+            if (ordersToProcess.length === 0) {
               return;
             }
 
-            const mappedOrders = freshOrders.map((order) =>
+            const revisitedOrders = ordersToProcess.filter((order) =>
+              pendingIdentifierOrderNumbers.has(String(order.id)),
+            );
+            const mappedOrders = ordersToProcess.map((order) =>
               trayApi.mapTrayOrderToSystem(order, {
                 companyName: company?.name,
               }),
@@ -193,7 +225,8 @@ export class TraySyncService {
             aggregateResults.updatedOrders.push(
               ...importResult.results.updatedOrders,
             );
-            importedOrdersCount += freshOrders.length;
+            processedOrdersCount += ordersToProcess.length;
+            revisitedOrdersCount += revisitedOrders.length;
 
             const affectedOrderIds = [
               ...importResult.results.createdOrders,
@@ -254,12 +287,15 @@ export class TraySyncService {
               );
             }
 
-            for (const order of freshOrders) {
-              existingOrderNumbers.add(String(order.id));
+            for (const order of ordersToProcess) {
+              const orderNumber = String(order.id);
+              existingOrderNumbers.add(orderNumber);
+              pendingIdentifierOrderNumbers.delete(orderNumber);
+              skipOrderNumbers.add(orderNumber);
             }
 
             hooks?.onLog?.(
-              `Lote importado no banco: ${importResult.results.created} criado(s), ${importResult.results.updated} atualizado(s).`,
+              `Lote importado no banco: ${importResult.results.created} criado(s), ${importResult.results.updated} atualizado(s), ${revisitedOrders.length} revisitado(s) por falta de NF/codigo.`,
             );
           },
         },
@@ -272,15 +308,18 @@ export class TraySyncService {
         imported: importedTrayOrdersCount,
       });
       hooks?.onLog?.(
-        `Status "${trayStatus}" finalizado com ${importedTrayOrdersCount} pedido(s) novo(s).`,
+        `Status "${trayStatus}" finalizado com ${importedTrayOrdersCount} pedido(s) consultado(s) na Tray.`,
       );
     }
 
-    if (importedOrdersCount === 0) {
-      hooks?.onLog?.('Nenhum pedido novo encontrado na Tray para importacao.');
+    if (processedOrdersCount === 0) {
+      hooks?.onLog?.(
+        'Nenhum pedido novo ou incompleto encontrado na Tray para importacao.',
+      );
       return {
         success: true,
-        message: 'Nenhum pedido novo encontrado na Tray com os filtros selecionados.',
+        message:
+          'Nenhum pedido novo ou sem NF/codigo de envio encontrado na Tray com os filtros selecionados.',
         storeId: auth.storeId,
         statuses: statusesToSync,
         modified,
@@ -297,7 +336,8 @@ export class TraySyncService {
     }
     const importMessage =
       `Importacao concluida: ${aggregateResults.created} criados, ${aggregateResults.updated} atualizados, ` +
-      `${aggregateResults.skipped} ignorados, ${aggregateResults.totalTrackingEvents} evento(s) iniciais de rastreio.`;
+      `${aggregateResults.skipped} ignorados, ${aggregateResults.totalTrackingEvents} evento(s) iniciais de rastreio, ` +
+      `${revisitedOrdersCount} pedido(s) revisitado(s) por falta de NF/codigo.`;
     hooks?.onLog?.(importMessage);
 
     return {

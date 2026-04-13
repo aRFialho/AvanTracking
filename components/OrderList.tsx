@@ -498,20 +498,15 @@ export const OrderList: React.FC<OrderListProps> = ({
     [validOrders],
   );
 
-  const getMultiSelectLabel = (
+  const getMultiSelectButtonLabel = (
+    baseLabel: string,
     selectedValues: string[],
-    allLabel: string,
-    selectedLabel: string,
   ) => {
     if (selectedValues.length === 0) {
-      return allLabel;
+      return baseLabel;
     }
 
-    if (selectedValues.length === 1) {
-      return selectedValues[0];
-    }
-
-    return `${selectedValues.length} ${selectedLabel}`;
+    return `${baseLabel} (${selectedValues.length})`;
   };
 
   const toggleStatusFilter = (status: string) => {
@@ -1679,10 +1674,9 @@ export const OrderList: React.FC<OrderListProps> = ({
                 className="w-full flex items-center justify-between gap-3 p-2 border border-slate-200 dark:border-white/10 rounded-lg text-sm bg-white dark:bg-dark-card dark:text-white focus:border-accent outline-none"
               >
                 <span className="truncate">
-                  {getMultiSelectLabel(
+                  {getMultiSelectButtonLabel(
+                    "Transportadora",
                     selectedCarrierFilters,
-                    "Todas",
-                    "transportadoras",
                   )}
                 </span>
                 <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
@@ -1737,10 +1731,9 @@ export const OrderList: React.FC<OrderListProps> = ({
                 className="w-full flex items-center justify-between gap-3 p-2 border border-slate-200 dark:border-white/10 rounded-lg text-sm bg-white dark:bg-dark-card dark:text-white focus:border-accent outline-none"
               >
                 <span className="truncate">
-                  {getMultiSelectLabel(
+                  {getMultiSelectButtonLabel(
+                    "Marketplace",
                     selectedMarketplaceFilters,
-                    "Todos",
-                    "marketplaces",
                   )}
                 </span>
                 <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
@@ -1795,16 +1788,7 @@ export const OrderList: React.FC<OrderListProps> = ({
                 className="w-full flex items-center justify-between gap-3 p-2 border border-slate-200 dark:border-white/10 rounded-lg text-sm bg-white dark:bg-dark-card dark:text-white focus:border-accent outline-none"
               >
                 <span className="truncate">
-                  {getMultiSelectLabel(
-                    selectedStatusFilters.map(
-                      (status) =>
-                        status === DELAYED_STATUS_FILTER
-                          ? "Atrasado"
-                          : STATUS_LABELS[status] || status,
-                    ),
-                    "Todos",
-                    "status",
-                  )}
+                  {getMultiSelectButtonLabel("Status", selectedStatusFilters)}
                 </span>
                 <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
               </button>
