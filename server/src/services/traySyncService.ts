@@ -63,6 +63,8 @@ const resolveModifiedDate = (days: number) => {
 const isBlankIdentifier = (value: string | null | undefined) =>
   typeof value !== 'string' || value.trim().length === 0;
 
+const DIRECT_REVISIT_BATCH_SIZE = 20;
+
 export class TraySyncService {
   async executeSync(
     companyId: string,
@@ -358,6 +360,77 @@ export class TraySyncService {
       hooks?.onLog?.(
         `Status "${trayStatus}" finalizado com ${importedTrayOrdersCount} pedido(s) consultado(s) na Tray.`,
       );
+    }
+
+    if (pendingIdentifierOrderNumbers.size > 0) {
+      const remainingOrderNumbers = Array.from(pendingIdentifierOrderNumbers);
+      hooks?.onLog?.(
+        `Revisita direta iniciada para ${remainingOrderNumbers.length} pedido(s) sem NF e sem codigo de envio, independente da janela automatica.`,
+      );
+
+      for (
+        let batchStart = 0;
+        batchStart < remainingOrderNumbers.length;
+        batchStart += DIRECT_REVISIT_BATCH_SIZE
+      ) {
+        const batchOrderNumbers = remainingOrderNumbers.slice(
+          batchStart,
+          batchStart + DIRECT_REVISIT_BATCH_SIZE,
+        );
+        const completeOrders = (
+          await Promise.all(
+            batchOrderNumbers.map(async (orderNumber) => {
+              try {
+                const completeData = await trayApi.getOrderComplete(orderNumber);
+                return completeData?.Order || null;
+              } catch (error) {
+                const message =
+                  error instanceof Error ? error.message : 'erro desconhecido';
+                aggregateResults.errors.push(
+                  `Pedido ${orderNumber}: falha na revisita direta da Tray (${message})`,
+                );
+                hooks?.onLog?.(
+                  `Falha na revisita direta do pedido ${orderNumber}: ${message}`,
+                );
+                return null;
+              }
+            }),
+          )
+        ).filter((order): order is any => Boolean(order));
+
+        if (completeOrders.length === 0) {
+          continue;
+        }
+
+        const mappedOrders = completeOrders.map((order) =>
+          trayApi.mapTrayOrderToSystem(order, {
+            companyName: company?.name,
+          }),
+        );
+        const importResult = await importOrdersForCompany(companyId, mappedOrders);
+
+        aggregateResults.created += importResult.results.created;
+        aggregateResults.updated += importResult.results.updated;
+        aggregateResults.skipped += importResult.results.skipped;
+        aggregateResults.totalTrackingEvents +=
+          importResult.results.totalTrackingEvents;
+        aggregateResults.errors.push(...importResult.results.errors);
+        aggregateResults.createdOrders.push(...importResult.results.createdOrders);
+        aggregateResults.updatedOrders.push(...importResult.results.updatedOrders);
+        processedOrdersCount += completeOrders.length;
+        revisitedOrdersCount += completeOrders.length;
+
+        for (const order of completeOrders) {
+          const orderNumber = String(order.id);
+          pendingIdentifierOrderNumbers.delete(orderNumber);
+          existingOrderNumbers.add(orderNumber);
+          skipOrderNumbers.add(orderNumber);
+        }
+
+        hooks?.onLog?.(
+          `Revisita direta importada: ${importResult.results.created} criado(s), ${importResult.results.updated} atualizado(s) em ${completeOrders.length} pedido(s).`,
+        );
+      }
     }
 
     if (processedOrdersCount === 0) {
