@@ -5,6 +5,7 @@ import { OrderStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { TrackingService } from './trackingService';
 import { importOrdersForCompany } from './orderImportService';
+import { notificationService } from './notificationService';
 
 const CLOSED_STATUSES: OrderStatus[] = [
   OrderStatus.DELIVERED,
@@ -71,6 +72,7 @@ const OPTION_MATCH_STOPWORDS = new Set([
 
 type MatchedFilter = {
   status?: OrderStatus;
+  statusSummary?: boolean;
   delayedKind?: 'carrier' | 'platform';
   noMovementDays?: number;
   carrierName?: string | null;
@@ -85,6 +87,12 @@ type MatchedFilter = {
 type StructuredResult = {
   handled: boolean;
   text?: string;
+};
+
+type ConversationMessage = {
+  role?: string;
+  text?: string;
+  content?: string;
 };
 
 const normalizeText = (value: unknown) =>
@@ -228,6 +236,15 @@ const hasFilterLikeIntent = (normalized: string) =>
     normalized.includes('pela ') ||
     normalized.includes('da ') ||
     normalized.includes('do '));
+
+const hasStatusSummaryHint = (normalized: string) =>
+  normalized.includes('por status') ||
+  normalized.includes('status geral') ||
+  normalized.includes('resumo por status') ||
+  (normalized.includes('status') &&
+    (normalized.includes('pedido') ||
+      normalized.includes('pedidos') ||
+      normalized.includes('relatorio')));
 
 const escapeHtml = (value: string) =>
   value
@@ -662,7 +679,118 @@ const isStructuredIntent = (text: string) => {
     'lista de pedidos',
     'listar pedidos',
     'mostrar pedidos',
+    'pedidos monitorados',
+    'pedidos especificos',
+    'pedido especifico',
+    'me avise sobre',
+    'inclua os pedidos',
+    'inclua as nfs',
+    'inclua as nf',
+    'adicione os pedidos',
+    'monitorar pedido',
     ].some((term) => normalized.includes(term)) || hasFilterLikeIntent(normalized)
+  );
+};
+
+const MONITORED_IDENTIFIER_STOPWORDS = new Set([
+  'inclua',
+  'incluir',
+  'incluido',
+  'incluidos',
+  'incluidas',
+  'adicione',
+  'adicionar',
+  'adicionados',
+  'adicionadas',
+  'pedido',
+  'pedidos',
+  'nf',
+  'nfs',
+  'nota',
+  'nota fiscal',
+  'notas fiscais',
+  'lista',
+  'monitorada',
+  'monitorado',
+  'monitorados',
+  'monitorar',
+  'me',
+  'avise',
+  'sobre',
+  'a',
+  'ao',
+  'aos',
+  'na',
+  'no',
+  'de',
+  'do',
+  'da',
+  'dos',
+  'das',
+  'e',
+  'ou',
+  'com',
+  'por',
+  'favor',
+  'para',
+  'mim',
+]);
+
+const isMonitoredOrderIncludeIntent = (text: string) => {
+  const normalized = normalizeText(text);
+  const hasActionVerb =
+    normalized.includes('inclua') ||
+    normalized.includes('incluir') ||
+    normalized.includes('adicione') ||
+    normalized.includes('adicionar') ||
+    normalized.includes('me avise') ||
+    normalized.includes('monitorar') ||
+    normalized.includes('monitore');
+  const hasTargetContext =
+    normalized.includes('pedido monitorado') ||
+    normalized.includes('pedidos monitorados') ||
+    normalized.includes('pedido especifico') ||
+    normalized.includes('pedidos especificos') ||
+    normalized.includes('lista de pedidos') ||
+    normalized.includes('lista monitorada') ||
+    normalized.includes('nf') ||
+    normalized.includes('nota fiscal') ||
+    normalized.includes('pedido');
+
+  return hasActionVerb && hasTargetContext;
+};
+
+const extractMonitoredIdentifiers = (text: string) => {
+  const rawText = String(text || '');
+  const matches = rawText.match(/[A-Za-z]{2}\d{9}[A-Za-z]{2}|[A-Za-z0-9./-]{2,}/g) || [];
+
+  return Array.from(
+    new Set(
+      matches
+        .map((item) => stripPoliteTail(item))
+        .map((item) => item.replace(/^[#:\-.,\s]+|[#:\-.,\s]+$/g, '').trim())
+        .filter(Boolean)
+        .filter((item) => {
+          const normalizedItem = normalizeText(item);
+          if (!normalizedItem || MONITORED_IDENTIFIER_STOPWORDS.has(normalizedItem)) {
+            return false;
+          }
+
+          if (item.length < 2) {
+            return false;
+          }
+
+          if (/\d/.test(item)) {
+            return true;
+          }
+
+          if (/^[A-Za-z]{4,}$/.test(item)) {
+            return true;
+          }
+
+          return false;
+        }),
+    ),
   );
 };
 
@@ -865,7 +993,9 @@ const buildWhereClause = (companyId: string, filter: MatchedFilter) => {
 const buildFilterLabel = (filter: MatchedFilter) => {
   let baseLabel = 'pedidos';
 
-  if (filter.delayedKind === 'platform') {
+  if (filter.statusSummary) {
+    baseLabel = 'pedidos por status';
+  } else if (filter.delayedKind === 'platform') {
     baseLabel = 'pedidos em atraso da plataforma';
   } else if (filter.delayedKind === 'carrier') {
     baseLabel = 'pedidos atrasados pela transportadora';
@@ -1037,6 +1167,81 @@ const buildDelayClarificationPrompt = () =>
     '- pedidos atrasados da plataforma',
     '- pedidos atrasados da transportadora',
   ].join('\n');
+
+const getConversationMessageText = (message: ConversationMessage | null | undefined) =>
+  String(message?.text || message?.content || '').trim();
+
+const getPreviousUserMessageText = (
+  messages: ConversationMessage[] | undefined,
+  currentText: string,
+) => {
+  const userMessages = Array.isArray(messages)
+    ? messages.filter((message) => String(message?.role || '') === 'user')
+    : [];
+
+  if (userMessages.length === 0) {
+    return '';
+  }
+
+  const lastUserText = getConversationMessageText(userMessages[userMessages.length - 1]);
+  if (normalizeText(lastUserText) === normalizeText(currentText)) {
+    return getConversationMessageText(userMessages[userMessages.length - 2]);
+  }
+
+  return lastUserText;
+};
+
+const buildContextAwareStructuredInput = (
+  text: string,
+  messages: ConversationMessage[] | undefined,
+) => {
+  const trimmedText = String(text || '').trim();
+  if (!trimmedText) {
+    return trimmedText;
+  }
+
+  const normalizedCurrent = normalizeText(trimmedText);
+  const assistantMessages = Array.isArray(messages)
+    ? messages.filter((message) => {
+        const role = String(message?.role || '');
+        return role === 'model' || role === 'assistant';
+      })
+    : [];
+  const lastAssistantText = normalizeText(
+    getConversationMessageText(assistantMessages[assistantMessages.length - 1]),
+  );
+  const previousUserText = getPreviousUserMessageText(messages, trimmedText);
+  const normalizedPreviousUser = normalizeText(previousUserText);
+
+  if (
+    (lastAssistantText.includes('foco do relatorio') ||
+      lastAssistantText.includes('quer um relatorio')) &&
+    !normalizedCurrent.includes('relatorio')
+  ) {
+    return `relatorio ${trimmedText}`;
+  }
+
+  if (
+    lastAssistantText.includes('tipo de atraso') &&
+    !normalizedCurrent.includes('pedidos atrasados')
+  ) {
+    return `pedidos atrasados ${trimmedText}`;
+  }
+
+  if (
+    normalizedPreviousUser.includes('relatorio') &&
+    !normalizedCurrent.includes('relatorio') &&
+    (normalizedCurrent.includes('status') ||
+      normalizedCurrent.includes('plataforma') ||
+      normalizedCurrent.includes('transportadora') ||
+      normalizedCurrent.includes('marketplace') ||
+      normalizedCurrent.includes('sem movimentacao'))
+  ) {
+    return `${previousUserText} ${trimmedText}`;
+  }
+
+  return trimmedText;
+};
 
 class ChatAssistantService {
   private trackingService = new TrackingService();
@@ -1409,9 +1614,14 @@ class ChatAssistantService {
       }
 
       const match = matches[0];
-      await this.trackingService
+      const syncResult = await this.trackingService
         .syncOrder(match.id, input.companyId, { forceFinalized: true })
         .catch(() => null);
+      if (syncResult?.change) {
+        await notificationService
+          .registerMonitoredOrderChanges(input.companyId, [syncResult.change])
+          .catch(() => null);
+      }
       const refreshedOrder = await this.fetchTrackingOrderById(match.id);
 
       return {
@@ -1446,9 +1656,14 @@ class ChatAssistantService {
     });
 
     if (localMatches[0]?.id) {
-      await this.trackingService
+      const syncResult = await this.trackingService
         .syncOrder(localMatches[0].id, input.companyId, { forceFinalized: true })
         .catch(() => null);
+      if (syncResult?.change) {
+        await notificationService
+          .registerMonitoredOrderChanges(input.companyId, [syncResult.change])
+          .catch(() => null);
+      }
       const refreshedOrder = await this.fetchTrackingOrderById(localMatches[0].id);
 
       return {
@@ -1516,7 +1731,17 @@ class ChatAssistantService {
   }
 
   private async buildCarrierStatusSummary(companyId: string, filter: MatchedFilter) {
-    if (!filter.carrierName) {
+    if (
+      !filter.carrierName &&
+      !filter.salesChannel &&
+      !filter.statusSummary &&
+      !(
+        !filter.status &&
+        !filter.delayedKind &&
+        !filter.noMovementDays &&
+        !filter.period
+      )
+    ) {
       return null;
     }
 
@@ -1552,8 +1777,14 @@ class ChatAssistantService {
       }),
     });
 
+    const summaryTitle = filter.carrierName
+      ? `Resumo por status da transportadora ${filter.carrierName}:`
+      : filter.salesChannel
+        ? `Resumo por status do marketplace ${filter.salesChannel}:`
+        : 'Resumo geral por status:';
+
     return [
-      `Resumo por status da transportadora ${filter.carrierName}:`,
+      summaryTitle,
       `- Atraso Transportadora: ${carrierDelayedCount}`,
       `- Atraso Plataforma: ${platformDelayedCount}`,
       ...STATUS_SUMMARY_ORDER.map(
@@ -1645,6 +1876,10 @@ class ChatAssistantService {
       }
     }
 
+    if (!filter.status && hasStatusSummaryHint(normalized)) {
+      filter.statusSummary = true;
+    }
+
     const carrierName = await this.resolveExactCarrierName(companyId, normalized);
     if (carrierName) {
       filter.carrierName = carrierName;
@@ -1664,6 +1899,7 @@ class ChatAssistantService {
     }
 
     if (
+      filter.statusSummary ||
       filter.status ||
       filter.delayedKind ||
       filter.noMovementDays ||
@@ -1673,7 +1909,12 @@ class ChatAssistantService {
       return filter;
     }
 
-    if (normalized.includes('todos os pedidos') || normalized === 'relatorio') {
+    if (
+      normalized.includes('todos os pedidos') ||
+      normalized === 'relatorio' ||
+      normalized.includes('relatorio geral') ||
+      normalized.includes('geral de pedidos')
+    ) {
       return {};
     }
 
@@ -1684,6 +1925,7 @@ class ChatAssistantService {
     companyId: string | null | undefined;
     userId?: string | null;
     text: string;
+    messages?: ConversationMessage[];
   }): Promise<StructuredResult> {
     if (!isStructuredIntent(input.text)) {
       return { handled: false };
@@ -1711,9 +1953,83 @@ class ChatAssistantService {
       };
     }
 
-    const filter = await this.resolveFilters(company.id, input.text);
+    if (isMonitoredOrderIncludeIntent(input.text)) {
+      const identifiers = extractMonitoredIdentifiers(input.text);
+      if (identifiers.length === 0) {
+        return {
+          handled: true,
+          text:
+            'Para incluir pedidos monitorados, me envie os numeros dos pedidos ou NFs. Exemplo: inclua os pedidos 123, 456 ou inclua as NFs 9981, 9982.',
+        };
+      }
+
+      const result = await notificationService.addMonitoredOrders({
+        companyId: company.id,
+        createdById: input.userId || null,
+        identifiers,
+      });
+
+      const addedLabels = result.addedOrders.map((item) => item.label);
+      const alreadyLabels = result.alreadyMonitoredOrders.map((item) => item.label);
+      const limitExceededLabels = Array.isArray(result.limitExceededOrders)
+        ? result.limitExceededOrders.map((item: any) => item.label)
+        : [];
+      const maxMonitoredOrders = Number(result.maxMonitoredOrders || 10);
+
+      if (addedLabels.length > 0) {
+        const lines = [
+          `NFS/PEDIDOS "${addedLabels.join(', ')}" INCLUIDOS A LISTA DE PEDIDOS MONITORADOS.`,
+        ];
+
+        if (alreadyLabels.length > 0) {
+          lines.push(
+            `Ja monitorados: ${alreadyLabels.join(', ')}.`,
+          );
+        }
+
+        if (result.notFoundIdentifiers.length > 0) {
+          lines.push(
+            `Nao encontrados: ${result.notFoundIdentifiers.join(', ')}.`,
+          );
+        }
+
+        if (limitExceededLabels.length > 0) {
+          lines.push(
+            `Limite de ${maxMonitoredOrders} monitorados por empresa atingido. Sem vaga para: ${limitExceededLabels.join(', ')}.`,
+          );
+        }
+
+        return {
+          handled: true,
+          text: lines.join('\n'),
+        };
+      }
+
+      if (alreadyLabels.length > 0) {
+        return {
+          handled: true,
+          text: `NFS/PEDIDOS "${alreadyLabels.join(', ')}" JA ESTAO NA LISTA DE PEDIDOS MONITORADOS.`,
+        };
+      }
+
+      return {
+        handled: true,
+        text:
+          limitExceededLabels.length > 0
+            ? `Limite de ${maxMonitoredOrders} pedidos monitorados por empresa atingido. Remova ou aguarde finalizacao de pedidos monitorados para liberar vagas.`
+            : result.notFoundIdentifiers.length > 0
+            ? `Nao encontrei esses pedidos/NFs na empresa ativa: ${result.notFoundIdentifiers.join(', ')}.`
+            : 'Nao consegui identificar pedidos/NFs validos para monitorar.',
+      };
+    }
+
+    const effectiveText = buildContextAwareStructuredInput(
+      input.text,
+      input.messages,
+    );
+    const filter = await this.resolveFilters(company.id, effectiveText);
     if (!filter) {
-      const normalizedInput = normalizeText(input.text);
+      const normalizedInput = normalizeText(effectiveText);
       const inferredCarrier = await this.resolveExactCarrierName(
         company.id,
         normalizedInput,
@@ -1734,7 +2050,7 @@ class ChatAssistantService {
 
     const filterLabel = buildFilterLabel(filter);
     const where = buildWhereClause(company.id, filter);
-    const intentKind = resolveIntentKind(input.text);
+    const intentKind = resolveIntentKind(effectiveText);
 
     const count = await prisma.order.count({ where });
 

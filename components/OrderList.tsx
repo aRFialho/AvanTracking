@@ -24,6 +24,7 @@ import {
   Loader2,
   RefreshCw,
   AlertTriangle,
+  Star,
 } from "lucide-react";
 import { clsx } from "clsx";
 import {
@@ -297,6 +298,8 @@ interface OrderListProps {
   syncJob?: SyncJobStatus | null;
   traySyncJob?: SyncJobStatus | null;
   trayIntegrationStatus?: TrayIntegrationStatus | null;
+  monitoredOrderIds?: string[];
+  onToggleMonitoredOrder?: (order: Order) => Promise<void> | void;
 }
 
 export const OrderList: React.FC<OrderListProps> = ({
@@ -310,6 +313,8 @@ export const OrderList: React.FC<OrderListProps> = ({
   syncJob,
   traySyncJob,
   trayIntegrationStatus,
+  monitoredOrderIds = [],
+  onToggleMonitoredOrder,
 }) => {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [isFetchingSingle, setIsFetchingSingle] = useState(false);
@@ -333,6 +338,7 @@ export const OrderList: React.FC<OrderListProps> = ({
   const [integrationLabel, setIntegrationLabel] = useState("Integradora");
   const [isLoadingIntegrationStatuses, setIsLoadingIntegrationStatuses] =
     useState(false);
+  const [monitoringOrderIds, setMonitoringOrderIds] = useState<string[]>([]);
   const isTrayAvailable = Boolean(trayIntegrationStatus?.authorized);
   const [isSyncing, setIsSyncing] = useState(false); // ✅ Novo state
 
@@ -466,6 +472,10 @@ export const OrderList: React.FC<OrderListProps> = ({
     () => new Set<VisibleColumnKey>(visibleColumns),
     [visibleColumns],
   );
+  const monitoredOrderIdSet = useMemo(
+    () => new Set<string>(monitoredOrderIds),
+    [monitoredOrderIds],
+  );
 
   const activeColumns = useMemo(
     () =>
@@ -479,6 +489,30 @@ export const OrderList: React.FC<OrderListProps> = ({
 
     return `${activeColumns.length * baseColumnWidth + actionColumnWidth}px`;
   }, [activeColumns.length]);
+
+  const handleMonitorToggle = async (order: Order) => {
+    if (!onToggleMonitoredOrder) return;
+
+    setMonitoringOrderIds((current) =>
+      current.includes(order.id) ? current : [...current, order.id],
+    );
+
+    try {
+      await onToggleMonitoredOrder(order);
+    } catch (error) {
+      showToast({
+        tone: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Erro ao atualizar pedido monitorado.",
+      });
+    } finally {
+      setMonitoringOrderIds((current) =>
+        current.filter((item) => item !== order.id),
+      );
+    }
+  };
 
   // Extract Lists (excluding Canceled)
   const validOrders = useMemo(
@@ -2256,9 +2290,39 @@ export const OrderList: React.FC<OrderListProps> = ({
                       )}
                     >
                       <div className="flex flex-col">
-                        <span className="bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-300 px-1.5 py-0.5 rounded text-xs w-fit mb-0.5">
-                          #{order.orderNumber}
-                        </span>
+                        <div className="mb-0.5 flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleMonitorToggle(order)}
+                            disabled={monitoringOrderIds.includes(order.id)}
+                            className={clsx(
+                              "rounded-full p-1 transition-colors",
+                              monitoredOrderIdSet.has(order.id)
+                                ? "text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-500/10"
+                                : "text-slate-300 hover:bg-slate-100 hover:text-amber-500 dark:text-slate-500 dark:hover:bg-white/10",
+                            )}
+                            title={
+                              monitoredOrderIdSet.has(order.id)
+                                ? "Remover dos pedidos monitorados"
+                                : "Adicionar aos pedidos monitorados"
+                            }
+                            aria-label={
+                              monitoredOrderIdSet.has(order.id)
+                                ? "Remover dos pedidos monitorados"
+                                : "Adicionar aos pedidos monitorados"
+                            }
+                          >
+                            <Star
+                              className={clsx(
+                                "h-3.5 w-3.5",
+                                monitoredOrderIdSet.has(order.id) ? "fill-current" : "",
+                              )}
+                            />
+                          </button>
+                          <span className="bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-300 px-1.5 py-0.5 rounded text-xs w-fit">
+                            #{order.orderNumber}
+                          </span>
+                        </div>
                         <span className="text-xs text-slate-500 dark:text-slate-400 truncate max-w-[150px]">
                           {order.customerName}
                         </span>

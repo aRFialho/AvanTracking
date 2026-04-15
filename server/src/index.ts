@@ -5,6 +5,7 @@ import userRoutes from "./routes/users";
 import companyRoutes from "./routes/companies";
 import releaseNotesRoutes from "./routes/releaseNotes";
 import supportRoutes from "./routes/support";
+import notificationRoutes from "./routes/notifications";
 import {
   startTrayAuthorization,
   showInstallPage,
@@ -64,6 +65,7 @@ app.post("/api/chat", authenticateToken, async (req, res) => {
       companyId: req.user?.companyId,
       userId: req.user?.id,
       text: input,
+      messages,
     });
 
     if (structuredResult.handled && structuredResult.text) {
@@ -212,6 +214,9 @@ app.use("/api/release-notes", authenticateToken, releaseNotesRoutes);
 
 // Support API (protegida)
 app.use("/api/support", authenticateToken, supportRoutes);
+
+// Notifications API (protegida)
+app.use("/api/notifications", authenticateToken, notificationRoutes);
 
 // Orders API (protegida)
 app.use("/api/orders", authenticateToken, orderRoutes);

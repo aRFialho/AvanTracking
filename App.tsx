@@ -18,11 +18,15 @@ import {
   SyncJobStatus,
   TraySyncFilters,
   TrayIntegrationStatus,
+  AppNotification,
 } from "./types";
 import {
   AlertCircle,
   AlertTriangle,
+  Bell,
   CheckCircle2,
+  ExternalLink,
+  FileDown,
   Info,
   LifeBuoy,
   Loader2,
@@ -319,9 +323,21 @@ const MainApp: React.FC = () => {
   const [isInitialDashboardLoading, setIsInitialDashboardLoading] = useState(true);
   const [toasts, setToasts] = useState<AppToast[]>([]);
   const [showSessionExpiredToast, setShowSessionExpiredToast] = useState(false);
+  const [generalNotifications, setGeneralNotifications] = useState<
+    AppNotification[]
+  >([]);
+  const [monitoredNotifications, setMonitoredNotifications] = useState<
+    AppNotification[]
+  >([]);
+  const [monitoredOrderIds, setMonitoredOrderIds] = useState<string[]>([]);
+  const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+  const [notificationTab, setNotificationTab] = useState<
+    "general" | "monitored"
+  >("general");
   const previousSyncStatusRef = useRef<SyncJobStatus["status"] | null>(null);
   const previousTraySyncStatusRef = useRef<SyncJobStatus["status"] | null>(null);
   const lastSyncWarningJobRef = useRef<string | null>(null);
+  const notificationPanelRef = useRef<HTMLDivElement | null>(null);
 
   const normalizeOrderRecord = useCallback((order: Order) => {
     const trackingHistory = normalizeTrackingHistory(
@@ -513,12 +529,49 @@ const MainApp: React.FC = () => {
     }
   }, [user?.companyId]);
 
+  const loadNotifications = useCallback(async () => {
+    if (!user?.companyId) {
+      setGeneralNotifications([]);
+      setMonitoredNotifications([]);
+      setMonitoredOrderIds([]);
+      return;
+    }
+
+    try {
+      const response = await fetchWithAuth("/api/notifications/feed");
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.error || `HTTP ${response.status}`);
+      }
+
+      setGeneralNotifications(
+        Array.isArray(data.general) ? (data.general as AppNotification[]) : [],
+      );
+      setMonitoredNotifications(
+        Array.isArray(data.monitored)
+          ? (data.monitored as AppNotification[])
+          : [],
+      );
+      setMonitoredOrderIds(
+        Array.isArray(data.monitoredOrderIds)
+          ? data.monitoredOrderIds
+              .map((item: unknown) => String(item || ""))
+              .filter(Boolean)
+          : [],
+      );
+    } catch (error) {
+      console.error("Erro ao carregar notificacoes:", error);
+    }
+  }, [user?.companyId]);
+
   useEffect(() => {
     if (isAuthenticated && !isLoading) {
       console.log("🔄 Usuário autenticado, carregando pedidos...");
       loadOrdersFromDatabase();
       loadSyncStatus();
       loadTraySyncStatus();
+      loadNotifications();
     }
   }, [
     isAuthenticated,
@@ -526,6 +579,7 @@ const MainApp: React.FC = () => {
     loadOrdersFromDatabase,
     loadSyncStatus,
     loadTraySyncStatus,
+    loadNotifications,
   ]);
 
   useEffect(() => {
@@ -543,6 +597,7 @@ const MainApp: React.FC = () => {
         loadOrdersFromDatabase(),
         loadSyncStatus(),
         loadTraySyncStatus(),
+        loadNotifications(),
       ]);
 
       if (!cancelled) {
@@ -561,6 +616,7 @@ const MainApp: React.FC = () => {
     loadOrdersFromDatabase,
     loadSyncStatus,
     loadTraySyncStatus,
+    loadNotifications,
   ]);
 
   useEffect(() => {
@@ -599,6 +655,16 @@ const MainApp: React.FC = () => {
   }, [isAuthenticated, isLoading, loadTraySyncStatus, traySyncJob?.status]);
 
   useEffect(() => {
+    if (!isAuthenticated || isLoading) return;
+
+    const interval = window.setInterval(() => {
+      loadNotifications();
+    }, 30000);
+
+    return () => window.clearInterval(interval);
+  }, [isAuthenticated, isLoading, loadNotifications]);
+
+  useEffect(() => {
     if (!isAuthenticated || isLoading || traySyncJob?.status !== "running") {
       return;
     }
@@ -625,6 +691,7 @@ const MainApp: React.FC = () => {
       currentStatus !== "running"
     ) {
       loadOrdersFromDatabase();
+      loadNotifications();
       setLastSyncTime(
         syncJob?.finishedAt ? new Date(syncJob.finishedAt) : new Date(),
       );
@@ -645,7 +712,7 @@ const MainApp: React.FC = () => {
     }
 
     previousSyncStatusRef.current = currentStatus;
-  }, [loadOrdersFromDatabase, syncJob]);
+  }, [loadNotifications, loadOrdersFromDatabase, syncJob]);
 
   useEffect(() => {
     const previousStatus = previousTraySyncStatusRef.current;
@@ -657,13 +724,14 @@ const MainApp: React.FC = () => {
       currentStatus !== "running"
     ) {
       loadOrdersFromDatabase();
+      loadNotifications();
       setLastSyncTime(
         traySyncJob?.finishedAt ? new Date(traySyncJob.finishedAt) : new Date(),
       );
     }
 
     previousTraySyncStatusRef.current = currentStatus;
-  }, [loadOrdersFromDatabase, traySyncJob]);
+  }, [loadNotifications, loadOrdersFromDatabase, traySyncJob]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -748,6 +816,27 @@ const MainApp: React.FC = () => {
 
     return () => window.clearTimeout(timer);
   }, [showSessionExpiredToast]);
+
+  useEffect(() => {
+    if (!isNotificationOpen) {
+      return;
+    }
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        notificationPanelRef.current &&
+        !notificationPanelRef.current.contains(event.target as Node)
+      ) {
+        setIsNotificationOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isNotificationOpen]);
 
   const handleSync = useCallback(async () => {
     try {
@@ -973,6 +1062,57 @@ const MainApp: React.FC = () => {
     }
   };
 
+  const handleToggleMonitoredOrder = useCallback(
+    async (order: Order) => {
+      const isAlreadyMonitored = monitoredOrderIds.includes(order.id);
+      const endpoint = `/api/notifications/monitored-orders/${order.id}`;
+
+      const response = await fetchWithAuth(
+        isAlreadyMonitored ? endpoint : "/api/notifications/monitored-orders",
+        {
+          method: isAlreadyMonitored ? "DELETE" : "POST",
+          headers: { "Content-Type": "application/json" },
+          ...(isAlreadyMonitored
+            ? {}
+            : {
+                body: JSON.stringify({ orderIds: [order.id] }),
+              }),
+        },
+      );
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error || `HTTP ${response.status}`);
+      }
+
+      if (Array.isArray(data.monitoredOrderIds)) {
+        setMonitoredOrderIds(
+          data.monitoredOrderIds
+            .map((item: unknown) => String(item || ""))
+            .filter(Boolean),
+        );
+      } else if (isAlreadyMonitored) {
+        setMonitoredOrderIds((current) =>
+          current.filter((item) => item !== order.id),
+        );
+      } else {
+        setMonitoredOrderIds((current) =>
+          current.includes(order.id) ? current : [...current, order.id],
+        );
+      }
+
+      await loadNotifications();
+
+      showToast({
+        tone: "success",
+        message: isAlreadyMonitored
+          ? `Pedido ${order.orderNumber} removido dos monitorados.`
+          : `Pedido ${order.orderNumber} incluido nos monitorados.`,
+      });
+    },
+    [loadNotifications, monitoredOrderIds],
+  );
+
   const renderContent = () => {
     switch (currentView) {
       case "dashboard":
@@ -998,6 +1138,8 @@ const MainApp: React.FC = () => {
             syncJob={syncJob}
             traySyncJob={traySyncJob}
             trayIntegrationStatus={trayIntegrationStatus}
+            monitoredOrderIds={monitoredOrderIds}
+            onToggleMonitoredOrder={handleToggleMonitoredOrder}
           />
         );
       case "no-movement":
@@ -1011,6 +1153,8 @@ const MainApp: React.FC = () => {
             syncJob={syncJob}
             traySyncJob={traySyncJob}
             trayIntegrationStatus={trayIntegrationStatus}
+            monitoredOrderIds={monitoredOrderIds}
+            onToggleMonitoredOrder={handleToggleMonitoredOrder}
           />
         );
       case "upload":
@@ -1057,6 +1201,11 @@ const MainApp: React.FC = () => {
   if (isInitialDashboardLoading) {
     return <InitialDataLoader />;
   }
+
+  const notificationCount =
+    generalNotifications.length + monitoredNotifications.length;
+  const activeNotifications =
+    notificationTab === "general" ? generalNotifications : monitoredNotifications;
 
   return (
     <>
@@ -1108,6 +1257,115 @@ const MainApp: React.FC = () => {
               <LifeBuoy className="h-4 w-4" />
               Suporte
             </button>
+            <div className="relative" ref={notificationPanelRef}>
+              <button
+                type="button"
+                onClick={() => setIsNotificationOpen((current) => !current)}
+                className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-800 dark:border-white/10 dark:bg-white/5 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
+                aria-label="Abrir central de notificacoes"
+              >
+                <Bell className="h-4 w-4" />
+                {notificationCount > 0 && (
+                  <span className="absolute -right-1 -top-1 inline-flex min-w-[18px] items-center justify-center rounded-full bg-rose-500 px-1.5 text-[10px] font-bold leading-4 text-white">
+                    {notificationCount > 99 ? "99+" : notificationCount}
+                  </span>
+                )}
+              </button>
+
+              {isNotificationOpen && (
+                <div className="absolute right-0 top-12 z-50 w-[360px] max-w-[calc(100vw-32px)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_20px_60px_rgba(15,23,42,0.18)] dark:border-white/10 dark:bg-[#11131f]">
+                  <div className="border-b border-slate-200 px-4 py-3 dark:border-white/10">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+                      Notificacoes
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 border-b border-slate-200 p-2 dark:border-white/10">
+                    <button
+                      type="button"
+                      onClick={() => setNotificationTab("general")}
+                      className={`rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${
+                        notificationTab === "general"
+                          ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900"
+                          : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-white/10"
+                      }`}
+                    >
+                      Geral
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNotificationTab("monitored")}
+                      className={`rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${
+                        notificationTab === "monitored"
+                          ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900"
+                          : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-white/10"
+                      }`}
+                    >
+                      Pedidos Monitorados
+                    </button>
+                  </div>
+                  <div className="max-h-[420px] overflow-y-auto p-3">
+                    {activeNotifications.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-slate-200 px-4 py-8 text-center text-xs text-slate-500 dark:border-white/10 dark:text-slate-400">
+                        Nenhuma notificacao nesta aba.
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {activeNotifications.map((notification) => (
+                          <div
+                            key={notification.id}
+                            className="rounded-xl border border-slate-200 p-3 dark:border-white/10"
+                          >
+                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                              {notification.title || "Notificacao"}
+                            </p>
+                            <p className="mt-1 text-sm text-slate-700 dark:text-slate-200">
+                              {notification.message}
+                            </p>
+                            {notificationTab === "general" && (
+                              <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
+                                Entregues: {notification.deliveredCount || 0} | Atraso:{" "}
+                                {notification.enteredDelayCount || 0} | Falha:{" "}
+                                {notification.enteredFailureCount || 0}
+                              </p>
+                            )}
+                            <div className="mt-2 flex items-center justify-between gap-2">
+                              <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                                {new Date(notification.createdAt).toLocaleString()}
+                              </span>
+                              {notificationTab === "general" &&
+                                (notification.csvUrl || notification.reportUrl) && (
+                                  <div className="flex items-center gap-2">
+                                    <a
+                                      href={notification.csvUrl || notification.reportUrl || "#"}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-600 transition-colors hover:bg-slate-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/10"
+                                    >
+                                      <FileDown className="h-3 w-3" />
+                                      Baixar relatorio
+                                    </a>
+                                    {notification.reportUrl && (
+                                      <a
+                                        href={notification.reportUrl}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-600 transition-colors hover:bg-slate-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/10"
+                                      >
+                                        <ExternalLink className="h-3 w-3" />
+                                        Detalhes
+                                      </a>
+                                    )}
+                                  </div>
+                                )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
             {user?.role === "ADMIN" && (
               <div className="border-r border-slate-200 dark:border-slate-700 pr-4">
                 <CompanySwitcher />

@@ -66,6 +66,27 @@ export interface TraySyncFilters {
   statuses: string[];
 }
 
+export type NotificationCategory = "GENERAL" | "MONITORED";
+
+export interface AppNotification {
+  id: string;
+  category: NotificationCategory;
+  type: string;
+  title: string;
+  message: string;
+  createdAt: string;
+  reportId?: string | null;
+  reportUrl?: string | null;
+  csvUrl?: string | null;
+  deliveredCount?: number;
+  enteredDelayCount?: number;
+  enteredFailureCount?: number;
+  orderId?: string | null;
+  orderNumber?: string | null;
+  previousStatus?: string | null;
+  currentStatus?: string | null;
+}
+
 export interface IntegrationOrderStatusOption {
   value: string;
   label: string;
@@ -155,4 +176,34 @@ export interface ReleaseNoteSummary {
 
 export interface ReleaseNoteDetail extends ReleaseNoteSummary {
   htmlContent: string;
+}
+
+export interface NotificationItem {
+  id: string;
+  category: "GENERAL" | "MONITORED";
+  type: string;
+  title: string;
+  message: string;
+  createdAt: string;
+  reportId?: string | null;
+  reportUrl?: string | null;
+  csvUrl?: string | null;
+  deliveredCount?: number;
+  enteredDelayCount?: number;
+  enteredFailureCount?: number;
+  orderId?: string | null;
+  orderNumber?: string | null;
+  previousStatus?: string | null;
+  currentStatus?: string | null;
+}
+
+export interface MonitoredOrderItem {
+  id: string;
+  orderId: string;
+  orderNumber: string;
+  invoiceNumber: string | null;
+  status: string;
+  statusLabel: string;
+  lastUpdate: string;
+  createdAt: string;
 }

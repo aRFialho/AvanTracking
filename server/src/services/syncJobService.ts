@@ -7,6 +7,7 @@ import type {
 import type { SyncTrigger } from '../types/syncReport';
 import { TrackingService } from './trackingService';
 import { syncReportService } from './syncReportService';
+import { notificationService } from './notificationService';
 import { toUserFacingDatabaseErrorMessage } from '../utils/prismaError';
 import { prisma } from '../lib/prisma';
 
@@ -132,6 +133,11 @@ class SyncJobService {
 
   private async run(job: SyncJobStatus, trigger: SyncTrigger) {
     try {
+      let generatedReport: {
+        reportId?: string | null;
+        reportUrl?: string | null;
+        csvUrl?: string | null;
+      } | null = null;
       const results = await trackingService.syncAllActive(job.companyId, undefined, {
         onStart: ({ total }) => {
           job.total = total;
@@ -195,6 +201,7 @@ class SyncJobService {
           startedAt: job.startedAt,
           finishedAt: job.finishedAt || new Date().toISOString(),
         });
+        generatedReport = report;
         this.pushLog(
           job,
           'info',
@@ -206,6 +213,27 @@ class SyncJobService {
             ? reportError.message
             : 'Erro desconhecido ao enviar relatorio';
         this.pushLog(job, 'error', `Falha ao enviar relatorio: ${reportMessage}`);
+      }
+
+      try {
+        await notificationService.registerTrackingSyncNotifications({
+          companyId: job.companyId,
+          payload: results.report,
+          reportId: generatedReport?.reportId || null,
+          reportUrl: generatedReport?.reportUrl || null,
+          csvUrl: generatedReport?.csvUrl || null,
+          finishedAt: job.finishedAt || new Date().toISOString(),
+        });
+      } catch (notificationError) {
+        const notificationMessage =
+          notificationError instanceof Error
+            ? notificationError.message
+            : 'Erro desconhecido ao salvar notificacoes';
+        this.pushLog(
+          job,
+          'error',
+          `Falha ao registrar notificacoes da sincronizacao: ${notificationMessage}`,
+        );
       }
 
       this.scheduleNext(job.companyId, job.userId);

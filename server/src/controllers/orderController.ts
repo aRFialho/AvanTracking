@@ -6,6 +6,7 @@ import { importOrdersForCompany } from '../services/orderImportService';
 import { correiosTrackingService } from '../services/correiosTrackingService';
 import { matchSswTrackingToOrder, sswTrackingService } from '../services/sswTrackingService';
 import { syncReportService } from '../services/syncReportService';
+import { notificationService } from '../services/notificationService';
 import { toUserFacingDatabaseErrorMessage } from '../utils/prismaError';
 import { resolvePlatformCreatedDate } from '../utils/orderDates';
 import { prisma as sharedPrisma } from '../lib/prisma';
@@ -1639,6 +1640,17 @@ export const searchExternalOrder = async (req: Request, res: Response) => {
         });
       }
 
+      if (syncResult.change) {
+        await notificationService
+          .registerMonitoredOrderChanges(user.companyId, [syncResult.change])
+          .catch((notificationError) => {
+            console.error(
+              'Falha ao registrar notificacao monitorada na busca externa local:',
+              notificationError,
+            );
+          });
+      }
+
       const refreshedOrder = await prisma.order.findUnique({
         where: { id: existingOrder.id },
         include: {
@@ -1750,6 +1762,17 @@ export const syncSingleOrder = async (req: Request, res: Response) => {
       });
     }
 
+    if (result.change) {
+      await notificationService
+        .registerMonitoredOrderChanges(user.companyId, [result.change])
+        .catch((notificationError) => {
+          console.error(
+            'Falha ao registrar notificacao monitorada no sync unitario:',
+            notificationError,
+          );
+        });
+    }
+
     const order = await prisma.order.findUnique({
       where: { id },
       include: {
@@ -1827,6 +1850,22 @@ export const syncAllOrders = async (req: Request, res: Response) => {
       });
     } catch (reportError) {
       console.error('Falha ao enviar relatorio da sincronizacao direta:', reportError);
+    }
+
+    try {
+      await notificationService.registerTrackingSyncNotifications({
+        companyId: user.companyId,
+        payload: results.report,
+        reportId: report?.reportId || null,
+        reportUrl: report?.reportUrl || null,
+        csvUrl: report?.csvUrl || null,
+        finishedAt,
+      });
+    } catch (notificationError) {
+      console.error(
+        'Falha ao registrar notificacoes da sincronizacao direta:',
+        notificationError,
+      );
     }
 
     return res.json({

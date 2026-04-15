@@ -41,6 +41,7 @@ model User {
     orders       Order[]           @relation("UserOrders")
     accessTokens UserAccessToken[]
     releaseNotes ReleaseNote[]
+    monitoredOrders MonitoredOrder[]
 }
 
 model UserAccessToken {
@@ -84,6 +85,8 @@ model Company {
     orders      Order[]
     trayAuth    TrayAuth?
     trayCheckoutQuotes TrayCheckoutQuote[]
+    monitoredOrders MonitoredOrder[]
+    syncNotifications SyncNotification[]
 
     @@index([documentType, documentNumber], map: "Company_document_idx")
 }
@@ -188,6 +191,7 @@ model Order {
     trackingEvents TrackingEvent[]
     createdById    String?
     createdBy      User?           @relation("UserOrders", fields: [createdById], references: [id])
+    monitoredOrders MonitoredOrder[]
 
     companyId String?
     company   Company? @relation(fields: [companyId], references: [id])
@@ -199,6 +203,42 @@ model Order {
     @@index([isDelayed])
     @@index([lastApiSync])
     @@index([originalQuotedFreightQuotationId])
+}
+
+model MonitoredOrder {
+    id String @id @default(uuid())
+
+    companyId String
+    company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+    orderId String
+    order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+    createdById String?
+    createdBy User? @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+    createdAt DateTime @default(now())
+
+    @@unique([companyId, orderId], map: "MonitoredOrder_companyId_orderId_key")
+    @@index([companyId, createdAt], map: "MonitoredOrder_company_created_idx")
+}
+
+model SyncNotification {
+    id String @id @default(uuid())
+
+    companyId String
+    company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+    category String
+    type String
+    title String
+    message String
+    payload Json?
+
+    createdAt DateTime @default(now())
+
+    @@index([companyId, createdAt], map: "SyncNotification_company_created_idx")
+    @@index([companyId, category, createdAt], map: "SyncNotification_company_category_created_idx")
 }
 
 model TrayCheckoutQuote {

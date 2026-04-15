@@ -16,8 +16,7 @@ import { prisma } from '../lib/prisma';
 const MAX_LOGS = 1000;
 const AUTO_TRAY_SYNC_INTERVAL_MS = 0;
 const AUTO_TRAY_SYNC_SCHEDULE_TIMES = [
-  { hour: 7, minute: 42 },
-  { hour: 17, minute: 0 },
+  { hour: 12, minute: 0 },
 ];
 const SAO_PAULO_TIMEZONE = 'America/Sao_Paulo';
 const SAO_PAULO_UTC_OFFSET_HOURS = 3;
@@ -306,6 +305,7 @@ class TraySyncJobService {
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
+      weekday: 'short',
       hour: '2-digit',
       minute: '2-digit',
       second: '2-digit',
@@ -320,6 +320,17 @@ class TraySyncJobService {
       year: read('year'),
       month: read('month'),
       day: read('day'),
+      weekday: ({
+        Sun: 0,
+        Mon: 1,
+        Tue: 2,
+        Wed: 3,
+        Thu: 4,
+        Fri: 5,
+        Sat: 6,
+      } as Record<string, number>)[
+        parts.find((part) => part.type === 'weekday')?.value || ''
+      ] ?? 0,
     };
   }
 
@@ -345,32 +356,42 @@ class TraySyncJobService {
 
   private resolveNextRunDate(now = new Date()) {
     const base = this.getSaoPauloDateParts(now);
+    const isBusinessDay = (weekday: number) => weekday >= 1 && weekday <= 5;
 
-    for (const slot of AUTO_TRAY_SYNC_SCHEDULE_TIMES) {
-      const candidate = this.createSaoPauloDate(
-        base.year,
-        base.month,
-        base.day,
-        slot.hour,
-        slot.minute,
-      );
+    if (isBusinessDay(base.weekday)) {
+      for (const slot of AUTO_TRAY_SYNC_SCHEDULE_TIMES) {
+        const candidate = this.createSaoPauloDate(
+          base.year,
+          base.month,
+          base.day,
+          slot.hour,
+          slot.minute,
+        );
 
-      if (candidate.getTime() > now.getTime()) {
-        return candidate;
+        if (candidate.getTime() > now.getTime()) {
+          return candidate;
+        }
       }
     }
 
-    const nextDayBase = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-    const nextDayParts = this.getSaoPauloDateParts(nextDayBase);
     const firstSlot = AUTO_TRAY_SYNC_SCHEDULE_TIMES[0];
+    let nextDayBase = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
-    return this.createSaoPauloDate(
-      nextDayParts.year,
-      nextDayParts.month,
-      nextDayParts.day,
-      firstSlot.hour,
-      firstSlot.minute,
-    );
+    while (true) {
+      const nextDayParts = this.getSaoPauloDateParts(nextDayBase);
+
+      if (isBusinessDay(nextDayParts.weekday)) {
+        return this.createSaoPauloDate(
+          nextDayParts.year,
+          nextDayParts.month,
+          nextDayParts.day,
+          firstSlot.hour,
+          firstSlot.minute,
+        );
+      }
+
+      nextDayBase = new Date(nextDayBase.getTime() + 24 * 60 * 60 * 1000);
+    }
   }
 
   private scheduleNext(companyId: string, userId: string) {

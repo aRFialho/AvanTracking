@@ -175,6 +175,12 @@ const shouldUseStructuredChatRequest = (text: string) => {
   return (
     [
     "relatorio",
+    "por status",
+    "status geral",
+    "relatorio geral",
+    "geral de pedidos",
+    "atraso da plataforma",
+    "atraso da transportadora",
     "me envie",
     "me envia",
     "gere",
@@ -188,6 +194,10 @@ const shouldUseStructuredChatRequest = (text: string) => {
     "listar pedidos",
     "mostrar pedidos",
     ].some((term) => normalized.includes(term)) ||
+    (
+      normalized.includes("status") &&
+      (normalized.includes("pedido") || normalized.includes("pedidos"))
+    ) ||
     hasStructuredFilterLikeIntent(normalized) ||
     hasTrackingLookupIntent(normalized)
   );
