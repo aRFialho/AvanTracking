@@ -218,6 +218,7 @@ export const importOrdersForCompany = async (companyId: string, orders: any[]) =
     select: {
       id: true,
       orderNumber: true,
+      isArchived: true,
       _count: {
         select: {
           trackingEvents: true,
@@ -265,6 +266,11 @@ export const importOrdersForCompany = async (companyId: string, orders: any[]) =
       const existing = existingMap.get(orderNumber);
 
       if (existing) {
+        if (existing.isArchived) {
+          skipped += 1;
+          continue;
+        }
+
         await prisma.order.update({
           where: { id: existing.id },
           data: orderPayload,

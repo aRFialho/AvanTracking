@@ -42,6 +42,7 @@ model User {
     accessTokens UserAccessToken[]
     releaseNotes ReleaseNote[]
     monitoredOrders MonitoredOrder[]
+    customOrderStatuses CompanyOrderCustomStatus[]
 }
 
 model UserAccessToken {
@@ -87,6 +88,7 @@ model Company {
     trayCheckoutQuotes TrayCheckoutQuote[]
     monitoredOrders MonitoredOrder[]
     syncNotifications SyncNotification[]
+    customOrderStatuses CompanyOrderCustomStatus[]
 
     @@index([documentType, documentNumber], map: "Company_document_idx")
 }
@@ -176,6 +178,10 @@ model Order {
     // Estado Atual
     status    OrderStatus @default(PENDING)
     isDelayed Boolean     @default(false)
+    isArchived Boolean @default(false)
+    archivedAt DateTime?
+    manualCustomStatus String?
+    observation String?
 
     lastApiSync DateTime?
     lastUpdate  DateTime  @updatedAt
@@ -203,6 +209,7 @@ model Order {
     @@index([isDelayed])
     @@index([lastApiSync])
     @@index([originalQuotedFreightQuotationId])
+    @@index([isArchived, companyId], map: "Order_archived_company_idx")
 }
 
 model MonitoredOrder {
@@ -216,6 +223,7 @@ model MonitoredOrder {
 
     createdById String?
     createdBy User? @relation(fields: [createdById], references: [id], onDelete: SetNull)
+    watchEvents String[] @default([])
 
     createdAt DateTime @default(now())
 
@@ -234,11 +242,31 @@ model SyncNotification {
     title String
     message String
     payload Json?
+    readAt DateTime?
 
     createdAt DateTime @default(now())
 
     @@index([companyId, createdAt], map: "SyncNotification_company_created_idx")
     @@index([companyId, category, createdAt], map: "SyncNotification_company_category_created_idx")
+    @@index([companyId, readAt, createdAt], map: "SyncNotification_company_read_created_idx")
+}
+
+model CompanyOrderCustomStatus {
+    id String @id @default(uuid())
+
+    companyId String
+    company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+    label String
+
+    createdById String?
+    createdBy User? @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@unique([companyId, label], map: "CompanyOrderCustomStatus_companyId_label_key")
+    @@index([companyId, createdAt], map: "CompanyOrderCustomStatus_company_created_idx")
 }
 
 model TrayCheckoutQuote {

@@ -13,6 +13,9 @@ const CORREIOS_DIRECT_TOKEN_URL =
 const CORREIOS_POSTING_CARD_TOKEN_URL =
   readEnv(process.env.CORREIOS_POSTING_CARD_TOKEN_URL) ||
   `${CORREIOS_API_BASE_URL}/token/v1/autentica/cartaopostagem`;
+const CORREIOS_CONTRACT_TOKEN_URL =
+  readEnv(process.env.CORREIOS_CONTRACT_TOKEN_URL) ||
+  `${CORREIOS_API_BASE_URL}/token/v1/autentica/contrato`;
 const CORREIOS_TOKEN_URL =
   readEnv(process.env.CORREIOS_TOKEN_URL) || '';
 const CORREIOS_RASTRO_URL =
@@ -313,6 +316,12 @@ class CorreiosTrackingService {
           ...(CORREIOS_DR ? { dr: Number(CORREIOS_DR) } : {}),
         }
       : undefined;
+    const contractBody = CORREIOS_CONTRACT
+      ? {
+          numero: CORREIOS_CONTRACT,
+          ...(CORREIOS_DR ? { dr: Number(CORREIOS_DR) } : {}),
+        }
+      : undefined;
 
     const rawConfigs: Array<{ url: string; body?: Record<string, unknown> }> = [];
 
@@ -328,6 +337,13 @@ class CorreiosTrackingService {
       rawConfigs.push({
         url: CORREIOS_POSTING_CARD_TOKEN_URL,
         body: postingCardBody,
+      });
+    }
+
+    if (contractBody) {
+      rawConfigs.push({
+        url: CORREIOS_CONTRACT_TOKEN_URL,
+        body: contractBody,
       });
     }
 

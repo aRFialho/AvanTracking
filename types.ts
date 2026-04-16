@@ -75,6 +75,7 @@ export interface AppNotification {
   title: string;
   message: string;
   createdAt: string;
+  readAt?: string | null;
   reportId?: string | null;
   reportUrl?: string | null;
   csvUrl?: string | null;
@@ -154,6 +155,10 @@ export interface Order {
   
   // Tracking State (Mutable)
   status: OrderStatus;
+  manualCustomStatus?: string | null;
+  observation?: string | null;
+  isArchived?: boolean;
+  archivedAt?: Date | string | null;
   isDelayed: boolean; // Atraso pela previsao da transportadora
   isPlatformDelayed?: boolean; // Atraso pela previsao original do pedido
   trackingHistory: TrackingEvent[];
@@ -185,6 +190,7 @@ export interface NotificationItem {
   title: string;
   message: string;
   createdAt: string;
+  readAt?: string | null;
   reportId?: string | null;
   reportUrl?: string | null;
   csvUrl?: string | null;

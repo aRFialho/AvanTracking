@@ -636,7 +636,10 @@ export class TrackingService {
     }
 
     const orders = await prisma.order.findMany({
-      where: { companyId },
+      where: {
+        companyId,
+        isArchived: false,
+      },
       select: {
         status: true,
         isDelayed: true,
@@ -743,6 +746,18 @@ export class TrackingService {
 
       const baseChange = this.buildChangeBase(order);
       const resolvedCompanyId = order.companyId || companyId || null;
+
+      if (order.isArchived) {
+        const archivedMessage = 'Pedido arquivado. Retire do arquivo para sincronizar.';
+        return {
+          success: false,
+          message: archivedMessage,
+          change: {
+            ...baseChange,
+            errorMessage: archivedMessage,
+          },
+        };
+      }
 
       if (resolvedCompanyId && (await isDemoCompanyById(resolvedCompanyId))) {
         const blockedMessage =
@@ -1064,6 +1079,7 @@ export class TrackingService {
       const activeOrders = await prisma.order.findMany({
         where: {
           ...(companyId ? { companyId } : {}),
+          isArchived: false,
           freightType: {
             notIn: ['ColetasME2', 'Shopee Xpress'],
           },

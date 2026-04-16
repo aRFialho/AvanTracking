@@ -22,6 +22,34 @@ const safeString = (value: any): string | null => {
   return String(value).trim();
 };
 
+type ArchivedFilterMode = 'exclude' | 'only' | 'include';
+
+const resolveArchivedFilterMode = (value: unknown): ArchivedFilterMode => {
+  const normalized = String(value || '').trim().toLowerCase();
+
+  if (normalized === 'only' || normalized === 'archived') {
+    return 'only';
+  }
+
+  if (normalized === 'include' || normalized === 'all') {
+    return 'include';
+  }
+
+  return 'exclude';
+};
+
+const buildArchivedWhereClause = (mode: ArchivedFilterMode) => {
+  if (mode === 'only') {
+    return { isArchived: true };
+  }
+
+  if (mode === 'exclude') {
+    return { isArchived: false };
+  }
+
+  return {};
+};
+
 const safeDate = (value: any): Date | null => {
   if (!value) return null;
 
@@ -1256,8 +1284,13 @@ export const getOrders = async (req: Request, res: Response) => {
       return res.status(403).json({ error: 'Acesso negado. Usuario sem empresa.' });
     }
 
+    const archivedMode = resolveArchivedFilterMode(req.query?.archived);
+
     const orders = await prisma.order.findMany({
-      where: { companyId: user.companyId },
+      where: {
+        companyId: user.companyId,
+        ...buildArchivedWhereClause(archivedMode),
+      },
       select: {
         id: true,
         orderNumber: true,
@@ -1282,6 +1315,10 @@ export const getOrders = async (req: Request, res: Response) => {
         carrierEstimatedDeliveryDate: true,
         status: true,
         isDelayed: true,
+        isArchived: true,
+        archivedAt: true,
+        manualCustomStatus: true,
+        observation: true,
         lastApiSync: true,
         lastUpdate: true,
         createdAt: true,
@@ -1473,6 +1510,8 @@ export const updateOrderManualData = async (req: Request, res: Response) => {
     }
 
     const trackingUrl = safeString(req.body?.trackingUrl);
+    const manualCustomStatus = safeString(req.body?.manualCustomStatus);
+    const observation = safeString(req.body?.observation);
     const updatedOrder = await prisma.order.update({
       where: { id },
       data: {
@@ -1493,6 +1532,8 @@ export const updateOrderManualData = async (req: Request, res: Response) => {
         zipCode: safeString(req.body?.zipCode) || '',
         recipient: safeString(req.body?.recipient),
         salesChannel: safeString(req.body?.salesChannel) || order.salesChannel,
+        manualCustomStatus,
+        observation,
         apiRawPayload: mergeApiRawPayload(order.apiRawPayload, {
           manualTrackingUrl: trackingUrl,
           manualTrackingUpdatedAt: new Date().toISOString(),
@@ -1534,6 +1575,186 @@ export const updateOrderManualData = async (req: Request, res: Response) => {
     });
   }
 };
+
+export const listCustomOrderStatuses = async (req: Request, res: Response) => {
+  try {
+    // @ts-ignore
+    const user = req.user;
+
+    if (!user?.companyId) {
+      return res.status(403).json({ error: 'Acesso negado. Usuario sem empresa.' });
+    }
+
+    const rows = await prisma.companyOrderCustomStatus.findMany({
+      where: {
+        companyId: user.companyId,
+      },
+      orderBy: [{ createdAt: 'desc' }],
+      select: {
+        id: true,
+        label: true,
+        createdAt: true,
+      },
+    });
+
+    return res.json({
+      success: true,
+      statuses: rows,
+    });
+  } catch (error) {
+    console.error('Erro ao listar status personalizados:', error);
+    return res.status(500).json({
+      error: toUserFacingDatabaseErrorMessage(
+        error,
+        'Erro ao listar status personalizados',
+      ),
+    });
+  }
+};
+
+export const createCustomOrderStatus = async (req: Request, res: Response) => {
+  try {
+    // @ts-ignore
+    const user = req.user;
+
+    if (!user?.companyId) {
+      return res.status(403).json({ error: 'Acesso negado. Usuario sem empresa.' });
+    }
+
+    const label = safeString(req.body?.label);
+    if (!label) {
+      return res.status(400).json({ error: 'Informe o nome do status personalizado.' });
+    }
+
+    const created = await prisma.companyOrderCustomStatus.upsert({
+      where: {
+        companyId_label: {
+          companyId: user.companyId,
+          label,
+        },
+      },
+      update: {
+        label,
+      },
+      create: {
+        companyId: user.companyId,
+        label,
+        createdById: user.id || null,
+      },
+      select: {
+        id: true,
+        label: true,
+        createdAt: true,
+      },
+    });
+
+    return res.json({
+      success: true,
+      message: 'Status personalizado salvo com sucesso.',
+      status: created,
+    });
+  } catch (error) {
+    console.error('Erro ao criar status personalizado:', error);
+    return res.status(500).json({
+      error: toUserFacingDatabaseErrorMessage(
+        error,
+        'Erro ao criar status personalizado',
+      ),
+    });
+  }
+};
+
+const setOrderArchivedState = async (
+  req: Request,
+  res: Response,
+  archived: boolean,
+) => {
+  try {
+    const { id } = req.params;
+    // @ts-ignore
+    const user = req.user;
+
+    if (typeof id !== 'string') {
+      return res.status(400).json({ error: 'ID invalido' });
+    }
+
+    if (!user?.companyId) {
+      return res.status(403).json({ error: 'Acesso negado. Usuario sem empresa.' });
+    }
+
+    const order = await prisma.order.findUnique({
+      where: { id },
+      include: {
+        carrier: true,
+        trackingEvents: {
+          orderBy: { eventDate: 'desc' },
+        },
+      },
+    });
+
+    if (!order || order.companyId !== user.companyId) {
+      return res.status(404).json({ error: 'Pedido nao encontrado' });
+    }
+
+    const updatedOrder = await prisma.order.update({
+      where: { id },
+      data: {
+        isArchived: archived,
+        archivedAt: archived ? new Date() : null,
+        lastUpdate: new Date(),
+      },
+      include: {
+        carrier: true,
+        trackingEvents: {
+          orderBy: { eventDate: 'desc' },
+        },
+      },
+    });
+
+    if (archived) {
+      await prisma.monitoredOrder.deleteMany({
+        where: {
+          companyId: user.companyId,
+          orderId: id,
+        },
+      });
+    }
+
+    const sswRequireCnpjs = await getCompanySswRequireCnpjs(user.companyId);
+    const intelipostClientId = await getCompanyIntelipostClientId(user.companyId);
+    const correiosIntegrationEnabled =
+      await getCompanyCorreiosIntegrationEnabled(user.companyId);
+    const checkoutQuote = await loadCheckoutQuoteForOrder(user.companyId, updatedOrder);
+
+    return res.json({
+      success: true,
+      message: archived
+        ? 'Pedido arquivado com sucesso.'
+        : 'Pedido removido do arquivo com sucesso.',
+      order: formatOrderForResponse(
+        updatedOrder,
+        sswRequireCnpjs,
+        intelipostClientId,
+        correiosIntegrationEnabled,
+        checkoutQuote,
+      ),
+    });
+  } catch (error) {
+    console.error('Erro ao atualizar arquivo do pedido:', error);
+    return res.status(500).json({
+      error: toUserFacingDatabaseErrorMessage(
+        error,
+        'Erro ao atualizar arquivo do pedido',
+      ),
+    });
+  }
+};
+
+export const archiveOrder = async (req: Request, res: Response) =>
+  setOrderArchivedState(req, res, true);
+
+export const unarchiveOrder = async (req: Request, res: Response) =>
+  setOrderArchivedState(req, res, false);
 
 export const openOrderTracking = async (req: Request, res: Response) => {
   try {
@@ -1625,6 +1846,7 @@ export const searchExternalOrder = async (req: Request, res: Response) => {
     const existingOrder = await prisma.order.findFirst({
       where: {
         companyId: user.companyId,
+        isArchived: false,
         OR: [
           { orderNumber: identifier },
           ...(normalizedDigits ? [{ invoiceNumber: normalizedDigits }] : []),

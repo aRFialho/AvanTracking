@@ -684,6 +684,12 @@ const isStructuredIntent = (text: string) => {
     'monitore a nf',
     'monitora o pedido',
     'monitora a nf',
+    'arquivar pedido',
+    'arquivar nf',
+    'arquive pedido',
+    'arquive nf',
+    'desarquivar pedido',
+    'desarquivar nf',
     ].some((term) => normalized.includes(term)) || hasFilterLikeIntent(normalized)
   );
 };
@@ -700,6 +706,8 @@ const MONITORED_IDENTIFIER_STOPWORDS = new Set([
   'adicionadas',
   'pedido',
   'pedidos',
+  'pediso',
+  'pedisos',
   'nf',
   'nfs',
   'nota',
@@ -733,7 +741,83 @@ const MONITORED_IDENTIFIER_STOPWORDS = new Set([
   'favor',
   'para',
   'mim',
+  'quando',
+  'se',
+  'entrar',
+  'atraso',
+  'atrasado',
+  'entregar',
+  'entregue',
+  'for',
+  'status',
+  'todos',
+  'todas',
 ]);
+
+const ARCHIVE_IDENTIFIER_STOPWORDS = new Set([
+  'arquivar',
+  'arquive',
+  'arquivo',
+  'arquivados',
+  'arquivadas',
+  'desarquivar',
+  'desarquive',
+  'desarquivado',
+  'desarquivados',
+  'pedido',
+  'pedidos',
+  'pediso',
+  'pedisos',
+  'nf',
+  'nfs',
+  'nota',
+  'nota fiscal',
+  'notas fiscais',
+  'as',
+  'os',
+  'a',
+  'o',
+  'de',
+  'da',
+  'do',
+  'dos',
+  'das',
+  'e',
+  'ou',
+  'por',
+  'favor',
+  'tais',
+]);
+
+const extractOrderIdentifiers = (text: string, stopwords: Set<string>) => {
+  const rawText = String(text || '');
+  const matches = rawText.match(/[A-Za-z]{2}\d{9}[A-Za-z]{2}|[A-Za-z0-9./-]{2,}/g) || [];
+
+  return Array.from(
+    new Set(
+      matches
+        .map((item) => stripPoliteTail(item))
+        .map((item) => item.replace(/^[#:\-.,\s]+|[#:\-.,\s]+$/g, '').trim())
+        .filter(Boolean)
+        .filter((item) => {
+          const normalizedItem = normalizeText(item);
+          if (!normalizedItem || stopwords.has(normalizedItem)) {
+            return false;
+          }
+
+          if (item.length < 2) {
+            return false;
+          }
+
+          if (/\d/.test(item)) {
+            return true;
+          }
+
+          return /^[A-Za-z]{4,}$/.test(item);
+        }),
+    ),
+  );
+};
 
 const isMonitoredOrderIncludeIntent = (text: string) => {
   const normalized = normalizeText(text);
@@ -762,37 +846,113 @@ const isMonitoredOrderIncludeIntent = (text: string) => {
 };
 
 const extractMonitoredIdentifiers = (text: string) => {
-  const rawText = String(text || '');
-  const matches = rawText.match(/[A-Za-z]{2}\d{9}[A-Za-z]{2}|[A-Za-z0-9./-]{2,}/g) || [];
+  return extractOrderIdentifiers(text, MONITORED_IDENTIFIER_STOPWORDS);
+};
 
-  return Array.from(
-    new Set(
-      matches
-        .map((item) => stripPoliteTail(item))
-        .map((item) => item.replace(/^[#:\-.,\s]+|[#:\-.,\s]+$/g, '').trim())
-        .filter(Boolean)
-        .filter((item) => {
-          const normalizedItem = normalizeText(item);
-          if (!normalizedItem || MONITORED_IDENTIFIER_STOPWORDS.has(normalizedItem)) {
-            return false;
-          }
+const extractArchiveIdentifiers = (text: string) =>
+  extractOrderIdentifiers(text, ARCHIVE_IDENTIFIER_STOPWORDS);
 
-          if (item.length < 2) {
-            return false;
-          }
-
-          if (/\d/.test(item)) {
-            return true;
-          }
-
-          if (/^[A-Za-z]{4,}$/.test(item)) {
-            return true;
-          }
-
-          return false;
-        }),
-    ),
+const isArchiveIntent = (text: string) => {
+  const normalized = normalizeText(text);
+  return (
+    !normalized.includes('desarquiv') &&
+    (normalized.includes('arquivar') || normalized.includes('arquive')) &&
+    (normalized.includes('pedido') ||
+      normalized.includes('pedidos') ||
+      normalized.includes('nf') ||
+      normalized.includes('nota fiscal'))
   );
+};
+
+const isUnarchiveIntent = (text: string) => {
+  const normalized = normalizeText(text);
+  return (
+    normalized.includes('desarquivar') ||
+    normalized.includes('desarquive') ||
+    normalized.includes('retirar do arquivo') ||
+    normalized.includes('tirar do arquivo')
+  );
+};
+
+const inferMonitoredWatchEvents = (text: string) => {
+  const normalized = normalizeText(text);
+
+  if (
+    normalized.includes('todos os status') ||
+    normalized.includes('todos os eventos') ||
+    normalized.includes('qualquer status') ||
+    normalized.includes('todos os pedidos')
+  ) {
+    return ['ALL'];
+  }
+
+  const watchEvents = new Set<string>();
+
+  if (normalized.includes('atras')) {
+    watchEvents.add('ENTERED_DELAY');
+  }
+
+  if (normalized.includes('falha')) {
+    watchEvents.add('ENTERED_FAILURE');
+  }
+
+  if (
+    normalized.includes('entregue') ||
+    normalized.includes('entregar') ||
+    normalized.includes('for entregue')
+  ) {
+    watchEvents.add('DELIVERED');
+  }
+
+  if (normalized.includes('cancel')) {
+    watchEvents.add('CANCELED');
+  }
+
+  if (
+    normalized.includes('despach') ||
+    normalized.includes('em transito') ||
+    normalized.includes('transito')
+  ) {
+    watchEvents.add('SHIPPED');
+  }
+
+  if (
+    normalized.includes('rota') ||
+    normalized.includes('saiu para entrega') ||
+    normalized.includes('em rota')
+  ) {
+    watchEvents.add('ROUTE');
+  }
+
+  if (
+    normalized.includes('mudanca de status') ||
+    normalized.includes('mudou de status') ||
+    normalized.includes('quando mudar')
+  ) {
+    watchEvents.add('STATUS_CHANGE');
+  }
+
+  return watchEvents.size > 0 ? Array.from(watchEvents) : ['ALL'];
+};
+
+const describeWatchEvents = (watchEvents: string[]) => {
+  if (!Array.isArray(watchEvents) || watchEvents.length === 0 || watchEvents.includes('ALL')) {
+    return 'todos os eventos de status';
+  }
+
+  const labels: Record<string, string> = {
+    STATUS_CHANGE: 'mudanca de status',
+    ENTERED_DELAY: 'entrada em atraso',
+    ENTERED_FAILURE: 'falha na entrega',
+    DELIVERED: 'entrega',
+    CANCELED: 'cancelamento',
+    SHIPPED: 'despacho',
+    ROUTE: 'entrada em rota',
+  };
+
+  return watchEvents
+    .map((event) => labels[event] || event.toLowerCase())
+    .join(', ');
 };
 
 const resolveIntentKind = (text: string) => {
@@ -944,7 +1104,7 @@ const buildStatusEventFilter = (status: OrderStatus, period: NonNullable<Matched
 
 const buildWhereClause = (companyId: string, filter: MatchedFilter) => {
   const now = new Date();
-  const where: any = { companyId };
+  const where: any = { companyId, isArchived: false };
 
   if (filter.status) {
     where.status = filter.status;
@@ -1582,6 +1742,7 @@ class ChatAssistantService {
       const matches = await prisma.order.findMany({
         where: {
           companyId: input.companyId,
+          isArchived: false,
           OR: [
             { customerName: { contains: request.value, mode: 'insensitive' } },
             { corporateName: { contains: request.value, mode: 'insensitive' } },
@@ -1640,6 +1801,7 @@ class ChatAssistantService {
     const localMatches = await prisma.order.findMany({
       where: {
         companyId: input.companyId,
+        isArchived: false,
         OR: [
           { orderNumber: request.value },
           ...(normalizedDigits ? [{ orderNumber: normalizedDigits }] : []),
@@ -1846,6 +2008,117 @@ class ChatAssistantService {
     return bestMatch && bestMatch.score >= 120 ? bestMatch.channel : null;
   }
 
+  private async setOrderArchiveByIdentifiers(input: {
+    companyId: string;
+    identifiers: string[];
+    archived: boolean;
+  }) {
+    const normalizedIdentifiers = Array.from(
+      new Set(
+        (Array.isArray(input.identifiers) ? input.identifiers : [])
+          .map((item) => String(item || '').trim())
+          .filter(Boolean),
+      ),
+    );
+
+    const foundOrdersById = new Map<
+      string,
+      {
+        id: string;
+        orderNumber: string;
+        invoiceNumber: string | null;
+        isArchived: boolean;
+      }
+    >();
+    const notFoundIdentifiers: string[] = [];
+
+    for (const identifier of normalizedIdentifiers) {
+      const digits = normalizeDigits(identifier);
+      const alphaNumeric = normalizeAlphaNumeric(identifier);
+
+      const order = await prisma.order.findFirst({
+        where: {
+          companyId: input.companyId,
+          OR: [
+            { orderNumber: identifier },
+            ...(digits ? [{ orderNumber: digits }] : []),
+            ...(digits ? [{ invoiceNumber: digits }] : []),
+            ...(digits ? [{ trackingCode: digits }] : []),
+            ...(alphaNumeric ? [{ trackingCode: alphaNumeric }] : []),
+          ],
+        },
+        select: {
+          id: true,
+          orderNumber: true,
+          invoiceNumber: true,
+          isArchived: true,
+        },
+        orderBy: [{ lastUpdate: 'desc' }],
+      });
+
+      if (!order?.id) {
+        notFoundIdentifiers.push(identifier);
+        continue;
+      }
+
+      foundOrdersById.set(String(order.id), {
+        id: String(order.id),
+        orderNumber: String(order.orderNumber || ''),
+        invoiceNumber: order.invoiceNumber ? String(order.invoiceNumber) : null,
+        isArchived: Boolean(order.isArchived),
+      });
+    }
+
+    const foundOrders = Array.from(foundOrdersById.values());
+    const toUpdate = foundOrders.filter((order) => order.isArchived !== input.archived);
+    const alreadyInTargetState = foundOrders.filter(
+      (order) => order.isArchived === input.archived,
+    );
+
+    if (toUpdate.length > 0) {
+      await prisma.order.updateMany({
+        where: {
+          companyId: input.companyId,
+          id: { in: toUpdate.map((order) => order.id) },
+        },
+        data: {
+          isArchived: input.archived,
+          archivedAt: input.archived ? new Date() : null,
+          lastUpdate: new Date(),
+        },
+      });
+
+      if (input.archived) {
+        await prisma.monitoredOrder.deleteMany({
+          where: {
+            companyId: input.companyId,
+            orderId: { in: toUpdate.map((order) => order.id) },
+          },
+        });
+      }
+    }
+
+    const toLabel = (order: {
+      orderNumber: string;
+      invoiceNumber: string | null;
+    }) =>
+      order.invoiceNumber
+        ? `Pedido ${order.orderNumber} / NF ${order.invoiceNumber}`
+        : `Pedido ${order.orderNumber}`;
+
+    return {
+      updatedOrders: toUpdate.map((order) => ({
+        ...order,
+        label: toLabel(order),
+      })),
+      alreadyInTargetState: alreadyInTargetState.map((order) => ({
+        ...order,
+        label: toLabel(order),
+      })),
+      notFoundIdentifiers,
+    };
+  }
+
   private async resolveFilters(companyId: string, input: string): Promise<MatchedFilter | null> {
     const normalized = normalizeText(input);
     const filter: MatchedFilter = {};
@@ -1954,8 +2227,65 @@ class ChatAssistantService {
       };
     }
 
+    if (isArchiveIntent(input.text) || isUnarchiveIntent(input.text)) {
+      const shouldArchive = !isUnarchiveIntent(input.text);
+      const identifiers = extractArchiveIdentifiers(input.text);
+
+      if (identifiers.length === 0) {
+        return {
+          handled: true,
+          text: shouldArchive
+            ? 'Para arquivar, me envie os numeros dos pedidos ou NFs. Exemplo: arquivar os pedidos 123, 456.'
+            : 'Para desarquivar, me envie os numeros dos pedidos ou NFs. Exemplo: desarquivar os pedidos 123, 456.',
+        };
+      }
+
+      const archiveResult = await this.setOrderArchiveByIdentifiers({
+        companyId: company.id,
+        identifiers,
+        archived: shouldArchive,
+      });
+
+      const updatedLabels = archiveResult.updatedOrders.map((item) => item.label);
+      const alreadyLabels = archiveResult.alreadyInTargetState.map(
+        (item) => item.label,
+      );
+
+      const lines: string[] = [];
+
+      if (updatedLabels.length > 0) {
+        lines.push(
+          shouldArchive
+            ? `NFS/PEDIDOS "${updatedLabels.join(', ')}" ARQUIVADOS COM SUCESSO.`
+            : `NFS/PEDIDOS "${updatedLabels.join(', ')}" RETIRADOS DO ARQUIVO COM SUCESSO.`,
+        );
+      }
+
+      if (alreadyLabels.length > 0) {
+        lines.push(
+          shouldArchive
+            ? `Ja estavam arquivados: ${alreadyLabels.join(', ')}.`
+            : `Ja estavam fora do arquivo: ${alreadyLabels.join(', ')}.`,
+        );
+      }
+
+      if (archiveResult.notFoundIdentifiers.length > 0) {
+        lines.push(
+          `Nao encontrados: ${archiveResult.notFoundIdentifiers.join(', ')}.`,
+        );
+      }
+
+      return {
+        handled: true,
+        text:
+          lines.join('\n') ||
+          'Nao encontrei pedidos/NFs validos para atualizar o arquivo.',
+      };
+    }
+
     if (isMonitoredOrderIncludeIntent(input.text)) {
       const identifiers = extractMonitoredIdentifiers(input.text);
+      const watchEvents = inferMonitoredWatchEvents(input.text);
       if (identifiers.length === 0) {
         return {
           handled: true,
@@ -1968,6 +2298,7 @@ class ChatAssistantService {
         companyId: company.id,
         createdById: input.userId || null,
         identifiers,
+        watchEvents,
       });
 
       const addedLabels = result.addedOrders.map((item) => item.label);
@@ -1980,7 +2311,41 @@ class ChatAssistantService {
       if (addedLabels.length > 0) {
         const lines = [
           `NFS/PEDIDOS "${addedLabels.join(', ')}" INCLUIDOS A LISTA DE PEDIDOS MONITORADOS.`,
+          `Eventos monitorados: ${describeWatchEvents(watchEvents)}.`,
         ];
+
+        const addedOrderIds = result.addedOrders
+          .map((item) => String(item.id || '').trim())
+          .filter(Boolean);
+
+        if (addedOrderIds.length > 0) {
+          const requestedBy = input.userId
+            ? await prisma.user.findUnique({
+                where: { id: input.userId },
+                select: { name: true },
+              })
+            : null;
+
+          try {
+            await notificationService.sendMonitoredEnrollmentEmail({
+              companyId: company.id,
+              orderIds: addedOrderIds,
+              watchEvents,
+              requestedByName: requestedBy?.name || null,
+            });
+            lines.push(
+              'Enviei um e-mail de confirmacao do monitoramento com os dados dos pedidos.',
+            );
+          } catch (emailError) {
+            console.error(
+              'Falha ao enviar e-mail de confirmacao do monitoramento:',
+              emailError,
+            );
+            lines.push(
+              'Nao consegui enviar o e-mail de confirmacao agora, mas o monitoramento foi ativado.',
+            );
+          }
+        }
 
         if (alreadyLabels.length > 0) {
           lines.push(

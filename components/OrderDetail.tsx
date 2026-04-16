@@ -155,6 +155,8 @@ const createManualDataDraft = (order: Order) => ({
   invoiceNumber: order.invoiceNumber || "",
   trackingCode: order.trackingCode || "",
   trackingUrl: order.trackingUrl || "",
+  manualCustomStatus: order.manualCustomStatus || "",
+  observation: order.observation || "",
 });
 
 interface OrderDetailProps {
@@ -181,6 +183,8 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({
   );
   const [isSavingManualData, setIsSavingManualData] = useState(false);
   const [manualDataError, setManualDataError] = useState("");
+  const [customStatusOptions, setCustomStatusOptions] = useState<string[]>([]);
+  const [saveStatusForOtherOrders, setSaveStatusForOtherOrders] = useState(false);
   const order = resolvedOrder;
   const trackingHistory = normalizeTrackingHistory(order.trackingHistory);
   const sortedHistory = [...trackingHistory].sort(
@@ -190,6 +194,7 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({
   useEffect(() => {
     let isMounted = true;
     setResolvedOrder(initialOrder);
+    setSaveStatusForOtherOrders(false);
 
     fetchWithAuth(`/api/orders/${initialOrder.id}`)
       .then(async (response) => {
@@ -207,6 +212,28 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({
         if (isMounted) {
           setResolvedOrder(initialOrder);
           setManualDataDraft(createManualDataDraft(initialOrder));
+        }
+      });
+
+    fetchWithAuth("/api/orders/custom-statuses")
+      .then(async (response) => {
+        const data = await response.json().catch(() => null);
+        if (!response.ok || !data) {
+          throw new Error("Nao foi possivel carregar os status personalizados.");
+        }
+
+        if (isMounted) {
+          const labels = Array.isArray(data.statuses)
+            ? data.statuses
+                .map((item: any) => String(item?.label || "").trim())
+                .filter(Boolean)
+            : [];
+          setCustomStatusOptions(Array.from(new Set(labels)));
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setCustomStatusOptions([]);
         }
       });
 
@@ -271,12 +298,14 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({
   const handleStartManualEdit = () => {
     setManualDataDraft(createManualDataDraft(order));
     setManualDataError("");
+    setSaveStatusForOtherOrders(false);
     setIsEditingManualData(true);
   };
 
   const handleCancelManualEdit = () => {
     setManualDataDraft(createManualDataDraft(order));
     setManualDataError("");
+    setSaveStatusForOtherOrders(false);
     setIsEditingManualData(false);
   };
 
@@ -318,6 +347,23 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({
       setManualDataDraft(createManualDataDraft(data.order as Order));
       onOrderUpdated?.(data.order as Order);
       setIsEditingManualData(false);
+
+      const normalizedCustomStatus = manualDataDraft.manualCustomStatus.trim();
+      if (saveStatusForOtherOrders && normalizedCustomStatus) {
+        const statusResponse = await fetchWithAuth("/api/orders/custom-statuses", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ label: normalizedCustomStatus }),
+        });
+
+        if (statusResponse.ok) {
+          setCustomStatusOptions((current) =>
+            Array.from(new Set([normalizedCustomStatus, ...current])),
+          );
+        } else {
+          console.error("Falha ao salvar status personalizado para reutilizacao.");
+        }
+      }
     } catch (error) {
       setManualDataError(
         error instanceof Error
@@ -514,6 +560,20 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({
                       <span className="text-slate-500 dark:text-slate-400">Codigo de envio:</span>{" "}
                       <span className="break-all whitespace-normal">{order.trackingCode || "-"}</span>
                     </p>
+                    <p>
+                      <span className="text-slate-500 dark:text-slate-400">
+                        Status personalizado:
+                      </span>{" "}
+                      <span className="break-all whitespace-normal">
+                        {order.manualCustomStatus || "-"}
+                      </span>
+                    </p>
+                    <p className="md:col-span-2">
+                      <span className="text-slate-500 dark:text-slate-400">Observacao:</span>{" "}
+                      <span className="break-all whitespace-normal">
+                        {order.observation || "-"}
+                      </span>
+                    </p>
                     <p className="md:col-span-2">
                       <span className="text-slate-500 dark:text-slate-400">Link de rastreio:</span>{" "}
                       {order.trackingUrl ? (
@@ -584,6 +644,57 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({
                         placeholder="Destinatario"
                         className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
                       />
+                      <div className="md:col-span-2 rounded-lg border border-slate-200 bg-white/80 p-3 dark:border-white/10 dark:bg-white/5">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                          Adicionar status personalizado
+                        </p>
+                        <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
+                          <select
+                            value={
+                              customStatusOptions.includes(manualDataDraft.manualCustomStatus)
+                                ? manualDataDraft.manualCustomStatus
+                                : ""
+                            }
+                            onChange={(event) =>
+                              handleManualFieldChange(
+                                "manualCustomStatus",
+                                event.target.value,
+                              )
+                            }
+                            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
+                          >
+                            <option value="">Selecionar status salvo</option>
+                            {customStatusOptions.map((status) => (
+                              <option key={status} value={status}>
+                                {status}
+                              </option>
+                            ))}
+                          </select>
+                          <input
+                            type="text"
+                            value={manualDataDraft.manualCustomStatus}
+                            onChange={(event) =>
+                              handleManualFieldChange(
+                                "manualCustomStatus",
+                                event.target.value,
+                              )
+                            }
+                            placeholder="Digite o status personalizado"
+                            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
+                          />
+                        </div>
+                        <label className="mt-2 inline-flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+                          <input
+                            type="checkbox"
+                            checked={saveStatusForOtherOrders}
+                            onChange={(event) =>
+                              setSaveStatusForOtherOrders(event.target.checked)
+                            }
+                            className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600"
+                          />
+                          Salvar status personalizado para usar em outros pedidos
+                        </label>
+                      </div>
                       <input
                         type="text"
                         value={manualDataDraft.cpf}
@@ -708,6 +819,15 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({
                           handleManualFieldChange("trackingUrl", event.target.value)
                         }
                         placeholder="Link de rastreio"
+                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white md:col-span-2"
+                      />
+                      <textarea
+                        value={manualDataDraft.observation}
+                        onChange={(event) =>
+                          handleManualFieldChange("observation", event.target.value)
+                        }
+                        placeholder="Observacao interna do pedido"
+                        rows={3}
                         className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white md:col-span-2"
                       />
                     </div>

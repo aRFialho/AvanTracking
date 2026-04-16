@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from "react";
+import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import {
   Order,
   OrderStatus,
@@ -25,6 +25,8 @@ import {
   RefreshCw,
   AlertTriangle,
   Star,
+  Archive,
+  ArchiveRestore,
 } from "lucide-react";
 import { clsx } from "clsx";
 import {
@@ -300,6 +302,7 @@ interface OrderListProps {
   trayIntegrationStatus?: TrayIntegrationStatus | null;
   monitoredOrderIds?: string[];
   onToggleMonitoredOrder?: (order: Order) => Promise<void> | void;
+  enableArchiveControls?: boolean;
 }
 
 export const OrderList: React.FC<OrderListProps> = ({
@@ -315,6 +318,7 @@ export const OrderList: React.FC<OrderListProps> = ({
   trayIntegrationStatus,
   monitoredOrderIds = [],
   onToggleMonitoredOrder,
+  enableArchiveControls = false,
 }) => {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [isFetchingSingle, setIsFetchingSingle] = useState(false);
@@ -339,6 +343,12 @@ export const OrderList: React.FC<OrderListProps> = ({
   const [isLoadingIntegrationStatuses, setIsLoadingIntegrationStatuses] =
     useState(false);
   const [monitoringOrderIds, setMonitoringOrderIds] = useState<string[]>([]);
+  const [updatingArchiveOrderIds, setUpdatingArchiveOrderIds] = useState<string[]>(
+    [],
+  );
+  const [showArchivedOrders, setShowArchivedOrders] = useState(false);
+  const [archivedOrders, setArchivedOrders] = useState<Order[]>([]);
+  const [isLoadingArchivedOrders, setIsLoadingArchivedOrders] = useState(false);
   const isTrayAvailable = Boolean(trayIntegrationStatus?.authorized);
   const [isSyncing, setIsSyncing] = useState(false); // ✅ Novo state
 
@@ -484,11 +494,11 @@ export const OrderList: React.FC<OrderListProps> = ({
   );
 
   const tableMinWidth = useMemo(() => {
-    const actionColumnWidth = 170;
+    const actionColumnWidth = enableArchiveControls ? 300 : 170;
     const baseColumnWidth = 155;
 
     return `${activeColumns.length * baseColumnWidth + actionColumnWidth}px`;
-  }, [activeColumns.length]);
+  }, [activeColumns.length, enableArchiveControls]);
 
   const handleMonitorToggle = async (order: Order) => {
     if (!onToggleMonitoredOrder) return;
@@ -514,10 +524,126 @@ export const OrderList: React.FC<OrderListProps> = ({
     }
   };
 
+  const loadArchivedOrders = useCallback(async () => {
+    if (!enableArchiveControls) {
+      return;
+    }
+
+    setIsLoadingArchivedOrders(true);
+    try {
+      const response = await fetchWithAuth("/api/orders?archived=only");
+      const data = await response.json().catch(() => []);
+
+      if (!response.ok || !Array.isArray(data)) {
+        throw new Error("Nao foi possivel carregar os pedidos arquivados.");
+      }
+
+      setArchivedOrders(data as Order[]);
+    } catch (error) {
+      showToast({
+        tone: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Erro ao carregar os pedidos arquivados.",
+      });
+    } finally {
+      setIsLoadingArchivedOrders(false);
+    }
+  }, [enableArchiveControls]);
+
+  const handleArchiveToggle = async (order: Order, shouldArchive: boolean) => {
+    if (!enableArchiveControls) {
+      return;
+    }
+
+    setUpdatingArchiveOrderIds((current) =>
+      current.includes(order.id) ? current : [...current, order.id],
+    );
+
+    try {
+      const response = await fetchWithAuth(
+        `/api/orders/${order.id}/${shouldArchive ? "archive" : "unarchive"}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || !data?.order) {
+        throw new Error(
+          data?.error ||
+            (shouldArchive
+              ? "Nao foi possivel arquivar o pedido."
+              : "Nao foi possivel retirar o pedido do arquivo."),
+        );
+      }
+
+      const updatedOrder = data.order as Order;
+      onOrderUpdated?.(updatedOrder);
+
+      if (shouldArchive) {
+        setArchivedOrders((current) => {
+          const next = current.filter((item) => item.id !== updatedOrder.id);
+          return [updatedOrder, ...next];
+        });
+      } else {
+        setArchivedOrders((current) =>
+          current.filter((item) => item.id !== updatedOrder.id),
+        );
+      }
+
+      showToast({
+        tone: "success",
+        message: shouldArchive
+          ? `Pedido ${order.orderNumber} arquivado com sucesso.`
+          : `Pedido ${order.orderNumber} removido do arquivo.`,
+      });
+    } catch (error) {
+      showToast({
+        tone: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : shouldArchive
+              ? "Erro ao arquivar pedido."
+              : "Erro ao remover pedido do arquivo.",
+      });
+    } finally {
+      setUpdatingArchiveOrderIds((current) =>
+        current.filter((item) => item !== order.id),
+      );
+    }
+  };
+
+  useEffect(() => {
+    if (!enableArchiveControls) {
+      return;
+    }
+
+    if (showArchivedOrders || archivedOrders.length === 0) {
+      loadArchivedOrders();
+    }
+  }, [
+    archivedOrders.length,
+    enableArchiveControls,
+    loadArchivedOrders,
+    showArchivedOrders,
+  ]);
+
   // Extract Lists (excluding Canceled)
+  const sourceOrders = useMemo(
+    () => (showArchivedOrders ? archivedOrders : orders),
+    [archivedOrders, orders, showArchivedOrders],
+  );
+
   const validOrders = useMemo(
-    () => orders.filter((o) => o.status !== OrderStatus.CANCELED),
-    [orders],
+    () =>
+      showArchivedOrders
+        ? sourceOrders
+        : sourceOrders.filter((o) => o.status !== OrderStatus.CANCELED),
+    [showArchivedOrders, sourceOrders],
   );
 
   const carriers = useMemo(
@@ -985,6 +1111,10 @@ export const OrderList: React.FC<OrderListProps> = ({
   };
 
   const getOrderStatusLabel = (order: Order) => {
+    if (order.manualCustomStatus && order.manualCustomStatus.trim()) {
+      return order.manualCustomStatus.trim();
+    }
+
     return getDisplayStatusLabel(order);
   };
 
@@ -1047,6 +1177,8 @@ export const OrderList: React.FC<OrderListProps> = ({
       ),
       latestMovement: getLatestMovementLabel(order),
       status: getOrderStatusLabel(order),
+      manualCustomStatus: order.manualCustomStatus || "-",
+      observation: order.observation || "-",
       trackingUrl: order.trackingUrl || "#",
     }));
 
@@ -1085,6 +1217,8 @@ export const OrderList: React.FC<OrderListProps> = ({
             <td>${escapeHtml(order.estimatedDeliveryDate)}</td>
             <td>${escapeHtml(order.carrierEstimatedDeliveryDate)}</td>
             <td>${escapeHtml(order.latestMovement)}</td>
+            <td>${escapeHtml(order.manualCustomStatus)}</td>
+            <td>${escapeHtml(order.observation)}</td>
             <td><span class="status-chip">${escapeHtml(order.status)}</span></td>
             <td><a href="${escapeHtml(
               order.trackingUrl,
@@ -1336,6 +1470,8 @@ export const OrderList: React.FC<OrderListProps> = ({
                 <th>Prev. Entrega</th>
                 <th>Previsao Transportadora</th>
                 <th>Ultima Movimentacao</th>
+                <th>Status Personalizado</th>
+                <th>Observacao</th>
                 <th>Status</th>
                 <th>Abrir rastreio</th>
               </tr>
@@ -1389,6 +1525,8 @@ export const OrderList: React.FC<OrderListProps> = ({
       "Prev. Entrega",
       "Previsao Transportadora",
       "Ultima Movimentacao",
+      "Status Personalizado",
+      "Observacao",
       "Status",
       "Abrir rastreio",
     ];
@@ -1406,6 +1544,8 @@ export const OrderList: React.FC<OrderListProps> = ({
       order.estimatedDeliveryDate,
       order.carrierEstimatedDeliveryDate,
       order.latestMovement,
+      order.manualCustomStatus,
+      order.observation,
       order.status,
       order.trackingUrl,
     ]);
@@ -1507,12 +1647,27 @@ export const OrderList: React.FC<OrderListProps> = ({
   const StatusBadge = ({
     status,
     delayed,
+    customStatus,
   }: {
     status: OrderStatus;
     delayed: boolean;
+    customStatus?: string | null;
   }) => {
     const baseClass =
       "inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wider border";
+
+    if (customStatus && customStatus.trim()) {
+      return (
+        <span
+          className={clsx(
+            baseClass,
+            "bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-900/20 dark:text-indigo-300 dark:border-indigo-900/30",
+          )}
+        >
+          {customStatus}
+        </span>
+      );
+    }
 
     if (delayed) {
       return (
@@ -1632,7 +1787,36 @@ export const OrderList: React.FC<OrderListProps> = ({
 
   return (
     <div className="space-y-4 relative lg:h-full lg:min-h-0 lg:flex lg:flex-col">
-      <div className="flex justify-end shrink-0">
+      <div className="flex items-center justify-between gap-2 shrink-0">
+        <div className="flex items-center gap-2">
+          {enableArchiveControls && (
+            <button
+              type="button"
+              onClick={() => {
+                setShowArchivedOrders((current) => !current);
+              }}
+              disabled={isLoadingArchivedOrders}
+              className={clsx(
+                "inline-flex items-center gap-2 rounded-full border bg-white px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] shadow-sm transition-colors dark:border-white/10 dark:bg-dark-card",
+                showArchivedOrders
+                  ? "border-amber-300 text-amber-700 hover:border-amber-400 dark:text-amber-300"
+                  : "border-slate-200 text-slate-600 hover:border-slate-300 hover:text-slate-900 dark:text-slate-300 dark:hover:border-white/20 dark:hover:text-white",
+              )}
+            >
+              {isLoadingArchivedOrders ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : showArchivedOrders ? (
+                <ArchiveRestore className="h-3.5 w-3.5" />
+              ) : (
+                <Archive className="h-3.5 w-3.5" />
+              )}
+              {showArchivedOrders ? "Pedidos Ativos" : "Arquivados"}
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:bg-white/10 dark:text-slate-200">
+                {archivedOrders.length}
+              </span>
+            </button>
+          )}
+        </div>
         <button
           type="button"
           onClick={() => setShowTopPanel((current) => !current)}
@@ -2040,7 +2224,7 @@ export const OrderList: React.FC<OrderListProps> = ({
             </button>
           </div>
 
-          {onStartTraySync && !isNoMovementView && isTrayAvailable && (
+          {onStartTraySync && !isNoMovementView && isTrayAvailable && !showArchivedOrders && (
             <button
               onClick={() => setIsTraySyncModalOpen(true)}
               disabled={isTraySyncing}
@@ -2067,10 +2251,15 @@ export const OrderList: React.FC<OrderListProps> = ({
 
           <button
             onClick={handleSyncAll}
-            disabled={isSyncRunning}
+            disabled={isSyncRunning || showArchivedOrders}
             className="inline-flex h-10 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-accent px-4 text-sm font-semibold tracking-tight text-white shadow-sm transition-colors hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-neon-blue dark:text-black dark:hover:bg-cyan-400"
           >
-            {isSyncRunning ? (
+            {showArchivedOrders ? (
+              <>
+                <Archive className="h-3.5 w-3.5" />
+                Sync pausado nos arquivados
+              </>
+            ) : isSyncRunning ? (
               <>
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 Sincronizando...
@@ -2291,34 +2480,38 @@ export const OrderList: React.FC<OrderListProps> = ({
                     >
                       <div className="flex flex-col">
                         <div className="mb-0.5 flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => handleMonitorToggle(order)}
-                            disabled={monitoringOrderIds.includes(order.id)}
-                            className={clsx(
-                              "rounded-full p-1 transition-colors",
-                              monitoredOrderIdSet.has(order.id)
-                                ? "text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-500/10"
-                                : "text-slate-300 hover:bg-slate-100 hover:text-amber-500 dark:text-slate-500 dark:hover:bg-white/10",
-                            )}
-                            title={
-                              monitoredOrderIdSet.has(order.id)
-                                ? "Remover dos pedidos monitorados"
-                                : "Adicionar aos pedidos monitorados"
-                            }
-                            aria-label={
-                              monitoredOrderIdSet.has(order.id)
-                                ? "Remover dos pedidos monitorados"
-                                : "Adicionar aos pedidos monitorados"
-                            }
-                          >
-                            <Star
+                          {!showArchivedOrders && onToggleMonitoredOrder && (
+                            <button
+                              type="button"
+                              onClick={() => handleMonitorToggle(order)}
+                              disabled={monitoringOrderIds.includes(order.id)}
                               className={clsx(
-                                "h-3.5 w-3.5",
-                                monitoredOrderIdSet.has(order.id) ? "fill-current" : "",
+                                "rounded-full p-1 transition-colors",
+                                monitoredOrderIdSet.has(order.id)
+                                  ? "text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-500/10"
+                                  : "text-slate-300 hover:bg-slate-100 hover:text-amber-500 dark:text-slate-500 dark:hover:bg-white/10",
                               )}
-                            />
-                          </button>
+                              title={
+                                monitoredOrderIdSet.has(order.id)
+                                  ? "Remover dos pedidos monitorados"
+                                  : "Adicionar aos pedidos monitorados"
+                              }
+                              aria-label={
+                                monitoredOrderIdSet.has(order.id)
+                                  ? "Remover dos pedidos monitorados"
+                                  : "Adicionar aos pedidos monitorados"
+                              }
+                            >
+                              <Star
+                                className={clsx(
+                                  "h-3.5 w-3.5",
+                                  monitoredOrderIdSet.has(order.id)
+                                    ? "fill-current"
+                                    : "",
+                                )}
+                              />
+                            </button>
+                          )}
                           <span className="bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-300 px-1.5 py-0.5 rounded text-xs w-fit">
                             #{order.orderNumber}
                           </span>
@@ -2438,10 +2631,29 @@ export const OrderList: React.FC<OrderListProps> = ({
                       <StatusBadge
                         status={order.status}
                         delayed={order.isDelayed}
+                        customStatus={order.manualCustomStatus}
                       />
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-2">
+                        {enableArchiveControls && (
+                          <button
+                            onClick={() =>
+                              handleArchiveToggle(order, !showArchivedOrders)
+                            }
+                            disabled={updatingArchiveOrderIds.includes(order.id)}
+                            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:border-amber-200 hover:bg-amber-50 hover:text-amber-700 disabled:opacity-60 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5 dark:hover:text-white"
+                          >
+                            {updatingArchiveOrderIds.includes(order.id) ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : showArchivedOrders ? (
+                              <ArchiveRestore className="h-3.5 w-3.5" />
+                            ) : (
+                              <Archive className="h-3.5 w-3.5" />
+                            )}
+                            {showArchivedOrders ? "Desarquivar" : "Arquivar"}
+                          </button>
+                        )}
                         <button
                           onClick={() => openTrackingLink(order)}
                           className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5 dark:hover:text-white"

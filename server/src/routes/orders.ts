@@ -1,5 +1,22 @@
 import { Router } from 'express';
-import { importOrders, getOrders, getOrderById, syncSingleOrder, syncAllOrders, startSyncAllOrders, getSyncAllStatus, clearOrdersDatabase, openOrderTracking, searchExternalOrder, updateOrderFreightType, updateOrderManualData } from '../controllers/orderController';
+import {
+  importOrders,
+  getOrders,
+  getOrderById,
+  syncSingleOrder,
+  syncAllOrders,
+  startSyncAllOrders,
+  getSyncAllStatus,
+  clearOrdersDatabase,
+  openOrderTracking,
+  searchExternalOrder,
+  updateOrderFreightType,
+  updateOrderManualData,
+  archiveOrder,
+  unarchiveOrder,
+  listCustomOrderStatuses,
+  createCustomOrderStatus,
+} from '../controllers/orderController';
 
 const router = Router();
 
@@ -12,6 +29,12 @@ router.post('/import', importOrders);
 // GET /api/orders - Listar todos os pedidos
 router.get('/', getOrders);
 
+// GET /api/orders/custom-statuses - Listar status personalizados salvos
+router.get('/custom-statuses', listCustomOrderStatuses);
+
+// POST /api/orders/custom-statuses - Criar status personalizado reutilizavel
+router.post('/custom-statuses', createCustomOrderStatus);
+
 // POST /api/orders/search-external - Buscar pedido/NF/XML em provedores externos
 router.post('/search-external', searchExternalOrder);
 
@@ -23,6 +46,12 @@ router.patch('/:id/freight-type', updateOrderFreightType);
 
 // PATCH /api/orders/:id/manual-data - Atualizar dados manuais do pedido
 router.patch('/:id/manual-data', updateOrderManualData);
+
+// PATCH /api/orders/:id/archive - Arquivar pedido
+router.patch('/:id/archive', archiveOrder);
+
+// PATCH /api/orders/:id/unarchive - Retirar pedido do arquivo
+router.patch('/:id/unarchive', unarchiveOrder);
 
 // GET /api/orders/:id - Detalhes de um pedido
 router.get('/:id', getOrderById);

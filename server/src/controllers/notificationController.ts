@@ -8,6 +8,13 @@ const parseStringArray = (value: unknown) =>
         .filter(Boolean)
     : [];
 
+const parseWatchEvents = (value: unknown) =>
+  Array.isArray(value)
+    ? value
+        .map((item) => String(item || '').trim().toUpperCase())
+        .filter(Boolean)
+    : [];
+
 export const getNotificationFeed = async (req: Request, res: Response) => {
   try {
     const companyId = req.user?.companyId;
@@ -53,6 +60,7 @@ export const addMonitoredOrders = async (req: Request, res: Response) => {
 
     const orderIds = parseStringArray(req.body?.orderIds);
     const identifiers = parseStringArray(req.body?.identifiers);
+    const watchEvents = parseWatchEvents(req.body?.watchEvents);
 
     if (orderIds.length === 0 && identifiers.length === 0) {
       return res.status(400).json({
@@ -65,6 +73,7 @@ export const addMonitoredOrders = async (req: Request, res: Response) => {
       createdById: req.user?.id || null,
       orderIds,
       identifiers,
+      watchEvents,
     });
 
     const addedCount = result.addedOrders.length;
@@ -119,5 +128,27 @@ export const removeMonitoredOrder = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Erro ao remover pedido monitorado:', error);
     return res.status(500).json({ error: 'Erro ao remover pedido monitorado' });
+  }
+};
+
+export const markAllNotificationsAsRead = async (req: Request, res: Response) => {
+  try {
+    const companyId = req.user?.companyId;
+    if (!companyId) {
+      return res.status(403).json({ error: 'Acesso negado. Usuario sem empresa.' });
+    }
+
+    const result = await notificationService.markAllAsRead(companyId);
+
+    return res.json({
+      success: true,
+      message: 'Todas as notificacoes foram marcadas como lidas.',
+      ...result,
+    });
+  } catch (error) {
+    console.error('Erro ao marcar notificacoes como lidas:', error);
+    return res
+      .status(500)
+      .json({ error: 'Erro ao marcar notificacoes como lidas' });
   }
 };

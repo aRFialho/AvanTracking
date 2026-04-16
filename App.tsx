@@ -19,6 +19,7 @@ import {
   TraySyncFilters,
   TrayIntegrationStatus,
   AppNotification,
+  MonitoredOrderItem,
 } from "./types";
 import {
   AlertCircle,
@@ -346,6 +347,9 @@ const MainApp: React.FC = () => {
     AppNotification[]
   >([]);
   const [monitoredOrderIds, setMonitoredOrderIds] = useState<string[]>([]);
+  const [monitoredOrderItems, setMonitoredOrderItems] = useState<
+    MonitoredOrderItem[]
+  >([]);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [notificationTab, setNotificationTab] = useState<
     "general" | "monitored"
@@ -415,7 +419,22 @@ const MainApp: React.FC = () => {
     (incomingOrder: Order) => {
       const normalizedIncomingOrder = normalizeOrderRecord(incomingOrder);
 
+      if (normalizedIncomingOrder.isArchived) {
+        setMonitoredOrderIds((current) =>
+          current.filter((item) => item !== normalizedIncomingOrder.id),
+        );
+        setMonitoredOrderItems((current) =>
+          current.filter((item) => item.orderId !== normalizedIncomingOrder.id),
+        );
+      }
+
       setOrders((previousOrders) => {
+        if (normalizedIncomingOrder.isArchived) {
+          return previousOrders.filter(
+            (order) => order.id !== normalizedIncomingOrder.id,
+          );
+        }
+
         const existingIndex = previousOrders.findIndex(
           (order) =>
             order.id === normalizedIncomingOrder.id ||
@@ -550,6 +569,7 @@ const MainApp: React.FC = () => {
       setGeneralNotifications([]);
       setMonitoredNotifications([]);
       setMonitoredOrderIds([]);
+      setMonitoredOrderItems([]);
       return;
     }
 
@@ -574,6 +594,11 @@ const MainApp: React.FC = () => {
           ? data.monitoredOrderIds
               .map((item: unknown) => String(item || ""))
               .filter(Boolean)
+          : [],
+      );
+      setMonitoredOrderItems(
+        Array.isArray(data.monitoredOrders)
+          ? (data.monitoredOrders as MonitoredOrderItem[])
           : [],
       );
     } catch (error) {
@@ -1129,10 +1154,104 @@ const MainApp: React.FC = () => {
     [loadNotifications, monitoredOrderIds],
   );
 
+  const handleMarkAllNotificationsAsRead = useCallback(async () => {
+    try {
+      const response = await fetchWithAuth("/api/notifications/mark-all-read", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.error || `HTTP ${response.status}`);
+      }
+
+      setGeneralNotifications([]);
+      setMonitoredNotifications([]);
+      showToast({
+        tone: "success",
+        message: "Todas as notificacoes foram marcadas como lidas.",
+      });
+    } catch (error) {
+      showToast({
+        tone: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Nao foi possivel marcar as notificacoes como lidas.",
+      });
+    }
+  }, []);
+
   const renderContent = () => {
-    const monitoredOrders = orders.filter((order) =>
+    const monitoredOrdersFromList = orders.filter((order) =>
       monitoredOrderIds.includes(order.id),
     );
+    const monitoredOrderIdSet = new Set(
+      monitoredOrdersFromList.map((order) => order.id),
+    );
+    const monitoredOrdersFromFeed = monitoredOrderItems
+      .filter((item) => !monitoredOrderIdSet.has(item.orderId))
+      .map((item) => {
+        const status =
+          (String(item.status || "").trim() as OrderStatus) || OrderStatus.PENDING;
+        const lastUpdateDate = parseDate(item.lastUpdate) ?? new Date();
+
+        return normalizeOrderRecord({
+          id: item.orderId,
+          orderNumber: String(item.orderNumber || "-"),
+          invoiceNumber: item.invoiceNumber || null,
+          trackingCode: "",
+          trackingUrl: null,
+          trackingSourceLabel: null,
+          customerName: "Pedido monitorado",
+          corporateName: "",
+          cpf: "",
+          cnpj: "",
+          phone: "",
+          mobile: "",
+          salesChannel: "Monitorado",
+          freightType: "",
+          freightValue: 0,
+          quotedFreightValue: null,
+          quotedFreightDate: null,
+          quotedFreightDetails: null,
+          originalQuotedFreightValue: null,
+          originalQuotedFreightDate: null,
+          originalQuotedFreightDetails: null,
+          originalQuotedFreightQuotationId: null,
+          originalQuotedCarrierName: null,
+          recalculatedFreightValue: null,
+          recalculatedFreightDate: null,
+          recalculatedFreightDetails: null,
+          recalculatedQuotedCarrierName: null,
+          quotedCarrierName: null,
+          freightCarrierMatchesQuote: null,
+          freightCarrierMatchesOriginalQuote: null,
+          freightCarrierMatchesRecalculatedQuote: null,
+          shippingDate: lastUpdateDate,
+          platformCreatedAt: lastUpdateDate,
+          address: "",
+          number: "",
+          complement: "",
+          neighborhood: "",
+          city: "",
+          state: "",
+          zipCode: "",
+          totalValue: 0,
+          recipient: "",
+          maxShippingDeadline: null,
+          estimatedDeliveryDate: null,
+          carrierEstimatedDeliveryDate: null,
+          status,
+          isDelayed: false,
+          isPlatformDelayed: false,
+          trackingHistory: [],
+          lastApiSync: null,
+          lastUpdate: lastUpdateDate,
+        });
+      });
+    const monitoredOrders = [...monitoredOrdersFromList, ...monitoredOrdersFromFeed];
     const monitoredSummary = {
       total: monitoredOrders.length,
       delayed: monitoredOrders.filter((order) => Boolean(order.isDelayed)).length,
@@ -1167,6 +1286,7 @@ const MainApp: React.FC = () => {
             trayIntegrationStatus={trayIntegrationStatus}
             monitoredOrderIds={monitoredOrderIds}
             onToggleMonitoredOrder={handleToggleMonitoredOrder}
+            enableArchiveControls={true}
           />
         );
       case "monitored-orders":
@@ -1211,6 +1331,7 @@ const MainApp: React.FC = () => {
               trayIntegrationStatus={trayIntegrationStatus}
               monitoredOrderIds={monitoredOrderIds}
               onToggleMonitoredOrder={handleToggleMonitoredOrder}
+              enableArchiveControls={false}
             />
           </div>
         );
@@ -1228,6 +1349,7 @@ const MainApp: React.FC = () => {
             trayIntegrationStatus={trayIntegrationStatus}
             monitoredOrderIds={monitoredOrderIds}
             onToggleMonitoredOrder={handleToggleMonitoredOrder}
+            enableArchiveControls={false}
           />
         );
       case "upload":
@@ -1349,9 +1471,18 @@ const MainApp: React.FC = () => {
               {isNotificationOpen && (
                 <div className="absolute right-0 top-12 z-50 w-[360px] max-w-[calc(100vw-32px)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_20px_60px_rgba(15,23,42,0.18)] dark:border-white/10 dark:bg-[#11131f]">
                   <div className="border-b border-slate-200 px-4 py-3 dark:border-white/10">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
-                      Notificacoes
-                    </p>
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+                        Notificacoes
+                      </p>
+                      <button
+                        type="button"
+                        onClick={handleMarkAllNotificationsAsRead}
+                        className="text-[11px] font-semibold uppercase tracking-[0.12em] text-blue-600 transition-colors hover:text-blue-800 dark:text-blue-300 dark:hover:text-blue-200"
+                      >
+                        Marcar tudo como lido
+                      </button>
+                    </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2 border-b border-slate-200 p-2 dark:border-white/10">
                     <button
