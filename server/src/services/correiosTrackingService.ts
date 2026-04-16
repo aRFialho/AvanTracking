@@ -1,43 +1,48 @@
 import { OrderStatus } from '@prisma/client';
 
+const readEnv = (value: string | undefined | null) =>
+  String(value || '')
+    .trim()
+    .replace(/^['"]+|['"]+$/g, '');
+
 const CORREIOS_API_BASE_URL =
-  process.env.CORREIOS_API_BASE_URL?.trim() || 'https://api.correios.com.br';
+  readEnv(process.env.CORREIOS_API_BASE_URL) || 'https://api.correios.com.br';
 const CORREIOS_DIRECT_TOKEN_URL =
-  process.env.CORREIOS_DIRECT_TOKEN_URL?.trim() ||
+  readEnv(process.env.CORREIOS_DIRECT_TOKEN_URL) ||
   `${CORREIOS_API_BASE_URL}/token/v1/autentica`;
 const CORREIOS_POSTING_CARD_TOKEN_URL =
-  process.env.CORREIOS_POSTING_CARD_TOKEN_URL?.trim() ||
+  readEnv(process.env.CORREIOS_POSTING_CARD_TOKEN_URL) ||
   `${CORREIOS_API_BASE_URL}/token/v1/autentica/cartaopostagem`;
 const CORREIOS_TOKEN_URL =
-  process.env.CORREIOS_TOKEN_URL?.trim() || '';
+  readEnv(process.env.CORREIOS_TOKEN_URL) || '';
 const CORREIOS_RASTRO_URL =
-  process.env.CORREIOS_RASTRO_URL?.trim() ||
+  readEnv(process.env.CORREIOS_RASTRO_URL) ||
   `${CORREIOS_API_BASE_URL}/srorastro/v1/objetos`;
 const CORREIOS_PUBLIC_TRACKING_BASE_URL =
-  process.env.CORREIOS_PUBLIC_TRACKING_BASE_URL?.trim() ||
+  readEnv(process.env.CORREIOS_PUBLIC_TRACKING_BASE_URL) ||
   'https://rastreamento.correios.com.br/app/index.php?objetos=';
 
 const CORREIOS_API_USER =
-  process.env.CORREIOS_API_USER?.trim() ||
-  process.env.CORREIOS_USERNAME?.trim() ||
+  readEnv(process.env.CORREIOS_API_USER) ||
+  readEnv(process.env.CORREIOS_USERNAME) ||
   '';
 const CORREIOS_API_PASSWORD =
-  process.env.CORREIOS_API_PASSWORD?.trim() ||
-  process.env.CORREIOS_PASSWORD?.trim() ||
+  readEnv(process.env.CORREIOS_API_PASSWORD) ||
+  readEnv(process.env.CORREIOS_PASSWORD) ||
   '';
 const CORREIOS_POSTING_CARD =
-  process.env.CORREIOS_POSTING_CARD?.trim() ||
-  process.env.CORREIOS_CARTAO_POSTAGEM?.trim() ||
+  readEnv(process.env.CORREIOS_POSTING_CARD) ||
+  readEnv(process.env.CORREIOS_CARTAO_POSTAGEM) ||
   '';
 const CORREIOS_CONTRACT =
-  process.env.CORREIOS_CONTRACT?.trim() ||
-  process.env.CORREIOS_CONTRATO?.trim() ||
+  readEnv(process.env.CORREIOS_CONTRACT) ||
+  readEnv(process.env.CORREIOS_CONTRATO) ||
   '';
-const CORREIOS_DR = process.env.CORREIOS_DR?.trim() || '';
+const CORREIOS_DR = readEnv(process.env.CORREIOS_DR) || '';
 const CORREIOS_BEARER_TOKEN =
-  process.env.CORREIOS_BEARER_TOKEN?.trim() ||
-  process.env.CORREIOS_SUBDELEGATION_KEY?.trim() ||
-  process.env.CORREIOS_API_KEY?.trim() ||
+  readEnv(process.env.CORREIOS_BEARER_TOKEN) ||
+  readEnv(process.env.CORREIOS_SUBDELEGATION_KEY) ||
+  readEnv(process.env.CORREIOS_API_KEY) ||
   '';
 
 type CorreiosTrackingEvent = {
@@ -300,35 +305,50 @@ const resolveTokenExpiryTimestamp = (payload: any) => {
 };
 
 class CorreiosTrackingService {
-  private resolveTokenRequestConfig() {
-    if (CORREIOS_TOKEN_URL) {
-      return {
-        url: CORREIOS_TOKEN_URL,
-        body: CORREIOS_POSTING_CARD
-          ? {
-              numero: CORREIOS_POSTING_CARD,
-              ...(CORREIOS_CONTRACT ? { contrato: CORREIOS_CONTRACT } : {}),
-              ...(CORREIOS_DR ? { dr: Number(CORREIOS_DR) } : {}),
-            }
-          : undefined,
-      };
-    }
-
-    if (CORREIOS_POSTING_CARD) {
-      return {
-        url: CORREIOS_POSTING_CARD_TOKEN_URL,
-        body: {
+  private resolveTokenRequestConfigs() {
+    const postingCardBody = CORREIOS_POSTING_CARD
+      ? {
           numero: CORREIOS_POSTING_CARD,
           ...(CORREIOS_CONTRACT ? { contrato: CORREIOS_CONTRACT } : {}),
           ...(CORREIOS_DR ? { dr: Number(CORREIOS_DR) } : {}),
-        },
-      };
+        }
+      : undefined;
+
+    const rawConfigs: Array<{ url: string; body?: Record<string, unknown> }> = [];
+
+    if (CORREIOS_TOKEN_URL) {
+      rawConfigs.push({
+        url: CORREIOS_TOKEN_URL,
+        ...(postingCardBody ? { body: postingCardBody } : {}),
+      });
+      rawConfigs.push({ url: CORREIOS_TOKEN_URL });
     }
 
-    return {
-      url: CORREIOS_DIRECT_TOKEN_URL,
-      body: undefined,
-    };
+    if (postingCardBody) {
+      rawConfigs.push({
+        url: CORREIOS_POSTING_CARD_TOKEN_URL,
+        body: postingCardBody,
+      });
+    }
+
+    rawConfigs.push({ url: CORREIOS_DIRECT_TOKEN_URL });
+
+    const uniqueConfigs = new Map<string, { url: string; body?: Record<string, unknown> }>();
+    for (const config of rawConfigs) {
+      const normalizedUrl = String(config.url || '').trim();
+      if (!normalizedUrl) {
+        continue;
+      }
+      const key = `${normalizedUrl}::${JSON.stringify(config.body || null)}`;
+      if (!uniqueConfigs.has(key)) {
+        uniqueConfigs.set(key, {
+          url: normalizedUrl,
+          ...(config.body ? { body: config.body } : {}),
+        });
+      }
+    }
+
+    return Array.from(uniqueConfigs.values());
   }
 
   isAvailable() {
@@ -377,35 +397,55 @@ class CorreiosTrackingService {
       `${CORREIOS_API_USER}:${CORREIOS_API_PASSWORD}`,
       'utf-8',
     ).toString('base64');
-    const { url, body } = this.resolveTokenRequestConfig();
+    const tokenConfigs = this.resolveTokenRequestConfigs();
+    const authErrors: number[] = [];
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        Authorization: `Basic ${basicToken}`,
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
-      ...(body ? { body: JSON.stringify(body) } : {}),
-    });
+    for (const { url, body } of tokenConfigs) {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Basic ${basicToken}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        ...(body ? { body: JSON.stringify(body) } : {}),
+      });
 
-    if (!response.ok) {
-      throw new Error(`Falha ao autenticar nos Correios: HTTP ${response.status}`);
+      if (!response.ok) {
+        authErrors.push(response.status);
+        continue;
+      }
+
+      const payload = await response.json().catch(() => ({}));
+      const token = extractTokenFromResponse(payload);
+
+      if (!token) {
+        continue;
+      }
+
+      cachedToken = {
+        value: token,
+        expiresAt: resolveTokenExpiryTimestamp(payload),
+      };
+
+      return token;
     }
 
-    const payload = await response.json().catch(() => ({}));
-    const token = extractTokenFromResponse(payload);
+    if (authErrors.length > 0) {
+      const firstStatus = authErrors[0];
+      const hasOnlyUnauthorizedStatuses = authErrors.every(
+        (status) => status === 401 || status === 403,
+      );
+      if (hasOnlyUnauthorizedStatuses) {
+        throw new Error(
+          `Falha ao autenticar nos Correios: HTTP ${firstStatus}. Verifique usuario, senha e permissao do contrato/cartao.`,
+        );
+      }
 
-    if (!token) {
-      throw new Error('Token dos Correios nao retornado pela API.');
+      throw new Error(`Falha ao autenticar nos Correios: HTTP ${firstStatus}`);
     }
 
-    cachedToken = {
-      value: token,
-      expiresAt: resolveTokenExpiryTimestamp(payload),
-    };
-
-    return token;
+    throw new Error('Falha ao autenticar nos Correios: nenhum endpoint retornou token.');
   }
 
   private async requestTracking(
