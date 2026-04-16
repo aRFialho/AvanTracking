@@ -1139,6 +1139,7 @@ const MainApp: React.FC = () => {
       case "orders":
         return (
           <OrderList
+            key="orders-view"
             orders={orders}
             initialFilters={activeFilters}
             onFetchSingle={handleFetchSingleOrder}
@@ -1183,6 +1184,7 @@ const MainApp: React.FC = () => {
             </div>
 
             <OrderList
+              key="monitored-orders-view"
               orders={monitoredOrders}
               onFetchSingle={handleFetchSingleOrder}
               onOrderUpdated={upsertOrder}
@@ -1199,6 +1201,7 @@ const MainApp: React.FC = () => {
       case "no-movement":
         return (
           <OrderList
+            key="no-movement-view"
             orders={orders}
             onFetchSingle={handleFetchSingleOrder}
             isNoMovementView={true}
