@@ -31,6 +31,9 @@ interface Company {
   id: string;
   name: string;
   cnpj?: string;
+  tenantGlobalId?: string | null;
+  documentType?: string | null;
+  documentNumber?: string | null;
   trayIntegrationEnabled?: boolean;
   blingIntegrationEnabled?: boolean;
   magazordIntegrationEnabled?: boolean;
@@ -114,6 +117,48 @@ const normalizeIntegrationSearchText = (value: string) =>
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .trim();
+
+const normalizeIdentityDigits = (value: string) => value.replace(/\D/g, "");
+
+const resolveIdentityDocumentType = (
+  type: string,
+  value: string,
+): "CPF" | "CNPJ" | "" => {
+  const normalizedType = String(type || "").trim().toUpperCase();
+  if (normalizedType === "CPF" || normalizedType === "CNPJ") return normalizedType;
+  const digits = normalizeIdentityDigits(value);
+  if (digits.length === 11) return "CPF";
+  if (digits.length === 14) return "CNPJ";
+  return "";
+};
+
+const formatIdentityDocumentInput = (type: string, value: string) => {
+  const digits = normalizeIdentityDigits(value);
+  const resolvedType = resolveIdentityDocumentType(type, digits);
+  if (!digits) return "";
+  if (resolvedType === "CPF") {
+    return digits
+      .slice(0, 11)
+      .replace(/(\d{3})(\d)/, "$1.$2")
+      .replace(/(\d{3})(\d)/, "$1.$2")
+      .replace(/(\d{3})(\d{1,2})$/, "$1-$2");
+  }
+  if (resolvedType === "CNPJ") {
+    return digits
+      .slice(0, 14)
+      .replace(/(\d{2})(\d)/, "$1.$2")
+      .replace(/(\d{3})(\d)/, "$1.$2")
+      .replace(/(\d{3})(\d)/, "$1/$2")
+      .replace(/(\d{4})(\d{1,2})$/, "$1-$2");
+  }
+  return digits;
+};
+
+const formatIdentityDocument = (type?: string | null, value?: string | null) => {
+  const digits = normalizeIdentityDigits(String(value || ""));
+  if (!digits) return "-";
+  return formatIdentityDocumentInput(String(type || ""), digits);
+};
 
 const INTEGRATION_LOGO_CLASS =
   "mt-3 h-8 w-auto object-contain rounded-lg px-2 py-1 dark:bg-white/5 dark:ring-1 dark:ring-white/10 dark:drop-shadow-[0_0_10px_rgba(255,255,255,0.22)]";
@@ -287,6 +332,9 @@ export const AdminPanel: React.FC = () => {
   const [companyFormData, setCompanyFormData] = useState({
     name: "",
     cnpj: "",
+    documentType: "CNPJ",
+    documentNumber: "",
+    tenantGlobalId: "",
   });
 
   // Limpeza de DB States
@@ -520,16 +568,40 @@ export const AdminPanel: React.FC = () => {
   const handleSaveCompany = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      const normalizedDocumentNumber = normalizeIdentityDigits(
+        companyFormData.documentNumber || companyFormData.cnpj || "",
+      );
+      const resolvedDocumentType = resolveIdentityDocumentType(
+        companyFormData.documentType,
+        normalizedDocumentNumber,
+      );
+      const payload = {
+        ...companyFormData,
+        documentType: resolvedDocumentType || undefined,
+        documentNumber: normalizedDocumentNumber || undefined,
+        cnpj:
+          resolvedDocumentType === "CNPJ" && normalizedDocumentNumber
+            ? normalizedDocumentNumber
+            : companyFormData.cnpj || undefined,
+        tenantGlobalId: companyFormData.tenantGlobalId.trim() || undefined,
+      };
+
       const response = await fetchWithAuth("/api/companies", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(companyFormData),
+        body: JSON.stringify(payload),
       });
 
       if (response.ok) {
         fetchData();
         setIsCompanyModalOpen(false);
-        setCompanyFormData({ name: "", cnpj: "" });
+        setCompanyFormData({
+          name: "",
+          cnpj: "",
+          documentType: "CNPJ",
+          documentNumber: "",
+          tenantGlobalId: "",
+        });
       } else {
         adminToast("Erro ao criar empresa");
       }
@@ -1280,7 +1352,8 @@ export const AdminPanel: React.FC = () => {
               <thead className="text-xs text-slate-500 dark:text-slate-400 uppercase bg-slate-50 dark:bg-white/5 border-b border-slate-200 dark:border-white/10">
                 <tr>
                   <th className="px-6 py-3">Nome da Empresa</th>
-                  <th className="px-6 py-3">CNPJ</th>
+                  <th className="px-6 py-3">Documento</th>
+                  <th className="px-6 py-3">Tenant Global</th>
                   <th className="px-6 py-3 text-right">Ações</th>
                 </tr>
               </thead>
@@ -1288,7 +1361,7 @@ export const AdminPanel: React.FC = () => {
                 {companies.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={3}
+                      colSpan={4}
                       className="px-6 py-8 text-center text-slate-400"
                     >
                       Nenhuma empresa cadastrada.
@@ -1304,7 +1377,10 @@ export const AdminPanel: React.FC = () => {
                         {c.name}
                       </td>
                       <td className="px-6 py-4 text-slate-500 dark:text-slate-400">
-                        {c.cnpj || "-"}
+                        {formatIdentityDocument(c.documentType, c.documentNumber || c.cnpj)}
+                      </td>
+                      <td className="px-6 py-4 text-slate-500 dark:text-slate-400">
+                        {c.tenantGlobalId || "-"}
                       </td>
                       <td className="px-6 py-4 text-right">
                         <button
@@ -2718,22 +2794,76 @@ export const AdminPanel: React.FC = () => {
                 />
               </div>
 
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                      Tipo de documento
+                    </label>
+                    <select
+                      value={companyFormData.documentType}
+                      onChange={(e) =>
+                        setCompanyFormData({
+                          ...companyFormData,
+                          documentType: e.target.value,
+                          documentNumber: formatIdentityDocumentInput(
+                            e.target.value,
+                            companyFormData.documentNumber,
+                          ),
+                        })
+                      }
+                      className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white focus:border-blue-500 outline-none"
+                    >
+                      <option value="">Selecione</option>
+                      <option value="CPF">CPF</option>
+                      <option value="CNPJ">CNPJ</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                      Documento fiscal
+                    </label>
+                    <input
+                      type="text"
+                      value={companyFormData.documentNumber}
+                      onChange={(e) => {
+                        const nextValue = formatIdentityDocumentInput(
+                          companyFormData.documentType,
+                          e.target.value,
+                        );
+                        setCompanyFormData({
+                          ...companyFormData,
+                          documentNumber: nextValue,
+                          cnpj:
+                            resolveIdentityDocumentType(
+                              companyFormData.documentType,
+                              nextValue,
+                            ) === "CNPJ"
+                              ? normalizeIdentityDigits(nextValue)
+                              : companyFormData.cnpj,
+                        });
+                      }}
+                      className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white focus:border-blue-500 outline-none"
+                    />
+                  </div>
+                </div>
+
               <div>
-                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
-                  CNPJ (Opcional)
-                </label>
-                <input
-                  type="text"
-                  value={companyFormData.cnpj}
-                  onChange={(e) =>
-                    setCompanyFormData({
-                      ...companyFormData,
-                      cnpj: e.target.value,
-                    })
-                  }
-                  className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white focus:border-blue-500 outline-none"
-                />
-              </div>
+                  <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                    Tenant Global (Opcional)
+                  </label>
+                  <input
+                    type="text"
+                    value={companyFormData.tenantGlobalId}
+                    onChange={(e) =>
+                      setCompanyFormData({
+                        ...companyFormData,
+                        tenantGlobalId: e.target.value,
+                      })
+                    }
+                    className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white focus:border-blue-500 outline-none"
+                  />
+                </div>
 
               <div className="pt-4 flex gap-3">
                 <button

@@ -70,10 +70,27 @@ const normalizeOptionalString = (value: unknown) => {
   return normalized || null;
 };
 
+const normalizeIdentityDocumentNumber = (value: unknown) => {
+  if (value === undefined || value === null) return null;
+  const normalized = String(value).replace(/\D/g, "").trim();
+  return normalized || null;
+};
+
+const normalizeIdentityDocumentType = (value: unknown, documentNumber?: string | null) => {
+  const normalized = String(value || "").trim().toUpperCase();
+  if (normalized === "CPF" || normalized === "CNPJ") return normalized;
+  if (documentNumber?.length === 11) return "CPF";
+  if (documentNumber?.length === 14) return "CNPJ";
+  return null;
+};
+
 const companyPublicSelect = {
   id: true,
   name: true,
   cnpj: true,
+  tenantGlobalId: true,
+  documentType: true,
+  documentNumber: true,
   trayIntegrationEnabled: true,
   blingIntegrationEnabled: true,
   magazordIntegrationEnabled: true,
@@ -125,13 +142,25 @@ export const getCompanies = async (req: Request, res: Response) => {
 
 // Criar empresa
 export const createCompany = async (req: Request, res: Response) => {
-  const { name, cnpj, intelipostClientId, sswRequireCnpjs } = req.body;
+  const { name, cnpj, tenantGlobalId, documentType, documentNumber, intelipostClientId, sswRequireCnpjs } = req.body;
 
   if (!name) {
     return res.status(400).json({ error: 'Name is required' });
   }
 
   try {
+    const normalizedDocumentNumber = normalizeIdentityDocumentNumber(
+      documentNumber ?? cnpj,
+    );
+    const normalizedDocumentType = normalizeIdentityDocumentType(
+      documentType,
+      normalizedDocumentNumber,
+    );
+    const normalizedTenantGlobalId = normalizeOptionalString(tenantGlobalId);
+    const normalizedCnpj =
+      normalizeOptionalString(cnpj) ??
+      (normalizedDocumentType === "CNPJ" ? normalizedDocumentNumber : null);
+
     const trayIntegrationEnabled = normalizeBooleanSetting(
       req.body?.trayIntegrationEnabled,
     );
@@ -168,7 +197,10 @@ export const createCompany = async (req: Request, res: Response) => {
     const company = await (prisma.company as any).create({
       data: {
         name,
-        cnpj,
+        cnpj: normalizedCnpj,
+        tenantGlobalId: normalizedTenantGlobalId,
+        documentType: normalizedDocumentType,
+        documentNumber: normalizedDocumentNumber,
         ...erpIntegrationData,
         intelipostIntegrationEnabled: normalizeBooleanSetting(
           req.body?.intelipostIntegrationEnabled,
