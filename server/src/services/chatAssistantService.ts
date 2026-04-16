@@ -6,6 +6,7 @@ import { prisma } from '../lib/prisma';
 import { TrackingService } from './trackingService';
 import { importOrdersForCompany } from './orderImportService';
 import { notificationService } from './notificationService';
+import { getPublicBaseUrl } from '../utils/publicBaseUrl';
 
 const CLOSED_STATUSES: OrderStatus[] = [
   OrderStatus.DELIVERED,
@@ -588,21 +589,6 @@ const mapIntelipostStatusToOrderStatus = (value: string) => {
   }
 
   return OrderStatus.PENDING;
-};
-
-const getPublicBaseUrl = () => {
-  const configuredBaseUrl = String(
-    process.env.APP_BASE_URL ||
-      process.env.FRONTEND_URL ||
-      process.env.RENDER_EXTERNAL_URL ||
-      '',
-  ).trim();
-
-  if (configuredBaseUrl) {
-    return configuredBaseUrl.replace(/\/+$/, '');
-  }
-
-  return `http://localhost:${process.env.PORT || '3000'}`;
 };
 
 const getReportsDir = () =>

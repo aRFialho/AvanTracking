@@ -11,6 +11,7 @@ import type {
 } from '../types/syncReport';
 import { sendBrevoEmail } from './emailTransportService';
 import { prisma } from '../lib/prisma';
+import { getPublicBaseUrl } from '../utils/publicBaseUrl';
 const APP_LOGO_URL =
   'https://res.cloudinary.com/dhqxp3tuo/image/upload/v1771249579/ChatGPT_Image_13_de_fev._de_2026_16_40_14_kldj3k.png';
 
@@ -64,21 +65,6 @@ const formatDateTime = (value: string | null) =>
 
 const formatDateOnly = (value: string | null) =>
   value ? new Date(value).toLocaleDateString('pt-BR') : '-';
-
-const getPublicBaseUrl = () => {
-  const configuredBaseUrl = String(
-    process.env.APP_BASE_URL ||
-      process.env.FRONTEND_URL ||
-      process.env.RENDER_EXTERNAL_URL ||
-      '',
-  ).trim();
-
-  if (configuredBaseUrl) {
-    return configuredBaseUrl.replace(/\/+$/, '');
-  }
-
-  return `http://localhost:${process.env.PORT || '3000'}`;
-};
 
 const getReportsDir = (scope = 'sync') =>
   path.join(__dirname, `../../public/reports/${scope}`);
@@ -777,7 +763,7 @@ const buildTraySyncReportHtml = (
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Relatorio de pedidos Tray - ${escapeHtml(metadata.companyName)}</title>
+    <title>Relatorio de pedidos - ${escapeHtml(metadata.companyName)}</title>
   </head>
   <body style="margin:0;background:#eff6ff;font-family:Arial,Helvetica,sans-serif;color:#0f172a;">
     <div style="padding:32px 16px;background:radial-gradient(circle at top,#1d4ed8 0%,#0f172a 55%);">
@@ -786,7 +772,7 @@ const buildTraySyncReportHtml = (
           <div style="display:flex;justify-content:space-between;gap:20px;align-items:flex-start;flex-wrap:wrap;">
             <div style="flex:1;min-width:0;">
               <p style="margin:0;font-size:12px;letter-spacing:2px;text-transform:uppercase;color:#2563eb;font-weight:700;">
-                Relatorio de pedidos Tray ${metadata.trigger === 'automatic' ? 'automatico' : 'manual'}
+                Relatorio de pedidos ${metadata.trigger === 'automatic' ? 'automatico' : 'manual'}
               </p>
               <h1 style="margin:10px 0 0;font-size:34px;line-height:1.15;color:#0f172a;">
                 ${escapeHtml(metadata.companyName)}
@@ -858,7 +844,7 @@ const buildTraySyncEmailHtml = (
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Relatorio de pedidos Tray</title>
+    <title>Relatorio de pedidos</title>
   </head>
   <body style="margin:0;padding:0;background:#0b1220;font-family:Arial,Helvetica,sans-serif;color:#0f172a;">
     <div style="padding:28px 16px;background:radial-gradient(circle at top,#1d4ed8 0%,#0b1220 58%);">
@@ -872,7 +858,7 @@ const buildTraySyncEmailHtml = (
                 </div>
                 <div style="flex:1;min-width:0;">
                   <p style="margin:0;font-size:12px;letter-spacing:2px;text-transform:uppercase;color:#bfdbfe;">
-                    Relatorio ${metadata.trigger === 'automatic' ? 'automatico' : 'manual'} de pedidos Tray
+                    Relatorio ${metadata.trigger === 'automatic' ? 'automatico' : 'manual'} de pedidos
                   </p>
                   <h1 style="margin:10px 0 0;font-size:30px;line-height:1.15;color:#ffffff;">
                     ${escapeHtml(metadata.companyName)}
@@ -951,7 +937,7 @@ const buildTraySyncEmailText = (
   },
 ) =>
   [
-    `Relatorio ${metadata.trigger === 'automatic' ? 'automatico' : 'manual'} de pedidos Tray - ${metadata.companyName}`,
+    `Relatorio ${metadata.trigger === 'automatic' ? 'automatico' : 'manual'} de pedidos - ${metadata.companyName}`,
     `Loja Tray: ${payload.storeId}`,
     `Inicio: ${metadata.startedAt}`,
     `Fim: ${metadata.finishedAt}`,
@@ -1188,13 +1174,13 @@ class SyncReportService {
 
     await sendBrevoEmail({
       to: recipients,
-      subject: `Relatorio de pedidos Tray - ${companyName}`,
+      subject: `Relatorio de pedidos - ${companyName}`,
       htmlContent: emailHtml,
       textContent: emailText,
     });
 
     console.log(
-      `Relatorio de pedidos Tray enviado para ${recipients
+      `Relatorio de pedidos enviado para ${recipients
         .map((recipient) => recipient.email)
         .join(', ')}`,
     );

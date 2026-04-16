@@ -133,6 +133,22 @@ const formatCountdown = (target: Date | null, nowMs: number) => {
     .join(":");
 };
 
+const buildReportDownloadUrl = (rawUrl: string | null | undefined) => {
+  const normalized = String(rawUrl || "").trim();
+  if (!normalized) {
+    return "#";
+  }
+
+  try {
+    const url = new URL(normalized, window.location.origin);
+    url.searchParams.set("download", "1");
+    return url.toString();
+  } catch {
+    const separator = normalized.includes("?") ? "&" : "?";
+    return `${normalized}${separator}download=1`;
+  }
+};
+
 const InitialDataLoader: React.FC = () => {
   return (
     <div className="h-screen w-full overflow-hidden bg-[radial-gradient(circle_at_top,#fef2f2_0%,#fff7ed_38%,#f8fafc_100%)] dark:bg-[radial-gradient(circle_at_top,#14213d_0%,#0b0c15_48%,#05060c_100%)] flex items-center justify-center px-6">
@@ -1394,7 +1410,9 @@ const MainApp: React.FC = () => {
                                 (notification.csvUrl || notification.reportUrl) && (
                                   <div className="flex items-center gap-2">
                                     <a
-                                      href={notification.csvUrl || notification.reportUrl || "#"}
+                                      href={buildReportDownloadUrl(
+                                        notification.csvUrl || notification.reportUrl,
+                                      )}
                                       target="_blank"
                                       rel="noreferrer"
                                       className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-600 transition-colors hover:bg-slate-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/10"

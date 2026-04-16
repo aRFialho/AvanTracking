@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import { OrderStatus } from '@prisma/client';
 import { sendBrevoEmail } from './emailTransportService';
 import { prisma } from '../lib/prisma';
+import { getPublicBaseUrl } from '../utils/publicBaseUrl';
 const APP_LOGO_URL =
   'https://res.cloudinary.com/dhqxp3tuo/image/upload/v1771249579/ChatGPT_Image_13_de_fev._de_2026_16_40_14_kldj3k.png';
 const MONTHLY_REPORT_HOUR = 8;
@@ -74,21 +75,6 @@ const formatMonthLabel = (value: Date) =>
     year: 'numeric',
     timeZone: 'America/Sao_Paulo',
   }).format(value);
-
-const getPublicBaseUrl = () => {
-  const configuredBaseUrl = String(
-    process.env.APP_BASE_URL ||
-      process.env.FRONTEND_URL ||
-      process.env.RENDER_EXTERNAL_URL ||
-      '',
-  ).trim();
-
-  if (configuredBaseUrl) {
-    return configuredBaseUrl.replace(/\/+$/, '');
-  }
-
-  return `http://localhost:${process.env.PORT || '3000'}`;
-};
 
 const getReportsDir = () =>
   path.join(__dirname, '../../public/reports/monthly-summary');

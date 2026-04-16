@@ -256,6 +256,69 @@ app.get('/api/tray/rate-limit-stats', (req, res) => {
 
 // Servir frontend
 const frontendPath = path.join(__dirname, "../public");
+const reportsPath = path.join(frontendPath, 'reports');
+
+app.get('/reports/:scope/:fileName', (req, res, next) => {
+  const scope = String(req.params.scope || '').trim();
+  const fileName = path.basename(String(req.params.fileName || '').trim());
+
+  if (!scope || !fileName) {
+    return next();
+  }
+
+  const isValidScope = /^[a-z0-9][a-z0-9_-]*$/i.test(scope);
+  const isValidFileName = /^[a-z0-9._-]+$/i.test(fileName);
+
+  if (!isValidScope || !isValidFileName) {
+    return res.status(400).json({ error: 'Invalid report path' });
+  }
+
+  const scopeRootPath = path.resolve(reportsPath, scope);
+  const filePath = path.resolve(scopeRootPath, fileName);
+
+  if (!filePath.startsWith(`${scopeRootPath}${path.sep}`)) {
+    return res.status(400).json({ error: 'Invalid report path' });
+  }
+
+  const extension = path.extname(fileName).toLowerCase();
+  const downloadParam = String(req.query.download || '').toLowerCase();
+  const forceDownload =
+    extension === '.csv' ||
+    extension === '.xls' ||
+    extension === '.xlsx' ||
+    (extension === '.html' &&
+      (downloadParam === '1' || downloadParam === 'true' || downloadParam === 'yes'));
+
+  if (forceDownload) {
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+  }
+
+  if (extension === '.csv') {
+    res.type('text/csv; charset=utf-8');
+  }
+
+  return res.sendFile(filePath, (error) => {
+    if (!error) {
+      return;
+    }
+
+    const typedError = error as NodeJS.ErrnoException & {
+      status?: number;
+      statusCode?: number;
+    };
+
+    if (
+      typedError.code === 'ENOENT' ||
+      typedError.status === 404 ||
+      typedError.statusCode === 404
+    ) {
+      return next();
+    }
+
+    return next(typedError);
+  });
+});
+
 app.use(express.static(frontendPath));
 
 // ⚠️ FALLBACK DEVE SER SEMPRE A ÚLTIMA ROTA!
