@@ -1,5 +1,5 @@
 
-export type PageView = 'dashboard' | 'orders' | 'upload' | 'alerts' | 'delivery-failures' | 'admin' | 'no-movement' | 'latest-updates';
+export type PageView = 'dashboard' | 'orders' | 'monitored-orders' | 'upload' | 'alerts' | 'delivery-failures' | 'admin' | 'no-movement' | 'latest-updates';
 
 export enum OrderStatus {
   PENDING = 'PENDING', // Importado, aguardando info
