@@ -347,12 +347,21 @@ class CorreiosTrackingService {
     return buildPublicTrackingUrl(normalizedCode);
   }
 
-  private async getBearerToken() {
-    if (CORREIOS_BEARER_TOKEN) {
+  private async getBearerToken(options?: { forceRefresh?: boolean }) {
+    const forceRefresh = options?.forceRefresh === true;
+    const hasUserPasswordCredentials = Boolean(
+      CORREIOS_API_USER && CORREIOS_API_PASSWORD,
+    );
+
+    if (
+      CORREIOS_BEARER_TOKEN &&
+      (!forceRefresh || !hasUserPasswordCredentials)
+    ) {
       return CORREIOS_BEARER_TOKEN;
     }
 
     if (
+      !forceRefresh &&
       cachedToken &&
       cachedToken.expiresAt > Date.now() + 30 * 60 * 1000 &&
       cachedToken.value
@@ -397,6 +406,22 @@ class CorreiosTrackingService {
     };
 
     return token;
+  }
+
+  private async requestTracking(
+    normalizedCode: string,
+    token: string,
+  ): Promise<Response> {
+    return fetch(
+      `${CORREIOS_RASTRO_URL}/${encodeURIComponent(normalizedCode)}?resultado=T`,
+      {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/json',
+        },
+      },
+    );
   }
 
   private parseEvents(payload: any): CorreiosTrackingEvent[] {
@@ -478,21 +503,31 @@ class CorreiosTrackingService {
       throw new Error('Integracao dos Correios nao configurada.');
     }
 
-    const token = await this.getBearerToken();
-    const response = await fetch(
-      `${CORREIOS_RASTRO_URL}/${encodeURIComponent(normalizedCode)}?resultado=T`,
-      {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/json',
-        },
-      },
+    const hasUserPasswordCredentials = Boolean(
+      CORREIOS_API_USER && CORREIOS_API_PASSWORD,
     );
+    const token = await this.getBearerToken();
+    let response = await this.requestTracking(normalizedCode, token);
+
+    const shouldRetryWithFreshToken =
+      (response.status === 401 || response.status === 403) &&
+      hasUserPasswordCredentials;
+
+    if (shouldRetryWithFreshToken) {
+      cachedToken = null;
+      const refreshedToken = await this.getBearerToken({ forceRefresh: true });
+      response = await this.requestTracking(normalizedCode, refreshedToken);
+    }
 
     if (!response.ok) {
       if (response.status === 404) {
         return null;
+      }
+
+      if (response.status === 401 || response.status === 403) {
+        throw new Error(
+          `A API dos Correios recusou a consulta de rastreio (HTTP ${response.status}). Verifique as credenciais e permissoes da integracao.`,
+        );
       }
 
       throw new Error(`Falha ao consultar rastreio dos Correios: HTTP ${response.status}`);
