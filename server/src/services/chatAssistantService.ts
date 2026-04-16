@@ -683,11 +683,21 @@ const isStructuredIntent = (text: string) => {
     'pedidos especificos',
     'pedido especifico',
     'me avise sobre',
+    'me avise sobre o pedido',
+    'me avise sobre a nf',
     'inclua os pedidos',
     'inclua as nfs',
     'inclua as nf',
     'adicione os pedidos',
     'monitorar pedido',
+    'monitorar nf',
+    'monitore',
+    'monitora',
+    'monitoramento',
+    'monitore o pedido',
+    'monitore a nf',
+    'monitora o pedido',
+    'monitora a nf',
     ].some((term) => normalized.includes(term)) || hasFilterLikeIntent(normalized)
   );
 };
@@ -714,6 +724,9 @@ const MONITORED_IDENTIFIER_STOPWORDS = new Set([
   'monitorado',
   'monitorados',
   'monitorar',
+  'monitore',
+  'monitora',
+  'monitoramento',
   'me',
   'avise',
   'sobre',
@@ -745,7 +758,9 @@ const isMonitoredOrderIncludeIntent = (text: string) => {
     normalized.includes('adicionar') ||
     normalized.includes('me avise') ||
     normalized.includes('monitorar') ||
-    normalized.includes('monitore');
+    normalized.includes('monitore') ||
+    normalized.includes('monitora') ||
+    normalized.includes('monitoramento');
   const hasTargetContext =
     normalized.includes('pedido monitorado') ||
     normalized.includes('pedidos monitorados') ||

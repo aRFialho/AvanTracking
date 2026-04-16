@@ -11,6 +11,7 @@ import {
 import { trayAuthService } from './trayAuthService';
 import { syncReportService } from './syncReportService';
 import type { SyncTrigger } from '../types/syncReport';
+import { isDemoCompany, isDemoCompanyById } from './demoCompanyService';
 import { prisma } from '../lib/prisma';
 
 const MAX_LOGS = 1000;
@@ -107,9 +108,16 @@ class TraySyncJobService {
           },
           select: {
             id: true,
+            name: true,
+            cnpj: true,
+            documentNumber: true,
           },
         })
-      ).map((company: { id: string }) => company.id),
+      )
+        .filter((company: { name?: string | null; cnpj?: string | null; documentNumber?: string | null }) =>
+          !isDemoCompany(company),
+        )
+        .map((company: { id: string }) => company.id),
     );
 
     for (const user of users) {
@@ -180,6 +188,24 @@ class TraySyncJobService {
     mode: 'manual' | 'automatic',
   ) {
     try {
+      if (await isDemoCompanyById(job.companyId)) {
+        job.status = 'completed';
+        job.currentOrderNumber = null;
+        job.total = 0;
+        job.processed = 0;
+        job.success = 0;
+        job.failed = 0;
+        job.finishedAt = new Date().toISOString();
+        this.pushLog(
+          job,
+          'info',
+          'Sincronizacao da Tray desabilitada para empresa demonstrativa.',
+        );
+        this.requesters.delete(job.companyId);
+        this.schedules.delete(job.companyId);
+        return;
+      }
+
       const result = await traySyncService.executeSync(job.companyId, filters, {
         onStart: ({ total }) => {
           job.total = total;
@@ -422,11 +448,14 @@ class TraySyncJobService {
       const company = await (prisma.company as any).findUnique({
         where: { id: companyId },
         select: {
+          name: true,
+          cnpj: true,
+          documentNumber: true,
           trayIntegrationEnabled: true,
         },
       });
 
-      if (company?.trayIntegrationEnabled === false) {
+      if (company?.trayIntegrationEnabled === false || isDemoCompany(company)) {
         this.schedules.delete(companyId);
         return;
       }

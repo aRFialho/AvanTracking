@@ -3,8 +3,12 @@ import { traySyncJobService } from '../services/traySyncJobService';
 import { traySyncService } from '../services/traySyncService';
 import { trayAuthService } from '../services/trayAuthService';
 import { syncReportService } from '../services/syncReportService';
+import { isDemoCompanyById } from '../services/demoCompanyService';
 import { prisma } from '../lib/prisma';
 import { integrationOrderStatusService } from '../services/integrationOrderStatusService';
+
+const DEMO_TRAY_SYNC_DISABLED_MESSAGE =
+  'Sincronizacao da Integradora desabilitada para empresa demonstrativa.';
 
 const getUserCompany = (req: Request) => {
   if (!req.user) {
@@ -39,6 +43,10 @@ export const syncTrayOrders = async (req: Request, res: Response) => {
     const context = getUserCompany(req);
     if ('error' in context) {
       return res.status(context.status).json({ error: context.error });
+    }
+
+    if (await isDemoCompanyById(context.companyId)) {
+      return res.status(400).json({ error: DEMO_TRAY_SYNC_DISABLED_MESSAGE });
     }
 
     if (!(await isTrayIntegrationEnabled(context.companyId))) {
@@ -101,6 +109,10 @@ export const startTraySyncJob = async (req: Request, res: Response) => {
       return res.status(context.status).json({ error: context.error });
     }
 
+    if (await isDemoCompanyById(context.companyId)) {
+      return res.status(400).json({ error: DEMO_TRAY_SYNC_DISABLED_MESSAGE });
+    }
+
     if (!(await isTrayIntegrationEnabled(context.companyId))) {
       return res.status(400).json({
         error: 'A integracao da Integradora esta desativada para a empresa atual.',
@@ -156,6 +168,14 @@ export const getTraySyncStatus = async (req: Request, res: Response) => {
     const context = getUserCompany(req);
     if ('error' in context) {
       return res.status(context.status).json({ error: context.error });
+    }
+
+    if (await isDemoCompanyById(context.companyId)) {
+      return res.json({
+        success: true,
+        job: null,
+        schedule: traySyncJobService.getDisabledSchedule(),
+      });
     }
 
     if (!(await isTrayIntegrationEnabled(context.companyId))) {

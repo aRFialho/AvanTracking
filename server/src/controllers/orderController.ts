@@ -7,12 +7,15 @@ import { correiosTrackingService } from '../services/correiosTrackingService';
 import { matchSswTrackingToOrder, sswTrackingService } from '../services/sswTrackingService';
 import { syncReportService } from '../services/syncReportService';
 import { notificationService } from '../services/notificationService';
+import { isDemoCompanyById } from '../services/demoCompanyService';
 import { toUserFacingDatabaseErrorMessage } from '../utils/prismaError';
 import { resolvePlatformCreatedDate } from '../utils/orderDates';
 import { prisma as sharedPrisma } from '../lib/prisma';
 
 const prisma = sharedPrisma as any;
 const trackingService = new TrackingService();
+const DEMO_SYNC_DISABLED_MESSAGE =
+  'Sincronizacao desabilitada para empresa demonstrativa.';
 
 const safeString = (value: any): string | null => {
   if (value === null || value === undefined || value === '') return null;
@@ -212,6 +215,9 @@ const isXmlTrackingKey = (value: unknown) => {
   if (/^\d{44}$/.test(normalized)) return true;
   return normalized.length >= 20 && /[A-Z]/.test(normalized) && /\d/.test(normalized);
 };
+
+const looksLikeCorreiosObjectCode = (value: unknown) =>
+  /^[A-Z]{2}\d{9}[A-Z]{2}$/.test(normalizeAlphaNumeric(value));
 
 const shouldExcludeOrderFromPlatform = (_order: any) => false;
 
@@ -1614,6 +1620,7 @@ export const searchExternalOrder = async (req: Request, res: Response) => {
 
     const normalizedDigits = normalizeDigits(identifier);
     const normalizedAlphaNumeric = normalizeAlphaNumeric(identifier);
+    const isCorreiosIdentifier = looksLikeCorreiosObjectCode(identifier);
 
     const existingOrder = await prisma.order.findFirst({
       where: {
@@ -1685,6 +1692,13 @@ export const searchExternalOrder = async (req: Request, res: Response) => {
     );
 
     if (!externalResult) {
+      if (isCorreiosIdentifier) {
+        return res.status(404).json({
+          error:
+            'Nao encontrei rastreio nos Correios para este codigo de objeto. Verifique o codigo informado e se a integracao dos Correios esta habilitada para a empresa ativa.',
+        });
+      }
+
       return res.status(404).json({
         error: 'Nenhum rastreio encontrado nas integradoras ativas.',
       });
@@ -1735,6 +1749,15 @@ export const searchExternalOrder = async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Erro na busca externa:', error);
+    const message =
+      error instanceof Error
+        ? error.message
+        : 'Erro ao consultar pedido externamente';
+
+    if (/correios/i.test(message)) {
+      return res.status(400).json({ error: message });
+    }
+
     return res.status(500).json({ error: 'Erro ao consultar pedido externamente' });
   }
 };
@@ -1751,6 +1774,10 @@ export const syncSingleOrder = async (req: Request, res: Response) => {
 
     if (!user || !user.companyId) {
       return res.status(403).json({ error: 'Acesso negado. Usuario sem empresa.' });
+    }
+
+    if (await isDemoCompanyById(user.companyId)) {
+      return res.status(400).json({ error: DEMO_SYNC_DISABLED_MESSAGE });
     }
 
     const result = await trackingService.syncOrder(id, user.companyId);
@@ -1831,6 +1858,10 @@ export const syncAllOrders = async (req: Request, res: Response) => {
       return res.status(403).json({ error: 'Acesso negado. Usuario sem empresa.' });
     }
 
+    if (await isDemoCompanyById(user.companyId)) {
+      return res.status(400).json({ error: DEMO_SYNC_DISABLED_MESSAGE });
+    }
+
     const startedAt = new Date().toISOString();
     const results = await trackingService.syncAllActive(user.companyId);
     const finishedAt = new Date().toISOString();
@@ -1895,6 +1926,10 @@ export const startSyncAllOrders = async (req: Request, res: Response) => {
       return res.status(403).json({ error: 'Acesso negado. Usuario sem empresa.' });
     }
 
+    if (await isDemoCompanyById(user.companyId)) {
+      return res.status(400).json({ error: DEMO_SYNC_DISABLED_MESSAGE });
+    }
+
     const job = syncJobService.startJob(user.companyId, user.id, 'manual', {
       email: user.email,
       name: user.email,
@@ -1919,6 +1954,14 @@ export const getSyncAllStatus = async (req: Request, res: Response) => {
 
     if (!user || !user.companyId) {
       return res.status(403).json({ error: 'Acesso negado. Usuario sem empresa.' });
+    }
+
+    if (await isDemoCompanyById(user.companyId)) {
+      return res.json({
+        success: true,
+        job: null,
+        schedule: syncJobService.getDisabledSchedule(),
+      });
     }
 
     syncJobService.ensureSchedule(user.companyId, user.id);

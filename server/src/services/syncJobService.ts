@@ -9,6 +9,7 @@ import { TrackingService } from './trackingService';
 import { syncReportService } from './syncReportService';
 import { notificationService } from './notificationService';
 import { toUserFacingDatabaseErrorMessage } from '../utils/prismaError';
+import { isDemoCompany, isDemoCompanyById } from './demoCompanyService';
 import { prisma } from '../lib/prisma';
 
 const trackingService = new TrackingService();
@@ -60,10 +61,19 @@ class SyncJobService {
     const users = await prisma.user.findMany({
       where: {
         companyId: { not: null },
+        company: {
+          intelipostIntegrationEnabled: true,
+        },
       },
       select: {
         id: true,
         companyId: true,
+        company: {
+          select: {
+            name: true,
+            cnpj: true,
+          },
+        },
       },
       orderBy: [{ createdAt: 'asc' }],
     });
@@ -71,7 +81,11 @@ class SyncJobService {
     const seenCompanies = new Set<string>();
 
     for (const user of users) {
-      if (!user.companyId || seenCompanies.has(user.companyId)) {
+      if (
+        !user.companyId ||
+        seenCompanies.has(user.companyId) ||
+        isDemoCompany(user.company)
+      ) {
         continue;
       }
 
@@ -87,6 +101,14 @@ class SyncJobService {
       enabled: true,
       intervalMs: AUTO_SYNC_INTERVAL_MS,
       nextScheduledAt: schedule?.nextScheduledAt ?? null,
+    };
+  }
+
+  getDisabledSchedule(): SyncScheduleStatus {
+    return {
+      enabled: false,
+      intervalMs: AUTO_SYNC_INTERVAL_MS,
+      nextScheduledAt: null,
     };
   }
 
@@ -133,6 +155,24 @@ class SyncJobService {
 
   private async run(job: SyncJobStatus, trigger: SyncTrigger) {
     try {
+      if (await isDemoCompanyById(job.companyId)) {
+        job.status = 'completed';
+        job.currentOrderNumber = null;
+        job.total = 0;
+        job.processed = 0;
+        job.success = 0;
+        job.failed = 0;
+        job.finishedAt = new Date().toISOString();
+        this.pushLog(
+          job,
+          'info',
+          'Sincronizacao desabilitada para empresa demonstrativa.',
+        );
+        this.requesters.delete(job.companyId);
+        this.schedules.delete(job.companyId);
+        return;
+      }
+
       let generatedReport: {
         reportId?: string | null;
         reportUrl?: string | null;
@@ -378,14 +418,21 @@ class SyncJobService {
     schedule.timeout = null;
     schedule.nextScheduledAt = null;
 
-    const existing = this.jobs.get(companyId);
-    if (existing?.status === 'running') {
-      this.scheduleNext(companyId, schedule.userId);
-      return;
-    }
+    void (async () => {
+      if (await isDemoCompanyById(companyId)) {
+        this.schedules.delete(companyId);
+        return;
+      }
 
-    const job = this.startJob(companyId, schedule.userId, 'automatic');
-    this.pushLog(job, 'info', 'Execução automática disparada.');
+      const existing = this.jobs.get(companyId);
+      if (existing?.status === 'running') {
+        this.scheduleNext(companyId, schedule.userId);
+        return;
+      }
+
+      const job = this.startJob(companyId, schedule.userId, 'automatic');
+      this.pushLog(job, 'info', 'Execução automática disparada.');
+    })();
   }
 
   private clearScheduledTimeout(companyId: string) {
@@ -398,3 +445,4 @@ class SyncJobService {
 }
 
 export const syncJobService = new SyncJobService();
+

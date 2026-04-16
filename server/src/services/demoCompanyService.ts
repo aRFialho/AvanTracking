@@ -1,7 +1,60 @@
 import { PrismaClient, OrderStatus } from '@prisma/client';
+import { prisma as sharedPrisma } from '../lib/prisma';
 
-const DEMO_COMPANY_NAME = 'Empresa Teste - Apresentacao';
-const DEMO_COMPANY_CNPJ = '12.345.678/0001-90';
+export const DEMO_COMPANY_NAME = 'Empresa Teste - Apresentacao';
+export const DEMO_COMPANY_CNPJ = '12.345.678/0001-90';
+
+const DEMO_COMPANY_CNPJ_DIGITS = DEMO_COMPANY_CNPJ.replace(/\D/g, '');
+
+type DemoCompanyLike = {
+  name?: string | null;
+  cnpj?: string | null;
+  documentNumber?: string | null;
+};
+
+const normalizeText = (value: unknown) =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const normalizeDigits = (value: unknown) => String(value || '').replace(/\D/g, '').trim();
+
+export const isDemoCompany = (company: DemoCompanyLike | null | undefined) => {
+  if (!company) return false;
+
+  const digits = normalizeDigits(company.cnpj || company.documentNumber);
+  if (digits && digits === DEMO_COMPANY_CNPJ_DIGITS) {
+    return true;
+  }
+
+  const normalizedName = normalizeText(company.name);
+  if (!normalizedName) return false;
+
+  const hasDemoPrefix = normalizedName.includes('EMPRESA TESTE');
+  const hasDemoSuffix =
+    normalizedName.includes('APRESENTACAO') ||
+    normalizedName.includes('DEMONSTRACAO');
+
+  return hasDemoPrefix && hasDemoSuffix;
+};
+
+export const isDemoCompanyById = async (companyId: string) => {
+  if (!companyId) return false;
+
+  const company = await (sharedPrisma.company as any).findUnique({
+    where: { id: companyId },
+    select: {
+      name: true,
+      cnpj: true,
+      documentNumber: true,
+    },
+  });
+
+  return isDemoCompany(company);
+};
 
 type DemoTrackingEvent = {
   status: string;
@@ -452,12 +505,22 @@ export const ensureDemoCompanyData = async (prisma: PrismaClient) => {
       data: {
         name: DEMO_COMPANY_NAME,
         cnpj: DEMO_COMPANY_CNPJ,
+        trayIntegrationEnabled: false,
+        intelipostIntegrationEnabled: false,
       },
     });
-  } else if (company.cnpj !== DEMO_COMPANY_CNPJ) {
+  } else if (
+    company.cnpj !== DEMO_COMPANY_CNPJ ||
+    company.trayIntegrationEnabled !== false ||
+    company.intelipostIntegrationEnabled !== false
+  ) {
     company = await prisma.company.update({
       where: { id: company.id },
-      data: { cnpj: DEMO_COMPANY_CNPJ },
+      data: {
+        cnpj: DEMO_COMPANY_CNPJ,
+        trayIntegrationEnabled: false,
+        intelipostIntegrationEnabled: false,
+      },
     });
   }
 

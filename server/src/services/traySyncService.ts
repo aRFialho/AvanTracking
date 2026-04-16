@@ -10,6 +10,7 @@ import {
   recalculateStoredOrderFreight,
 } from './freightRecalculationService';
 import { integrationOrderStatusService } from './integrationOrderStatusService';
+import { isDemoCompany } from './demoCompanyService';
 
 const TRAY_STATUS_OPTIONS = [
   'pedido cadastrado',
@@ -80,10 +81,18 @@ export class TraySyncService {
       where: { id: companyId },
       select: {
         name: true,
+        cnpj: true,
+        documentNumber: true,
         trayIntegrationEnabled: true,
         integrationCarrierExceptions: true,
       },
     });
+
+    if (isDemoCompany(company)) {
+      throw new Error(
+        'Sincronizacao da Integradora desabilitada para empresa demonstrativa.',
+      );
+    }
 
     if (company?.trayIntegrationEnabled === false) {
       throw new Error('A integracao da Integradora esta desativada para esta empresa.');

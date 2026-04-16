@@ -7,6 +7,7 @@ import type {
 import { isDatabaseUnavailableError, toUserFacingDatabaseErrorMessage } from '../utils/prismaError';
 import { correiosTrackingService } from './correiosTrackingService';
 import { matchSswTrackingToOrder, sswTrackingService } from './sswTrackingService';
+import { isDemoCompanyById } from './demoCompanyService';
 import { prisma } from '../lib/prisma';
 
 const INTELIPOST_API_URL = 'https://tracking-graphql.intelipost.com.br/';
@@ -279,6 +280,15 @@ const isXmlSearchIdentifier = (value: string) => {
   return normalized.length >= 20 && /[A-Z]/.test(normalized) && /\d/.test(normalized);
 };
 
+const isCorreiosSearchIdentifier = (value: string) => {
+  const normalized = String(value || '')
+    .replace(/[^A-Za-z0-9]/g, '')
+    .toUpperCase()
+    .trim();
+
+  return /^[A-Z]{2}\d{9}[A-Z]{2}$/.test(normalized);
+};
+
 export class TrackingService {
   private async resolveCompanyTrackingConfig(companyId?: string | null) {
     if (!companyId) {
@@ -506,11 +516,19 @@ export class TrackingService {
     trackingCode: string | null;
     freightType: string | null;
     companyId?: string | null;
+  },
+  options?: {
+    strict?: boolean;
   }) {
     try {
       const { correiosIntegrationEnabled } =
         await this.resolveCompanyTrackingConfig(order.companyId);
       if (!correiosIntegrationEnabled) {
+        if (options?.strict) {
+          throw new Error(
+            'A integracao dos Correios esta desativada para a empresa atual.',
+          );
+        }
         return null;
       }
 
@@ -519,6 +537,9 @@ export class TrackingService {
         order.freightType,
       );
     } catch (error) {
+      if (options?.strict) {
+        throw error;
+      }
       console.error('Erro ao consultar Correios:', error);
       return null;
     }
@@ -531,11 +552,18 @@ export class TrackingService {
       return null;
     }
 
-    const correiosResult = await this.fetchFromCorreios({
-      trackingCode: rawIdentifier,
-      freightType: 'Correios',
-      companyId,
-    });
+    const hasCorreiosCodeFormat = isCorreiosSearchIdentifier(rawIdentifier);
+
+    const correiosResult = await this.fetchFromCorreios(
+      {
+        trackingCode: rawIdentifier,
+        freightType: 'Correios',
+        companyId,
+      },
+      {
+        strict: hasCorreiosCodeFormat,
+      },
+    );
 
     if (correiosResult) {
       return {
@@ -543,6 +571,10 @@ export class TrackingService {
         identifier: rawIdentifier,
         result: correiosResult,
       };
+    }
+
+    if (hasCorreiosCodeFormat) {
+      return null;
     }
 
     const normalizedDigits = rawIdentifier.replace(/\D/g, '').trim();
@@ -710,6 +742,20 @@ export class TrackingService {
       }
 
       const baseChange = this.buildChangeBase(order);
+      const resolvedCompanyId = order.companyId || companyId || null;
+
+      if (resolvedCompanyId && (await isDemoCompanyById(resolvedCompanyId))) {
+        const blockedMessage =
+          'Sincronizacao desabilitada para empresa demonstrativa.';
+        return {
+          success: false,
+          message: blockedMessage,
+          change: {
+            ...baseChange,
+            errorMessage: blockedMessage,
+          },
+        };
+      }
 
       if (!options?.forceFinalized && shouldSkipTerminalSync(order)) {
         const terminalMessage = getTerminalSyncSkipMessage(order.status);
@@ -989,6 +1035,32 @@ export class TrackingService {
     },
   ) {
     const executeSync = async () => {
+      if (companyId && (await isDemoCompanyById(companyId))) {
+        const emptySnapshot = await this.buildSnapshot(companyId);
+        const blockedWarning =
+          'Sincronizacao automatica e manual desabilitada para empresa demonstrativa.';
+
+        hooks?.onStart?.({ total: 0 });
+
+        return {
+          total: 0,
+          success: 0,
+          failed: 0,
+          warnings: [blockedWarning],
+          errors: [] as string[],
+          report: {
+            companyId: companyId || '',
+            total: 0,
+            success: 0,
+            failed: 0,
+            errors: [] as string[],
+            before: emptySnapshot,
+            after: emptySnapshot,
+            changes: [] as SyncOrderChangeReport[],
+          } as TrackingSyncReportPayload,
+        };
+      }
+
       const activeOrders = await prisma.order.findMany({
         where: {
           ...(companyId ? { companyId } : {}),
