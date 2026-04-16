@@ -1114,6 +1114,16 @@ const MainApp: React.FC = () => {
   );
 
   const renderContent = () => {
+    const monitoredOrders = orders.filter((order) =>
+      monitoredOrderIds.includes(order.id),
+    );
+    const monitoredSummary = {
+      total: monitoredOrders.length,
+      delayed: monitoredOrders.filter((order) => Boolean(order.isDelayed)).length,
+      failure: monitoredOrders.filter((order) => order.status === OrderStatus.FAILURE)
+        .length,
+    };
+
     switch (currentView) {
       case "dashboard":
         return (
@@ -1141,6 +1151,50 @@ const MainApp: React.FC = () => {
             monitoredOrderIds={monitoredOrderIds}
             onToggleMonitoredOrder={handleToggleMonitoredOrder}
           />
+        );
+      case "monitored-orders":
+        return (
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+              <div className="rounded-xl border border-slate-200 bg-white px-4 py-4 shadow-sm dark:border-white/10 dark:bg-dark-card">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Total Monitorados
+                </p>
+                <p className="mt-2 text-2xl font-bold text-slate-800 dark:text-white">
+                  {monitoredSummary.total}
+                </p>
+              </div>
+              <div className="rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-4 shadow-sm dark:border-amber-500/20 dark:bg-amber-500/10">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
+                  Em Atraso
+                </p>
+                <p className="mt-2 text-2xl font-bold text-amber-700 dark:text-amber-200">
+                  {monitoredSummary.delayed}
+                </p>
+              </div>
+              <div className="rounded-xl border border-rose-200 bg-rose-50/60 px-4 py-4 shadow-sm dark:border-rose-500/20 dark:bg-rose-500/10">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-rose-700 dark:text-rose-300">
+                  Falha na Entrega
+                </p>
+                <p className="mt-2 text-2xl font-bold text-rose-700 dark:text-rose-200">
+                  {monitoredSummary.failure}
+                </p>
+              </div>
+            </div>
+
+            <OrderList
+              orders={monitoredOrders}
+              onFetchSingle={handleFetchSingleOrder}
+              onOrderUpdated={upsertOrder}
+              onStartSync={handleSync}
+              onStartTraySync={handleTraySync}
+              syncJob={syncJob}
+              traySyncJob={traySyncJob}
+              trayIntegrationStatus={trayIntegrationStatus}
+              monitoredOrderIds={monitoredOrderIds}
+              onToggleMonitoredOrder={handleToggleMonitoredOrder}
+            />
+          </div>
         );
       case "no-movement":
         return (
@@ -1239,6 +1293,7 @@ const MainApp: React.FC = () => {
               </>
             )}
             {currentView === "orders" && "Gerenciamento de Pedidos"}
+            {currentView === "monitored-orders" && "Pedidos Monitorados"}
             {currentView === "no-movement" && "Pedidos Sem Movimentação"}
             {currentView === "upload" && "Importação de Dados"}
             {currentView === "latest-updates" && "Últimas Atualizações"}
