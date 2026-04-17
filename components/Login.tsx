@@ -1,9 +1,8 @@
-import React, { useEffect, useState } from "react";
+﻿import React, { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { LOGO_URL } from "../constants";
 import {
   ArrowLeft,
-  ArrowRight,
   Check,
   ChevronRight,
   Loader2,
@@ -12,15 +11,39 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { clsx } from "clsx";
-import { LightningStorm } from "./LightningStorm";
 
 type AuthView = "login" | "forgot" | "set-password";
 type AccessTokenType = "INVITE" | "RESET_PASSWORD" | null;
 type LoginModule = "avantracking" | "logisync";
+type ExperienceStage = "intro" | "profiles" | "entering" | "form";
+
+const MODULES: Array<{
+  id: LoginModule;
+  name: string;
+  subtitle: string;
+  logo: string;
+}> = [
+  {
+    id: "avantracking",
+    name: "Avantracking",
+    subtitle: "Rastreio inteligente e visao operacional",
+    logo: LOGO_URL,
+  },
+  {
+    id: "logisync",
+    name: "Logisync",
+    subtitle: "Conciliacao automatizada de frete",
+    logo: "/logisync.png",
+  },
+];
 
 export const Login: React.FC = () => {
   const { login } = useAuth();
   const [authView, setAuthView] = useState<AuthView>("login");
+  const [experienceStage, setExperienceStage] = useState<ExperienceStage>("intro");
+  const [selectedModule, setSelectedModule] = useState<LoginModule>("avantracking");
+  const [entryModule, setEntryModule] = useState<LoginModule>("avantracking");
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
@@ -37,33 +60,37 @@ export const Login: React.FC = () => {
 
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [loginModule, setLoginModule] = useState<LoginModule>("avantracking");
-  const [isModuleSwitching, setIsModuleSwitching] = useState(false);
 
-  const isLogiSyncModule = loginModule === "logisync";
+  const isLogiSyncModule = selectedModule === "logisync";
   const moduleLogoUrl = isLogiSyncModule ? "/logisync.png" : LOGO_URL;
+  const moduleLabel = isLogiSyncModule ? "Logisync" : "Avantracking";
   const loginButtonText = isLogiSyncModule
-    ? "ACESSAR LOGISYNC"
-    : "ACESSAR DASHBOARD";
-  const switchButtonText = isLogiSyncModule
-    ? "Voltar ao Avantracking"
-    : "Entrar no LogiSync";
+    ? "ENTRAR NO LOGISYNC"
+    : "ENTRAR NO AVANTRACKING";
 
-  const handleSwitchModule = () => {
-    if (isModuleSwitching || authView !== "login") {
+  useEffect(() => {
+    if (authView !== "login" || experienceStage !== "intro") {
       return;
     }
 
-    setIsModuleSwitching(true);
-    window.setTimeout(() => {
-      setLoginModule((current) =>
-        current === "avantracking" ? "logisync" : "avantracking",
-      );
-    }, 250);
-    window.setTimeout(() => {
-      setIsModuleSwitching(false);
-    }, 600);
-  };
+    const introTimer = window.setTimeout(() => {
+      setExperienceStage("profiles");
+    }, 1900);
+
+    return () => window.clearTimeout(introTimer);
+  }, [authView, experienceStage]);
+
+  useEffect(() => {
+    if (experienceStage !== "entering") {
+      return;
+    }
+
+    const enteringTimer = window.setTimeout(() => {
+      setExperienceStage("form");
+    }, 920);
+
+    return () => window.clearTimeout(enteringTimer);
+  }, [experienceStage]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -74,6 +101,7 @@ export const Login: React.FC = () => {
     }
 
     setAuthView("set-password");
+    setExperienceStage("form");
     setAccessToken(token);
     setTokenLoading(true);
     setError("");
@@ -97,6 +125,50 @@ export const Login: React.FC = () => {
       });
   }, []);
 
+  const currentTheme = useMemo(
+    () =>
+      isLogiSyncModule
+        ? {
+            surface:
+              "border-white/15 bg-[linear-gradient(150deg,rgba(6,18,34,0.94),rgba(11,31,47,0.86))] shadow-[0_32px_110px_rgba(3,16,31,0.55)]",
+            badge: "border-cyan-300/35 bg-cyan-400/10 text-cyan-200",
+            title: "text-cyan-100",
+            subtitle: "text-slate-300",
+            label: "text-cyan-100/80",
+            input:
+              "border-cyan-300/20 bg-slate-950/35 text-white placeholder:text-slate-500 focus:border-cyan-300 focus:shadow-[0_0_0_3px_rgba(34,211,238,0.2)]",
+            button:
+              "bg-gradient-to-r from-cyan-500 to-sky-500 hover:from-cyan-400 hover:to-sky-400 shadow-cyan-800/40",
+            secondaryButton:
+              "bg-gradient-to-r from-cyan-600 to-blue-500 hover:from-cyan-500 hover:to-blue-400 shadow-cyan-900/40",
+            subtleLink: "text-cyan-100/80 hover:text-cyan-100",
+            forgotLink: "text-cyan-300 hover:text-cyan-100",
+            infoBox: "border-cyan-300/30 bg-cyan-400/10 text-cyan-100",
+            bgGlowTop: "bg-cyan-500/40",
+            bgGlowBottom: "bg-sky-500/40",
+          }
+        : {
+            surface:
+              "border-white/10 bg-[linear-gradient(150deg,rgba(17,17,17,0.95),rgba(8,8,8,0.9))] shadow-[0_34px_110px_rgba(0,0,0,0.6)]",
+            badge: "border-[#f05a3d]/40 bg-[#f05a3d]/10 text-[#ffcabd]",
+            title: "text-white",
+            subtitle: "text-slate-300",
+            label: "text-[#ffcabd]/85",
+            input:
+              "border-white/10 bg-black/45 text-white placeholder:text-slate-500 focus:border-[#f05a3d] focus:shadow-[0_0_0_3px_rgba(240,90,61,0.22)]",
+            button:
+              "bg-gradient-to-r from-[#f05a3d] to-[#fb923c] hover:from-[#ff6a4f] hover:to-[#ffa24b] shadow-[#f05a3d]/35",
+            secondaryButton:
+              "bg-gradient-to-r from-[#f05a3d] to-[#dc2626] hover:from-[#ff6a4f] hover:to-[#ef4444] shadow-[#f05a3d]/30",
+            subtleLink: "text-[#ffcabd]/85 hover:text-[#ffd8cd]",
+            forgotLink: "text-[#ff9a85] hover:text-[#ffc6b9]",
+            infoBox: "border-[#f05a3d]/35 bg-[#f05a3d]/10 text-[#ffd9d0]",
+            bgGlowTop: "bg-[#f05a3d]/35",
+            bgGlowBottom: "bg-rose-500/35",
+          },
+    [isLogiSyncModule],
+  );
+
   const resetMessages = () => {
     setError("");
     setInfo("");
@@ -116,6 +188,19 @@ export const Login: React.FC = () => {
     clearAccessLinkState();
     resetMessages();
     setAuthView("login");
+    setExperienceStage("form");
+  };
+
+  const handleSelectModule = (module: LoginModule) => {
+    if (authView !== "login") {
+      return;
+    }
+
+    setSelectedModule(module);
+    setEntryModule(module);
+    setError("");
+    setInfo("");
+    setExperienceStage("entering");
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -203,6 +288,7 @@ export const Login: React.FC = () => {
       setPassword("");
       clearAccessLinkState();
       setAuthView("login");
+      setExperienceStage("form");
       setError("");
       setInfo(data.message || "Senha definida com sucesso. Voce ja pode entrar.");
     } catch (err: any) {
@@ -212,533 +298,448 @@ export const Login: React.FC = () => {
     }
   };
 
-  const renderHeaderText = () => {
+  const headerText = useMemo(() => {
     if (authView === "forgot") {
       return {
-        title: "REDEFINICAO",
-        subtitle: "Solicite um novo link de acesso",
+        title: "Redefinicao de senha",
+        subtitle: "Solicite um novo link para acessar sua conta",
       };
     }
 
     if (authView === "set-password") {
       return {
-        title:
-          accessTokenType === "INVITE" ? "CADASTRE A SENHA" : "NOVA SENHA",
+        title: accessTokenType === "INVITE" ? "Cadastre sua senha" : "Nova senha",
         subtitle:
           accessTokenType === "INVITE"
-            ? "Finalize seu convite para acessar a plataforma"
-            : "Defina uma nova senha para sua conta",
+            ? "Finalize seu convite para entrar na plataforma"
+            : "Defina uma nova senha para continuar",
       };
     }
 
     return {
-      title: isLogiSyncModule ? "LOGISYNC ACCESS" : "SYSTEM ACCESS",
-      subtitle: isLogiSyncModule
-        ? "conciliacao inteligente de frete"
-        : "Avantracking Intelligence",
+      title: isLogiSyncModule ? "Acesso Logisync" : "Acesso Avantracking",
+      subtitle: "Painel seguro com autentificacao criptografada",
     };
-  };
+  }, [accessTokenType, authView, isLogiSyncModule]);
 
-  const headerText = renderHeaderText();
-  const pageBackgroundClass = isLogiSyncModule
-    ? "bg-[radial-gradient(circle_at_top,#fff7ed_0%,#ffedd5_45%,#ffffff_100%)]"
-    : "bg-[#0B0C15]";
-  const cardClass = clsx(
-    "rounded-2xl p-8 border transform transition-all duration-500 preserve-3d",
-    isLogiSyncModule
-      ? "bg-white border-orange-200 shadow-[0_24px_70px_rgba(249,115,22,0.25)] hover:translate-y-[-2px]"
-      : "glass-card border-white/10 shadow-[0_0_50px_rgba(0,0,0,0.5)] hover:rotate-y-2",
-  );
-  const titleClass = isLogiSyncModule
-    ? "mt-4 text-2xl font-tech font-bold text-orange-600 tracking-wider"
-    : "mt-4 text-2xl font-tech font-bold text-white tracking-wider";
-  const subtitleClass = isLogiSyncModule
-    ? "text-orange-500 text-sm"
-    : "text-slate-400 text-sm";
-  const labelClass = isLogiSyncModule
-    ? "text-xs font-semibold text-orange-700 uppercase tracking-widest ml-1"
-    : "text-xs font-semibold text-slate-400 uppercase tracking-widest ml-1";
-  const inputClass = isLogiSyncModule
-    ? "w-full bg-orange-50 border border-orange-200 text-slate-800 pl-10 pr-4 py-3 rounded-lg focus:outline-none focus:border-orange-400 focus:shadow-[0_0_0_3px_rgba(251,146,60,0.2)] transition-all placeholder:text-orange-300"
-    : "w-full bg-[#1A1D2D] border border-slate-700 text-white pl-10 pr-4 py-3 rounded-lg focus:outline-none focus:border-neon-blue focus:shadow-[0_0_15px_rgba(0,243,255,0.2)] transition-all placeholder:text-slate-600";
-  const primaryButtonClass = isLogiSyncModule
-    ? "bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-400 hover:to-amber-400 shadow-orange-600/30"
-    : "bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 shadow-blue-600/30";
-  const secondaryButtonClass = isLogiSyncModule
-    ? "bg-gradient-to-r from-orange-500 to-orange-400 hover:from-orange-400 hover:to-orange-300 shadow-orange-500/30"
-    : "bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 shadow-blue-600/30";
-  const subtleLinkClass = isLogiSyncModule
-    ? "text-sm text-orange-700 hover:text-orange-900 transition-colors"
-    : "text-sm text-slate-400 hover:text-white transition-colors";
-  const forgotLinkClass = isLogiSyncModule
-    ? "text-sm text-orange-600 hover:text-orange-800 transition-colors"
-    : "text-sm text-cyan-300 hover:text-white transition-colors";
-  const footerClass = isLogiSyncModule
-    ? "mt-8 pt-6 border-t border-orange-100 text-center"
-    : "mt-8 pt-6 border-t border-white/5 text-center";
-  const footerTextClass = isLogiSyncModule
-    ? "text-xs text-orange-500"
-    : "text-xs text-slate-500";
+  const renderAuthForm = () => {
+    const labelClass = clsx(
+      "ml-1 text-[11px] font-semibold uppercase tracking-[0.18em]",
+      currentTheme.label,
+    );
+    const inputClass = clsx(
+      "w-full rounded-xl border pl-10 pr-4 py-3 text-sm transition-all duration-300 focus:outline-none",
+      currentTheme.input,
+    );
 
-  return (
-    <div
-      className={clsx(
-        "min-h-screen flex items-center justify-center p-4 relative overflow-hidden",
-        pageBackgroundClass,
-      )}
-    >
-      {!isLogiSyncModule && <LightningStorm />}
-
-      <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
-        <div
-          className={clsx(
-            "absolute top-[-20%] left-[-10%] w-[50%] h-[50%] rounded-full blur-[120px] animate-pulse-slow",
-            isLogiSyncModule ? "bg-orange-300/45" : "bg-blue-600/20",
-          )}
-        ></div>
-        <div
-          className={clsx(
-            "absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] rounded-full blur-[120px] animate-pulse-slow",
-            isLogiSyncModule ? "bg-amber-300/50" : "bg-purple-600/20",
-          )}
-          style={{ animationDelay: "2s" }}
-        ></div>
-        <div
-          className={clsx(
-            "absolute inset-0 bg-[size:40px_40px]",
-            isLogiSyncModule
-              ? "bg-[linear-gradient(rgba(249,115,22,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(249,115,22,0.08)_1px,transparent_1px)]"
-              : "bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)]",
-          )}
-        ></div>
-      </div>
-
-      <div className="relative z-10 w-full max-w-5xl">
-        <div className="flex flex-col items-center justify-center gap-5 lg:flex-row lg:items-stretch">
-          <div
-            className={clsx(
-              "w-full max-w-md perspective-1000",
-              isModuleSwitching && "module-flow-swap",
-            )}
-          >
-        <div className={cardClass}>
-          <div className="text-center mb-8 flex flex-col items-center">
-            <div className="relative flex items-center justify-center w-32 h-32">
-              <div
-                className={clsx(
-                  "absolute inset-2 rounded-full blur-3xl",
-                  isLogiSyncModule ? "bg-orange-400/45" : "bg-cyan-400/35",
-                )}
-              ></div>
-              <div
-                className={clsx(
-                  "absolute inset-0 rounded-full border",
-                  isLogiSyncModule ? "border-orange-300/60" : "border-cyan-300/40",
-                )}
-              ></div>
-
-              <img
-                src={moduleLogoUrl}
-                alt="Logo"
-                className={clsx(
-                  "h-16 relative z-10",
-                  isLogiSyncModule
-                    ? "drop-shadow-[0_0_30px_rgba(249,115,22,0.8)]"
-                    : "drop-shadow-[0_0_40px_rgba(0,243,255,1)]",
-                )}
+    if (authView === "login") {
+      return (
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <div className="space-y-2">
+            <label className={labelClass}>Usuario</label>
+            <div className="relative">
+              <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className={inputClass}
+                placeholder="admin@empresa.com"
+                required
               />
             </div>
-
-            <h2 className={titleClass}>
-              {headerText.title}
-            </h2>
-            <p className={subtitleClass}>{headerText.subtitle}</p>
           </div>
 
-          {error && (
-            <div className="mb-5 bg-red-500/10 border border-red-500/50 text-red-400 px-4 py-2 rounded-lg text-sm flex items-center gap-2 animate-in slide-in-from-top-2">
-              <ShieldCheck className="w-4 h-4" /> {error}
+          <div className="space-y-2">
+            <label className={labelClass}>Senha</label>
+            <div className="relative">
+              <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className={inputClass}
+                placeholder="********"
+                required
+              />
             </div>
-          )}
-
-          {info && (
-            <div
-              className={clsx(
-                "mb-5 px-4 py-2 rounded-lg text-sm flex items-center gap-2 animate-in slide-in-from-top-2 border",
-                isLogiSyncModule
-                  ? "bg-orange-50 border-orange-200 text-orange-700"
-                  : "bg-emerald-500/10 border-emerald-500/40 text-emerald-300",
-              )}
-            >
-              <ShieldCheck className="w-4 h-4" /> {info}
-            </div>
-          )}
-
-          {authView === "login" && (
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="space-y-2 group">
-                <label className={labelClass}>
-                  Usuario
-                </label>
-                <div className="relative transition-all duration-300 transform group-hover:translate-x-1">
-                  <Mail
-                    className={clsx(
-                      "absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500 transition-colors",
-                      isLogiSyncModule
-                        ? "group-hover:text-orange-500"
-                        : "group-hover:text-neon-blue",
-                    )}
-                  />
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className={inputClass}
-                    placeholder="admin@avantracking.com.br"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2 group">
-                <label className={labelClass}>
-                  Senha
-                </label>
-                <div className="relative transition-all duration-300 transform group-hover:translate-x-1">
-                  <Lock
-                    className={clsx(
-                      "absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500 transition-colors",
-                      isLogiSyncModule
-                        ? "group-hover:text-orange-500"
-                        : "group-hover:text-neon-purple",
-                    )}
-                  />
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className={inputClass}
-                    placeholder="••••••••"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setRememberMe(!rememberMe)}
-                    className={clsx(
-                      "w-5 h-5 rounded border flex items-center justify-center transition-all",
-                      rememberMe
-                        ? isLogiSyncModule
-                          ? "bg-orange-500 border-orange-500 text-white"
-                          : "bg-accent border-accent text-white"
-                        : "bg-transparent border-slate-600 text-transparent hover:border-slate-500",
-                    )}
-                  >
-                    <Check className="w-3 h-3" strokeWidth={3} />
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setRememberMe(!rememberMe)}
-                    className={subtleLinkClass}
-                  >
-                    Lembrar login
-                  </button>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    resetMessages();
-                    setResetEmail(email);
-                    setAuthView("forgot");
-                  }}
-                  className={forgotLinkClass}
-                >
-                  Redefinicao de senha
-                </button>
-              </div>
-
-              <button
-                type="submit"
-                disabled={loading}
-                className={clsx(
-                  "w-full text-white font-bold py-3 rounded-lg shadow-lg transition-all duration-300 flex items-center justify-center gap-2 group",
-                  primaryButtonClass,
-                  loading ? "opacity-70 cursor-wait" : "hover:scale-[1.02]",
-                )}
-              >
-                {loading ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                ) : (
-                  <>
-                    {loginButtonText}
-                    <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                  </>
-                )}
-              </button>
-            </form>
-          )}
-
-          {authView === "forgot" && (
-            <form onSubmit={handleForgotPassword} className="space-y-6">
-              <div className="space-y-2 group">
-                <label className={labelClass}>
-                  E-mail da conta
-                </label>
-                <div className="relative transition-all duration-300 transform group-hover:translate-x-1">
-                  <Mail
-                    className={clsx(
-                      "absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500 transition-colors",
-                      isLogiSyncModule
-                        ? "group-hover:text-orange-500"
-                        : "group-hover:text-neon-blue",
-                    )}
-                  />
-                  <input
-                    type="email"
-                    value={resetEmail}
-                    onChange={(e) => setResetEmail(e.target.value)}
-                    className={inputClass}
-                    placeholder="voce@empresa.com"
-                    required
-                  />
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                disabled={loading}
-                className={clsx(
-                  "w-full text-white font-bold py-3 rounded-lg shadow-lg transition-all duration-300 flex items-center justify-center gap-2 group",
-                  secondaryButtonClass,
-                  loading ? "opacity-70 cursor-wait" : "hover:scale-[1.02]",
-                )}
-              >
-                {loading ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                ) : (
-                  <>
-                    ENVIAR LINK
-                    <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                  </>
-                )}
-              </button>
-
-              <button
-                type="button"
-                onClick={goToLogin}
-                className={clsx(
-                  "w-full text-sm transition-colors flex items-center justify-center gap-2",
-                  isLogiSyncModule
-                    ? "text-orange-700 hover:text-orange-900"
-                    : "text-slate-400 hover:text-white",
-                )}
-              >
-                <ArrowLeft className="w-4 h-4" />
-                Voltar ao login
-              </button>
-            </form>
-          )}
-
-          {authView === "set-password" && (
-            <div className="space-y-6">
-              {tokenLoading ? (
-                <div
-                  className={clsx(
-                    "py-8 flex flex-col items-center gap-3",
-                    isLogiSyncModule ? "text-orange-700" : "text-slate-300",
-                  )}
-                >
-                  <Loader2 className="w-6 h-6 animate-spin" />
-                  <span>Validando link de acesso...</span>
-                </div>
-              ) : error && !accessTokenType ? (
-                <div className="space-y-4">
-                  <button
-                    type="button"
-                    onClick={goToLogin}
-                    className={clsx(
-                      "w-full text-sm transition-colors flex items-center justify-center gap-2",
-                      isLogiSyncModule
-                        ? "text-orange-700 hover:text-orange-900"
-                        : "text-slate-300 hover:text-white",
-                    )}
-                  >
-                    <ArrowLeft className="w-4 h-4" />
-                    Voltar ao login
-                  </button>
-                </div>
-              ) : (
-                <form onSubmit={handleSetPassword} className="space-y-6">
-                  <div
-                    className={clsx(
-                      "rounded-xl px-4 py-3 text-sm border",
-                      isLogiSyncModule
-                        ? "border-orange-200 bg-orange-50 text-orange-700"
-                        : "border-cyan-500/20 bg-cyan-500/5 text-slate-200",
-                    )}
-                  >
-                    <p
-                      className={clsx(
-                        "font-semibold",
-                        isLogiSyncModule ? "text-orange-600" : "text-cyan-300",
-                      )}
-                    >
-                      {accessTokenType === "INVITE"
-                        ? "Convite identificado"
-                        : "Redefinicao de senha"}
-                    </p>
-                    <p
-                      className={clsx(
-                        "mt-1",
-                        isLogiSyncModule ? "text-orange-700" : "text-slate-300",
-                      )}
-                    >
-                      {tokenUserName || "Usuario"} {tokenUserEmail && `• ${tokenUserEmail}`}
-                    </p>
-                  </div>
-
-                  <div className="space-y-2 group">
-                    <label className={labelClass}>
-                      Nova senha
-                    </label>
-                    <div className="relative transition-all duration-300 transform group-hover:translate-x-1">
-                      <Lock
-                        className={clsx(
-                          "absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500 transition-colors",
-                          isLogiSyncModule
-                            ? "group-hover:text-orange-500"
-                            : "group-hover:text-neon-purple",
-                        )}
-                      />
-                      <input
-                        type="password"
-                        value={newPassword}
-                        onChange={(e) => setNewPassword(e.target.value)}
-                        className={inputClass}
-                        placeholder="Minimo de 8 caracteres"
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2 group">
-                    <label className={labelClass}>
-                      Confirmar senha
-                    </label>
-                    <div className="relative transition-all duration-300 transform group-hover:translate-x-1">
-                      <Lock
-                        className={clsx(
-                          "absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500 transition-colors",
-                          isLogiSyncModule
-                            ? "group-hover:text-orange-500"
-                            : "group-hover:text-neon-purple",
-                        )}
-                      />
-                      <input
-                        type="password"
-                        value={confirmPassword}
-                        onChange={(e) => setConfirmPassword(e.target.value)}
-                        className={inputClass}
-                        placeholder="Repita a senha"
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className={clsx(
-                      "w-full text-white font-bold py-3 rounded-lg shadow-lg transition-all duration-300 flex items-center justify-center gap-2 group",
-                      primaryButtonClass,
-                      loading ? "opacity-70 cursor-wait" : "hover:scale-[1.02]",
-                    )}
-                  >
-                    {loading ? (
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                    ) : (
-                      <>
-                        SALVAR NOVA SENHA
-                        <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                      </>
-                    )}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={goToLogin}
-                    className={clsx(
-                      "w-full text-sm transition-colors flex items-center justify-center gap-2",
-                      isLogiSyncModule
-                        ? "text-orange-700 hover:text-orange-900"
-                        : "text-slate-400 hover:text-white",
-                    )}
-                  >
-                    <ArrowLeft className="w-4 h-4" />
-                    Voltar ao login
-                  </button>
-                </form>
-              )}
-            </div>
-          )}
-
-          <div className={footerClass}>
-            <p className={footerTextClass}>
-              Sistema protegido por criptografia de ponta a ponta.
-            </p>
-          </div>
-        </div>
           </div>
 
-          {authView === "login" && (
+          <div className="flex items-center justify-between gap-3">
             <button
               type="button"
-              onClick={handleSwitchModule}
-              disabled={isModuleSwitching}
+              onClick={() => setRememberMe((current) => !current)}
               className={clsx(
-                "module-switch-pulse group relative flex w-full max-w-md items-center justify-between gap-4 rounded-2xl border px-6 py-5 text-left transition-all duration-300 lg:w-[210px] lg:max-w-[210px] lg:flex-col lg:justify-center lg:text-center",
-                isLogiSyncModule
-                  ? "text-orange-700 border-orange-300 bg-gradient-to-br from-orange-100 via-amber-50 to-white shadow-[0_0_40px_rgba(249,115,22,0.25)] hover:border-orange-400"
-                  : "text-white border-emerald-300/50 bg-gradient-to-br from-emerald-600/35 via-teal-500/20 to-slate-900/70 shadow-[0_0_40px_rgba(16,185,129,0.35)] hover:border-emerald-200/80",
-                isModuleSwitching
-                  ? "cursor-wait opacity-80"
-                  : "hover:scale-[1.02] hover:translate-x-1",
+                "inline-flex items-center gap-2 text-sm transition-colors",
+                currentTheme.subtleLink,
               )}
             >
-              <div className="flex flex-col">
-                <span
-                  className={clsx(
-                    "text-[10px] font-semibold uppercase tracking-[0.2em]",
-                    isLogiSyncModule ? "text-orange-500" : "text-white/70",
-                  )}
-                >
-                  Trocar modulo
-                </span>
-                <span className="mt-1 text-base font-extrabold tracking-wide">
-                  {switchButtonText}
-                </span>
-              </div>
-              <div
+              <span
                 className={clsx(
-                  "rounded-2xl p-3 backdrop-blur-sm transition-transform duration-300 group-hover:translate-x-1",
-                  isLogiSyncModule ? "bg-orange-200/70" : "bg-white/15",
+                  "flex h-5 w-5 items-center justify-center rounded border transition-colors",
+                  rememberMe
+                    ? isLogiSyncModule
+                      ? "border-cyan-300 bg-cyan-400/20 text-cyan-200"
+                      : "border-[#f05a3d] bg-[#f05a3d]/20 text-[#ffd9d0]"
+                    : "border-white/30 text-transparent",
                 )}
               >
-                <ArrowRight
-                  className={clsx(
-                    "h-8 w-8 transition-transform duration-300",
-                    isLogiSyncModule && "rotate-180",
-                  )}
+                <Check className="h-3 w-3" strokeWidth={3} />
+              </span>
+              Lembrar login
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                resetMessages();
+                setResetEmail(email);
+                setAuthView("forgot");
+              }}
+              className={clsx("text-sm transition-colors", currentTheme.forgotLink)}
+            >
+              Redefinir senha
+            </button>
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className={clsx(
+              "group flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-bold text-white shadow-xl transition-all duration-300",
+              currentTheme.button,
+              loading ? "cursor-wait opacity-75" : "hover:scale-[1.01]",
+            )}
+          >
+            {loading ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <>
+                {loginButtonText}
+                <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+              </>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setExperienceStage("profiles");
+              setAuthView("login");
+              resetMessages();
+            }}
+            className={clsx("w-full text-xs transition-colors", currentTheme.subtleLink)}
+          >
+            Trocar modulo
+          </button>
+        </form>
+      );
+    }
+
+    if (authView === "forgot") {
+      return (
+        <form onSubmit={handleForgotPassword} className="space-y-5">
+          <div className="space-y-2">
+            <label className={labelClass}>E-mail da conta</label>
+            <div className="relative">
+              <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+              <input
+                type="email"
+                value={resetEmail}
+                onChange={(e) => setResetEmail(e.target.value)}
+                className={inputClass}
+                placeholder="voce@empresa.com"
+                required
+              />
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className={clsx(
+              "group flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-bold text-white shadow-xl transition-all duration-300",
+              currentTheme.secondaryButton,
+              loading ? "cursor-wait opacity-75" : "hover:scale-[1.01]",
+            )}
+          >
+            {loading ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <>
+                ENVIAR LINK
+                <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+              </>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={goToLogin}
+            className={clsx(
+              "inline-flex w-full items-center justify-center gap-2 text-sm transition-colors",
+              currentTheme.subtleLink,
+            )}
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Voltar ao login
+          </button>
+        </form>
+      );
+    }
+
+    return (
+      <div className="space-y-5">
+        {tokenLoading ? (
+          <div className="flex flex-col items-center gap-3 py-8 text-slate-200">
+            <Loader2 className="h-6 w-6 animate-spin" />
+            <span>Validando link de acesso...</span>
+          </div>
+        ) : error && !accessTokenType ? (
+          <button
+            type="button"
+            onClick={goToLogin}
+            className={clsx(
+              "inline-flex w-full items-center justify-center gap-2 text-sm transition-colors",
+              currentTheme.subtleLink,
+            )}
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Voltar ao login
+          </button>
+        ) : (
+          <form onSubmit={handleSetPassword} className="space-y-5">
+            <div className={clsx("rounded-xl border px-4 py-3 text-sm", currentTheme.infoBox)}>
+              <p className="font-semibold">
+                {accessTokenType === "INVITE"
+                  ? "Convite identificado"
+                  : "Redefinicao de senha"}
+              </p>
+              <p className="mt-1">
+                {tokenUserName || "Usuario"}
+                {tokenUserEmail ? ` | ${tokenUserEmail}` : ""}
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <label className={labelClass}>Nova senha</label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className={inputClass}
+                  placeholder="Minimo de 8 caracteres"
+                  required
                 />
               </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className={labelClass}>Confirmar senha</label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className={inputClass}
+                  placeholder="Repita a senha"
+                  required
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className={clsx(
+                "group flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-bold text-white shadow-xl transition-all duration-300",
+                currentTheme.button,
+                loading ? "cursor-wait opacity-75" : "hover:scale-[1.01]",
+              )}
+            >
+              {loading ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <>
+                  SALVAR NOVA SENHA
+                  <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+                </>
+              )}
             </button>
-          )}
-        </div>
+
+            <button
+              type="button"
+              onClick={goToLogin}
+              className={clsx(
+                "inline-flex w-full items-center justify-center gap-2 text-sm transition-colors",
+                currentTheme.subtleLink,
+              )}
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Voltar ao login
+            </button>
+          </form>
+        )}
       </div>
+    );
+  };
+
+  return (
+    <div className="relative min-h-screen overflow-hidden bg-[#07090f]">
+      <div className="login-grid-overlay absolute inset-0" />
+      <div
+        className={clsx(
+          "absolute -left-24 -top-28 h-80 w-80 rounded-full blur-[120px]",
+          currentTheme.bgGlowTop,
+        )}
+      />
+      <div
+        className={clsx(
+          "absolute -bottom-28 -right-24 h-80 w-80 rounded-full blur-[120px]",
+          currentTheme.bgGlowBottom,
+        )}
+      />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.08),transparent_45%)]" />
+
+      {authView === "login" && experienceStage === "intro" && (
+        <div className="login-stage-overlay">
+          <div className="login-intro-mark">
+            <img src={LOGO_URL} alt="Avantracking" className="login-intro-logo h-24 w-auto" />
+          </div>
+        </div>
+      )}
+
+      {authView === "login" && experienceStage === "entering" && (
+        <div className="login-stage-overlay">
+          <div className="login-entry-mark">
+            <div className="login-entry-glow" />
+            <img
+              src={entryModule === "logisync" ? "/logisync.png" : LOGO_URL}
+              alt={entryModule}
+              className="login-entry-logo h-20 w-auto"
+            />
+          </div>
+        </div>
+      )}
+
+      {authView === "login" && experienceStage === "profiles" && (
+        <div className="relative z-10 flex min-h-screen items-center justify-center px-4 py-10">
+          <div className="w-full max-w-4xl text-center">
+            <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">
+              Escolha o modulo
+            </p>
+            <h1 className="mb-10 text-3xl font-tech font-bold text-white md:text-4xl">
+              Quem esta entrando?
+            </h1>
+
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+              {MODULES.map((module, index) => {
+                const isLogiSync = module.id === "logisync";
+                return (
+                  <button
+                    key={module.id}
+                    type="button"
+                    onClick={() => handleSelectModule(module.id)}
+                    className={clsx(
+                      "login-profile-card group",
+                      isLogiSync
+                        ? "border-cyan-300/30 hover:border-cyan-300/80 hover:shadow-[0_24px_60px_rgba(34,211,238,0.2)]"
+                        : "border-[#f05a3d]/30 hover:border-[#f05a3d]/80 hover:shadow-[0_24px_60px_rgba(240,90,61,0.22)]",
+                    )}
+                    style={{ animationDelay: `${index * 130}ms` }}
+                  >
+                    <div
+                      className={clsx(
+                        "login-profile-avatar",
+                        isLogiSync
+                          ? "bg-[linear-gradient(145deg,#08253a,#0b3651)]"
+                          : "bg-[linear-gradient(145deg,#2a0d0d,#3b1212)]",
+                      )}
+                    >
+                      <img src={module.logo} alt={module.name} className="h-14 w-auto object-contain" />
+                    </div>
+
+                    <div className="mt-4">
+                      <p className="text-xl font-tech font-bold text-white">{module.name}</p>
+                      <p className="mt-2 text-sm text-slate-300">{module.subtitle}</p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {(authView !== "login" || experienceStage === "form") && (
+        <div className="relative z-10 flex min-h-screen items-center justify-center px-4 py-10">
+          <div
+            className={clsx(
+              "w-full max-w-md rounded-3xl border p-7 backdrop-blur-xl md:p-8",
+              currentTheme.surface,
+            )}
+          >
+            <div className="mb-7 text-center">
+              <div className="relative mx-auto mb-4 flex h-24 w-24 items-center justify-center">
+                <div
+                  className={clsx(
+                    "absolute inset-0 rounded-full border",
+                    isLogiSyncModule ? "border-cyan-300/35" : "border-[#f05a3d]/35",
+                  )}
+                />
+                <div
+                  className={clsx(
+                    "absolute inset-[14px] rounded-full blur-2xl",
+                    isLogiSyncModule ? "bg-cyan-300/25" : "bg-[#f05a3d]/25",
+                  )}
+                />
+                <img src={moduleLogoUrl} alt={moduleLabel} className="relative z-10 h-12 w-auto object-contain" />
+              </div>
+
+              <span
+                className={clsx(
+                  "inline-flex rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em]",
+                  currentTheme.badge,
+                )}
+              >
+                {moduleLabel}
+              </span>
+              <h2 className={clsx("mt-4 text-2xl font-tech font-bold", currentTheme.title)}>
+                {headerText.title}
+              </h2>
+              <p className={clsx("mt-1 text-sm", currentTheme.subtitle)}>{headerText.subtitle}</p>
+            </div>
+
+            {error && (
+              <div className="mb-4 flex items-center gap-2 rounded-xl border border-red-400/45 bg-red-500/10 px-4 py-2 text-sm text-red-200">
+                <ShieldCheck className="h-4 w-4" />
+                {error}
+              </div>
+            )}
+
+            {info && (
+              <div
+                className={clsx(
+                  "mb-4 flex items-center gap-2 rounded-xl border px-4 py-2 text-sm",
+                  currentTheme.infoBox,
+                )}
+              >
+                <ShieldCheck className="h-4 w-4" />
+                {info}
+              </div>
+            )}
+
+            {renderAuthForm()}
+
+            <div className="mt-7 border-t border-white/10 pt-5 text-center text-xs text-slate-400">
+              Sistema protegido por criptografia de ponta a ponta.
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

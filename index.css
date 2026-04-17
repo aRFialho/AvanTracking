@@ -310,3 +310,152 @@
   97% { opacity: 0.9; }
   98% { opacity: 0; }
 }
+
+/* ===============================
+   LOGIN EXPERIENCE
+==================================*/
+
+@keyframes login-intro-logo {
+  0% {
+    opacity: 0;
+    transform: scale(0.5);
+    filter: blur(8px);
+  }
+  30% {
+    opacity: 1;
+    transform: scale(1);
+    filter: blur(0);
+  }
+  75% {
+    opacity: 1;
+    transform: scale(1.04);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.14);
+    filter: blur(3px);
+  }
+}
+
+@keyframes login-entry-zoom {
+  0% {
+    opacity: 0;
+    transform: scale(0.78);
+    filter: blur(4px);
+  }
+  30% {
+    opacity: 1;
+    transform: scale(1);
+    filter: blur(0);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(2.9);
+    filter: blur(6px);
+  }
+}
+
+@keyframes login-profile-in {
+  0% {
+    opacity: 0;
+    transform: translateY(16px) scale(0.96);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes login-grid-shift {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    transform: translate3d(30px, 22px, 0);
+  }
+}
+
+.login-grid-overlay {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 38px 38px;
+  mask-image: radial-gradient(circle at center, black 42%, transparent 100%);
+  animation: login-grid-shift 18s linear infinite alternate;
+  pointer-events: none;
+}
+
+.login-stage-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at center, rgba(14, 16, 24, 0.88), rgba(3, 4, 10, 0.96));
+}
+
+.login-intro-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 22px;
+}
+
+.login-intro-logo {
+  animation: login-intro-logo 1.8s cubic-bezier(0.21, 0.88, 0.22, 1);
+}
+
+.login-entry-mark {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.login-entry-glow {
+  position: absolute;
+  inset: -30px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0) 68%);
+  filter: blur(12px);
+}
+
+.login-entry-logo {
+  position: relative;
+  z-index: 2;
+  animation: login-entry-zoom 0.9s cubic-bezier(0.2, 0.82, 0.28, 1);
+}
+
+.login-profile-card {
+  border-width: 1px;
+  border-style: solid;
+  border-radius: 22px;
+  padding: 24px 20px;
+  background: linear-gradient(150deg, rgba(18, 18, 20, 0.95), rgba(8, 8, 10, 0.9));
+  transition: transform 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+  animation: login-profile-in 0.55s ease both;
+}
+
+.login-profile-card:hover {
+  transform: translateY(-4px) scale(1.015);
+}
+
+.login-profile-avatar {
+  margin: 0 auto;
+  height: 116px;
+  width: 116px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.09);
+}
+
+@media (max-width: 640px) {
+  .login-profile-avatar {
+    height: 98px;
+    width: 98px;
+  }
+}
