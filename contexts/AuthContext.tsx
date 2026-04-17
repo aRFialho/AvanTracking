@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 
-export type Role = "ADMIN" | "USER";
+export type Role = "ADMIN" | "USER" | "ADMIN_SUPER";
+export type AuthModule = "avantracking" | "logisync";
 
 interface User {
   id: string;
@@ -8,12 +9,19 @@ interface User {
   name: string;
   role: Role;
   companyId?: string | null;
+  module?: AuthModule;
+  isSuperAdmin?: boolean;
 }
 
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
-  login: (email: string, pass: string, remember: boolean) => Promise<boolean>;
+  login: (
+    email: string,
+    pass: string,
+    remember: boolean,
+    module?: AuthModule,
+  ) => Promise<boolean>;
   logout: () => void;
   isLoading: boolean;
   token: string | null;
@@ -69,6 +77,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     email: string,
     pass: string,
     remember: boolean,
+    module: AuthModule = "avantracking",
   ): Promise<boolean> => {
     try {
       const response = await fetch("/api/users/login", {
@@ -76,7 +85,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ email, password: pass }),
+        body: JSON.stringify({ email, password: pass, module }),
       });
 
       if (response.ok) {
@@ -86,8 +95,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
           id: data.id,
           email: data.email,
           name: data.name,
-          role: data.role,
+          role: data.role as Role,
           companyId: data.companyId,
+          module: (data.module || module || "avantracking") as AuthModule,
+          isSuperAdmin: Boolean(data.isSuperAdmin),
         };
 
         setUser(sessionUser);

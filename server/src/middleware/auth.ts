@@ -11,6 +11,8 @@ declare global {
         email: string;
         companyId: string | null;
         role: string;
+        module?: 'avantracking' | 'logisync';
+        isSuperAdmin?: boolean;
       };
     }
   }
@@ -57,6 +59,8 @@ export const generateToken = (payload: {
   email: string;
   companyId: string | null;
   role: string;
+  module?: 'avantracking' | 'logisync';
+  isSuperAdmin?: boolean;
 }): string => {
   return jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
 };

@@ -209,7 +209,7 @@ export const Login: React.FC = () => {
     setError("");
     setInfo("");
 
-    const success = await login(email, password, rememberMe);
+    const success = await login(email, password, rememberMe, selectedModule);
     if (!success) {
       setError("Credenciais invalidas. Tente novamente.");
     }
@@ -389,17 +389,23 @@ export const Login: React.FC = () => {
               Lembrar login
             </button>
 
-            <button
-              type="button"
-              onClick={() => {
-                resetMessages();
-                setResetEmail(email);
-                setAuthView("forgot");
-              }}
-              className={clsx("text-sm transition-colors", currentTheme.forgotLink)}
-            >
-              Redefinir senha
-            </button>
+            {isLogiSyncModule ? (
+              <span className={clsx("text-xs", currentTheme.subtleLink)}>
+                Redefinicao pelo admin super
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  resetMessages();
+                  setResetEmail(email);
+                  setAuthView("forgot");
+                }}
+                className={clsx("text-sm transition-colors", currentTheme.forgotLink)}
+              >
+                Redefinir senha
+              </button>
+            )}
           </div>
 
           <button

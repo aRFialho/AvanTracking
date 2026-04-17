@@ -11,6 +11,7 @@ import { Login } from "./components/Login";
 import { Chatbot } from "./components/Chatbot";
 import { CompanySwitcher } from "./components/CompanySwitcher";
 import { SupportModal } from "./components/SupportModal";
+import { LogisyncWorkspace } from "./components/logisync/LogisyncWorkspace";
 import {
   Order,
   PageView,
@@ -1642,10 +1643,20 @@ const App: React.FC = () => {
     <ThemeProvider>
       <AuthProvider>
         <TruckCursor />
-        <MainApp />
+        <AppShell />
       </AuthProvider>
     </ThemeProvider>
   );
+};
+
+const AppShell: React.FC = () => {
+  const { user } = useAuth();
+
+  if (user?.module === "logisync") {
+    return <LogisyncWorkspace />;
+  }
+
+  return <MainApp />;
 };
 
 export default App;

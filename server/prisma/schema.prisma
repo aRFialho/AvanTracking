@@ -12,6 +12,11 @@ enum Role {
     USER
 }
 
+enum LogisyncRole {
+    ADMIN_SUPER
+    ANALYST
+}
+
 enum OrderStatus {
     PENDING
     CREATED
@@ -210,6 +215,17 @@ model Order {
     @@index([lastApiSync])
     @@index([originalQuotedFreightQuotationId])
     @@index([isArchived, companyId], map: "Order_archived_company_idx")
+}
+
+model LogisyncUser {
+    id           String      @id @default(uuid())
+    email        String      @unique
+    name         String
+    password     String // bcrypt hash
+    role         LogisyncRole @default(ANALYST)
+    isActive     Boolean     @default(true)
+    createdAt    DateTime    @default(now())
+    updatedAt    DateTime    @updatedAt
 }
 
 model MonitoredOrder {

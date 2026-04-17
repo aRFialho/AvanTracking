@@ -156,13 +156,84 @@ const issueAndSendAccessEmail = async (
 
 // Login
 export const login = async (req: Request, res: Response) => {
-  const { email, password } = req.body;
+  const { email, password, module } = req.body;
+  const authModule =
+    String(module || 'avantracking').toLowerCase() === 'logisync'
+      ? 'logisync'
+      : 'avantracking';
 
   if (!email || !password) {
     return res.status(400).json({ error: 'Missing email or password' });
   }
 
   try {
+    if (authModule === 'logisync') {
+      const adminEmail = 'logisync@admin.com.br';
+      const adminPassword = 'Logi@172839';
+
+      const existingLogisyncAdmin = await prisma.logisyncUser.findUnique({
+        where: { email: adminEmail },
+      });
+
+      if (!existingLogisyncAdmin) {
+        const hashedAdminPassword = await bcrypt.hash(adminPassword, 10);
+        await prisma.logisyncUser.create({
+          data: {
+            name: 'Logisync Admin',
+            email: adminEmail,
+            password: hashedAdminPassword,
+            role: 'ADMIN_SUPER',
+            isActive: true,
+          },
+        });
+      }
+
+      const logisyncUser = await prisma.logisyncUser.findUnique({
+        where: { email: String(email) },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          role: true,
+          isActive: true,
+          password: true,
+        },
+      });
+
+      if (!logisyncUser || !logisyncUser.isActive) {
+        return res.status(401).json({ error: 'Invalid credentials' });
+      }
+
+      const isPasswordValid = await bcrypt.compare(
+        String(password),
+        logisyncUser.password,
+      );
+
+      if (!isPasswordValid) {
+        return res.status(401).json({ error: 'Invalid credentials' });
+      }
+
+      const token = generateToken({
+        id: logisyncUser.id,
+        email: logisyncUser.email,
+        companyId: null,
+        role: logisyncUser.role,
+        module: 'logisync',
+        isSuperAdmin: logisyncUser.role === 'ADMIN_SUPER',
+      });
+
+      return res.json({
+        id: logisyncUser.id,
+        email: logisyncUser.email,
+        name: logisyncUser.name,
+        role: logisyncUser.role,
+        companyId: null,
+        module: 'logisync',
+        isSuperAdmin: logisyncUser.role === 'ADMIN_SUPER',
+        token,
+      });
+    }
+
     if (email === 'admin@avantracking.com.br') {
       const adminExists = await prisma.user.findUnique({
         where: { email: 'admin@avantracking.com.br' },
@@ -209,10 +280,14 @@ export const login = async (req: Request, res: Response) => {
       email: user.email,
       companyId: user.companyId,
       role: user.role,
+      module: 'avantracking',
+      isSuperAdmin: false,
     });
 
     res.json({
       ...userWithoutPassword,
+      module: 'avantracking',
+      isSuperAdmin: false,
       token,
     });
   } catch (error) {
@@ -521,6 +596,8 @@ export const switchUserCompany = async (req: Request, res: Response) => {
       email: user.email,
       companyId: user.companyId,
       role: user.role,
+      module: 'avantracking',
+      isSuperAdmin: false,
     });
 
     res.json({

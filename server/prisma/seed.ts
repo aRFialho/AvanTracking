@@ -1,5 +1,5 @@
 
-import { PrismaClient, Role } from '@prisma/client';
+import { LogisyncRole, PrismaClient, Role } from '@prisma/client';
 import bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
@@ -44,6 +44,37 @@ async function main() {
       console.log(`User created: ${user.email}`);
     } else {
       console.log(`User already exists: ${user.email}`);
+    }
+  }
+
+  const logisyncAdmins = [
+    {
+      name: 'Logisync Admin',
+      email: 'logisync@admin.com.br',
+      password: 'Logi@172839',
+      role: LogisyncRole.ADMIN_SUPER,
+    },
+  ];
+
+  for (const user of logisyncAdmins) {
+    const existingUser = await prisma.logisyncUser.findUnique({
+      where: { email: user.email },
+    });
+
+    if (!existingUser) {
+      const hashedPassword = await bcrypt.hash(user.password, 10);
+      await prisma.logisyncUser.create({
+        data: {
+          name: user.name,
+          email: user.email,
+          password: hashedPassword,
+          role: user.role,
+          isActive: true,
+        },
+      });
+      console.log(`Logisync admin created: ${user.email}`);
+    } else {
+      console.log(`Logisync admin already exists: ${user.email}`);
     }
   }
 }
