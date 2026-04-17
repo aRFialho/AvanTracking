@@ -27,9 +27,6 @@ type TrayQuoteCandidate = {
   raw: any;
 };
 
-const isTrayParticularSalesChannel = (salesChannel: string | null | undefined) =>
-  String(salesChannel || '').trim().toUpperCase() === 'TRAY - PARTICULAR';
-
 const SHIPPING_HINT_PATTERN =
   /shipping|shipment|shipments|frete|envio|delivery|cotation|cotacao|quotation|transport/i;
 
@@ -673,9 +670,7 @@ export class TrayApiService {
       totalValue: parseFloat(trayOrder.total || '0'),
       recipient: mainAddress.recipient || customer.name || null,
       maxShippingDeadline: trayEstimatedDeliveryDate,
-      estimatedDeliveryDate: isTrayParticularSalesChannel(salesChannel)
-        ? null
-        : trayEstimatedDeliveryDate,
+      estimatedDeliveryDate: trayEstimatedDeliveryDate,
       carrierEstimatedDeliveryDate: null,
       status: mappedStatus,
       isDelayed: false,

@@ -146,6 +146,7 @@ export class TraySyncService {
         orderNumber: true,
         invoiceNumber: true,
         trackingCode: true,
+        estimatedDeliveryDate: true,
         freightType: true,
         status: true,
       },
@@ -193,13 +194,19 @@ export class TraySyncService {
         .filter((order) => String(order.status) === 'CHANNEL_LOGISTICS')
         .map((order) => String(order.orderNumber)),
     );
+    const pendingPlatformForecastOrderNumbers = new Set(
+      eligibleStoredOrders
+        .filter((order) => !order.estimatedDeliveryDate)
+        .map((order) => String(order.orderNumber)),
+    );
     const skipOrderNumbers = new Set(
       eligibleStoredOrders
         .map((order) => String(order.orderNumber))
         .filter(
           (orderNumber) =>
             !pendingIdentifierOrderNumbers.has(orderNumber) &&
-            !pendingStatusCorrectionOrderNumbers.has(orderNumber),
+            !pendingStatusCorrectionOrderNumbers.has(orderNumber) &&
+            !pendingPlatformForecastOrderNumbers.has(orderNumber),
         ),
     );
     const aggregateResults = {
@@ -228,6 +235,11 @@ export class TraySyncService {
         `${pendingStatusCorrectionOrderNumbers.size} pedido(s) com status legado "Logistica do Canal" serao revisitados para corrigir o status real.`,
       );
     }
+    if (pendingPlatformForecastOrderNumbers.size > 0) {
+      hooks?.onLog?.(
+        `${pendingPlatformForecastOrderNumbers.size} pedido(s) existente(s) sem previsao da plataforma serao revisitados na Tray.`,
+      );
+    }
 
     for (let index = 0; index < statusesToSync.length; index += 1) {
       const trayStatus = statusesToSync[index];
@@ -252,7 +264,8 @@ export class TraySyncService {
               return (
                 !existingOrderNumbers.has(orderNumber) ||
                 pendingIdentifierOrderNumbers.has(orderNumber) ||
-                pendingStatusCorrectionOrderNumbers.has(orderNumber)
+                pendingStatusCorrectionOrderNumbers.has(orderNumber) ||
+                pendingPlatformForecastOrderNumbers.has(orderNumber)
               );
             });
 
@@ -262,7 +275,8 @@ export class TraySyncService {
 
             const revisitedOrders = ordersToProcess.filter((order) =>
               pendingIdentifierOrderNumbers.has(String(order.id)) ||
-              pendingStatusCorrectionOrderNumbers.has(String(order.id)),
+              pendingStatusCorrectionOrderNumbers.has(String(order.id)) ||
+              pendingPlatformForecastOrderNumbers.has(String(order.id)),
             );
             const mappedOrders = ordersToProcess.map((order) =>
               trayApi.mapTrayOrderToSystem(order, {
@@ -350,6 +364,7 @@ export class TraySyncService {
               existingOrderNumbers.add(orderNumber);
               pendingIdentifierOrderNumbers.delete(orderNumber);
               pendingStatusCorrectionOrderNumbers.delete(orderNumber);
+              pendingPlatformForecastOrderNumbers.delete(orderNumber);
               skipOrderNumbers.add(orderNumber);
             }
 
@@ -371,10 +386,16 @@ export class TraySyncService {
       );
     }
 
-    if (pendingIdentifierOrderNumbers.size > 0) {
-      const remainingOrderNumbers = Array.from(pendingIdentifierOrderNumbers);
+    const remainingOrderNumbers = Array.from(
+      new Set([
+        ...pendingIdentifierOrderNumbers,
+        ...pendingPlatformForecastOrderNumbers,
+      ]),
+    );
+
+    if (remainingOrderNumbers.length > 0) {
       hooks?.onLog?.(
-        `Revisita direta iniciada para ${remainingOrderNumbers.length} pedido(s) sem NF e sem codigo de envio, independente da janela automatica.`,
+        `Revisita direta iniciada para ${remainingOrderNumbers.length} pedido(s) sem NF/codigo ou sem previsao da plataforma, independente da janela automatica.`,
       );
 
       for (
@@ -432,6 +453,8 @@ export class TraySyncService {
         for (const order of completeOrders) {
           const orderNumber = String(order.id);
           pendingIdentifierOrderNumbers.delete(orderNumber);
+          pendingStatusCorrectionOrderNumbers.delete(orderNumber);
+          pendingPlatformForecastOrderNumbers.delete(orderNumber);
           existingOrderNumbers.add(orderNumber);
           skipOrderNumbers.add(orderNumber);
         }

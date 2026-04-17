@@ -14,7 +14,6 @@ import { useAuth } from "../contexts/AuthContext";
 
 const BOT_NAME = "Muricoca";
 const BOT_AVATAR_SRC = "/muricoca.png";
-const BOT_ANIMATED_AVATAR_SRC = "/muricoca_animated.mp4";
 const BOT_BUTTON_SIZE = 64;
 const BOT_WINDOW_GAP = 16;
 const BOT_MARGIN = 24;
@@ -578,7 +577,6 @@ export const Chatbot: React.FC = () => {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isAvatarOk, setIsAvatarOk] = useState(true);
-  const [isAnimatedAvatarOk, setIsAnimatedAvatarOk] = useState(true);
   const [launcherPosition, setLauncherPosition] = useState({ x: 0, y: 0 });
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -1017,35 +1015,18 @@ export const Chatbot: React.FC = () => {
               "group-hover:scale-110 group-hover:rotate-2",
             )}
           >
-            {isAnimatedAvatarOk ? (
-              <video
-                src={BOT_ANIMATED_AVATAR_SRC}
-                poster={BOT_AVATAR_SRC}
-                className="pointer-events-none h-full w-full select-none object-cover"
-                autoPlay
-                muted
-                loop
-                playsInline
-                preload="auto"
-                onError={(event) => {
-                  console.error("Erro ao carregar video da Muricoca", event);
-                  setIsAnimatedAvatarOk(false);
-                }}
-              />
-            ) : (
-              <img
-                src={BOT_AVATAR_SRC}
-                alt={BOT_NAME}
-                className="pointer-events-none h-full w-full select-none object-cover"
-                draggable={false}
-                onDragStart={(event) => event.preventDefault()}
-                onError={(event) => {
-                  console.error("Erro ao carregar imagem da Muricoca", event);
-                  setIsAvatarOk(false);
-                }}
-                style={{ display: isAvatarOk ? "block" : "none" }}
-              />
-            )}
+            <img
+              src={BOT_AVATAR_SRC}
+              alt={BOT_NAME}
+              className="pointer-events-none h-full w-full select-none object-cover"
+              draggable={false}
+              onDragStart={(event) => event.preventDefault()}
+              onError={(event) => {
+                console.error("Erro ao carregar imagem da Muricoca", event);
+                setIsAvatarOk(false);
+              }}
+              style={{ display: isAvatarOk ? "block" : "none" }}
+            />
           </div>
         )}
 

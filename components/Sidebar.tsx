@@ -25,7 +25,6 @@ import {
   Star,
 } from "lucide-react";
 import { clsx } from "clsx";
-import { LightningStorm } from "./LightningStorm";
 
 interface SidebarProps {
   currentView: PageView;
@@ -181,10 +180,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           isCollapsed ? "p-3" : "p-6",
         )}
       >
-        <div className="absolute inset-0 z-0 opacity-60 pointer-events-none">
-          <LightningStorm />
-        </div>
-
         <div className={clsx("relative z-10", isCollapsed ? "flex flex-col items-center gap-3" : "")}> 
           <button
             onClick={onToggleCollapse}
