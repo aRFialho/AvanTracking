@@ -135,6 +135,9 @@ const formatCountdown = (target: Date | null, nowMs: number) => {
     .join(":");
 };
 
+const normalizeComparable = (value: unknown) =>
+  String(value ?? "").trim().toUpperCase();
+
 const buildReportDownloadUrl = (rawUrl: string | null | undefined) => {
   const normalized = String(rawUrl || "").trim();
   if (!normalized) {
@@ -600,6 +603,24 @@ const MainApp: React.FC = () => {
       setMonitoredOrderItems(
         Array.isArray(data.monitoredOrders)
           ? (data.monitoredOrders as MonitoredOrderItem[])
+              .map((item) => ({
+                ...item,
+                id: String(item?.id || ""),
+                orderId: String(item?.orderId || ""),
+                orderNumber: String(item?.orderNumber || ""),
+                invoiceNumber: item?.invoiceNumber
+                  ? String(item.invoiceNumber)
+                  : null,
+                status: String(item?.status || ""),
+                statusLabel: String(item?.statusLabel || ""),
+                lastUpdate: String(item?.lastUpdate || ""),
+                createdAt: String(item?.createdAt || ""),
+              }))
+              .filter(
+                (item) =>
+                  Boolean(normalizeComparable(item.orderId)) ||
+                  Boolean(normalizeComparable(item.orderNumber)),
+              )
           : [],
       );
     } catch (error) {
@@ -705,6 +726,12 @@ const MainApp: React.FC = () => {
 
     return () => window.clearInterval(interval);
   }, [isAuthenticated, isLoading, loadNotifications]);
+
+  useEffect(() => {
+    if (currentView === "monitored-orders") {
+      loadNotifications();
+    }
+  }, [currentView, loadNotifications]);
 
   useEffect(() => {
     if (!isAuthenticated || isLoading || traySyncJob?.status !== "running") {
@@ -1106,7 +1133,30 @@ const MainApp: React.FC = () => {
 
   const handleToggleMonitoredOrder = useCallback(
     async (order: Order) => {
-      const isAlreadyMonitored = monitoredOrderIds.includes(order.id);
+      const normalizedOrderId = normalizeComparable(order.id);
+      const normalizedOrderNumber = normalizeComparable(order.orderNumber);
+      const isAlreadyMonitoredById = monitoredOrderIds.some(
+        (item) => normalizeComparable(item) === normalizedOrderId,
+      );
+      const isAlreadyMonitoredByOrderNumber =
+        Boolean(normalizedOrderNumber) &&
+        monitoredOrderIds.some(
+          (item) => normalizeComparable(item) === normalizedOrderNumber,
+        );
+      const isAlreadyMonitoredByFeed = monitoredOrderItems.some((item) => {
+        const monitoredOrderId = normalizeComparable(item.orderId);
+        const monitoredOrderNumber = normalizeComparable(item.orderNumber);
+
+        return (
+          monitoredOrderId === normalizedOrderId ||
+          (Boolean(normalizedOrderNumber) &&
+            monitoredOrderNumber === normalizedOrderNumber)
+        );
+      });
+      const isAlreadyMonitored =
+        isAlreadyMonitoredById ||
+        isAlreadyMonitoredByOrderNumber ||
+        isAlreadyMonitoredByFeed;
       const endpoint = `/api/notifications/monitored-orders/${order.id}`;
 
       const response = await fetchWithAuth(
@@ -1135,11 +1185,17 @@ const MainApp: React.FC = () => {
         );
       } else if (isAlreadyMonitored) {
         setMonitoredOrderIds((current) =>
-          current.filter((item) => item !== order.id),
+          current.filter(
+            (item) => normalizeComparable(item) !== normalizedOrderId,
+          ),
         );
       } else {
         setMonitoredOrderIds((current) =>
-          current.includes(order.id) ? current : [...current, order.id],
+          current.some(
+            (item) => normalizeComparable(item) === normalizedOrderId,
+          )
+            ? current
+            : [...current, order.id],
         );
       }
 
@@ -1152,7 +1208,7 @@ const MainApp: React.FC = () => {
           : `Pedido ${order.orderNumber} incluido nos monitorados.`,
       });
     },
-    [loadNotifications, monitoredOrderIds],
+    [loadNotifications, monitoredOrderIds, monitoredOrderItems],
   );
 
   const handleMarkAllNotificationsAsRead = useCallback(async () => {
@@ -1185,17 +1241,46 @@ const MainApp: React.FC = () => {
   }, []);
 
   const renderContent = () => {
-    const monitoredOrdersFromList = orders.filter((order) =>
-      monitoredOrderIds.includes(order.id),
+    const monitoredIdentifierSet = new Set(
+      monitoredOrderIds
+        .map((item) => normalizeComparable(item))
+        .filter(Boolean),
     );
-    const monitoredOrderIdSet = new Set(
-      monitoredOrdersFromList.map((order) => order.id),
+    const monitoredOrderNumberSet = new Set(
+      monitoredOrderItems
+        .map((item) => normalizeComparable(item.orderNumber))
+        .filter(Boolean),
+    );
+    const monitoredOrdersFromList = orders.filter((order) => {
+      const normalizedOrderId = normalizeComparable(order.id);
+      const normalizedOrderNumber = normalizeComparable(order.orderNumber);
+
+      return (
+        (Boolean(normalizedOrderId) &&
+          monitoredIdentifierSet.has(normalizedOrderId)) ||
+        (Boolean(normalizedOrderNumber) &&
+          (monitoredIdentifierSet.has(normalizedOrderNumber) ||
+            monitoredOrderNumberSet.has(normalizedOrderNumber)))
+      );
+    });
+    const monitoredOrderKeySet = new Set(
+      monitoredOrdersFromList.map(
+        (order) =>
+          `${normalizeComparable(order.id)}::${normalizeComparable(order.orderNumber)}`,
+      ),
     );
     const monitoredOrdersFromFeed = monitoredOrderItems
-      .filter((item) => !monitoredOrderIdSet.has(item.orderId))
+      .filter((item) => {
+        const compositeKey = `${normalizeComparable(item.orderId)}::${normalizeComparable(item.orderNumber)}`;
+        return !monitoredOrderKeySet.has(compositeKey);
+      })
       .map((item) => {
-        const status =
-          (String(item.status || "").trim() as OrderStatus) || OrderStatus.PENDING;
+        const normalizedStatus = String(item.status || "").trim();
+        const status = (Object.values(OrderStatus) as string[]).includes(
+          normalizedStatus,
+        )
+          ? (normalizedStatus as OrderStatus)
+          : OrderStatus.PENDING;
         const lastUpdateDate = parseDate(item.lastUpdate) ?? new Date();
 
         return normalizeOrderRecord({
@@ -1435,7 +1520,7 @@ const MainApp: React.FC = () => {
               </>
             )}
             {currentView === "orders" && "Gerenciamento de Pedidos"}
-            {currentView === "monitored-orders" && "Pedidos Monitorados"}
+            {currentView === "monitored-orders" && "Monitorados"}
             {currentView === "no-movement" && "Pedidos Sem Movimentação"}
             {currentView === "upload" && "Importação de Dados"}
             {currentView === "latest-updates" && "Últimas Atualizações"}
@@ -1506,7 +1591,7 @@ const MainApp: React.FC = () => {
                           : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-white/10"
                       }`}
                     >
-                      Pedidos Monitorados
+                      Monitorados
                     </button>
                   </div>
                   <div className="max-h-[420px] overflow-y-auto p-3">

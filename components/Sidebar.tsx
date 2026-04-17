@@ -231,7 +231,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <NavItem
           view="monitored-orders"
           icon={Star}
-          label="Pedidos Monitorados"
+          label="Monitorados"
         />
         <NavItem view="no-movement" icon={Timer} label="Sem Movimentacao" />
         <NavItem view="upload" icon={UploadCloud} label="Importar CSV" />

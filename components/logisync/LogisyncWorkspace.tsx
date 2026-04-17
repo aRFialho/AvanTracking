@@ -494,7 +494,7 @@ export const LogisyncWorkspace: React.FC = () => {
                 <CartesianGrid strokeDasharray="4 4" stroke="#33415533" />
                 <XAxis dataKey="month" stroke="#94a3b8" />
                 <YAxis stroke="#94a3b8" tickFormatter={(value) => currency(value)} />
-                <Tooltip formatter={(value: number) => currency(value)} />
+                <Tooltip formatter={(value: number | undefined) => (value === undefined ? "-" : currency(value))} />
                 <Legend />
                 <Area type="monotone" dataKey="cotado" stroke="#2563eb" fill="url(#logiCotado)" strokeWidth={2} name="Frete Cotado" />
                 <Area type="monotone" dataKey="cobradoPago" stroke="#f97316" fill="url(#logiCobradoPago)" strokeWidth={2} name="Frete Cobrado/Pago" />
@@ -731,7 +731,7 @@ export const LogisyncWorkspace: React.FC = () => {
                   <CartesianGrid strokeDasharray="4 4" stroke="#33415533" />
                   <XAxis dataKey="transportadora" stroke="#94a3b8" />
                   <YAxis stroke="#94a3b8" />
-                  <Tooltip formatter={(value: number) => currency(value)} />
+                  <Tooltip formatter={(value: number | undefined) => (value === undefined ? "-" : currency(value))} />
                   <Legend />
                   <Bar dataKey="prejuizo" fill="#f97316" radius={[8, 8, 0, 0]} name="Prejuizo" />
                   <Bar dataKey="economia" fill="#22c55e" radius={[8, 8, 0, 0]} name="Economia" />
@@ -778,7 +778,7 @@ export const LogisyncWorkspace: React.FC = () => {
                 <CartesianGrid strokeDasharray="4 4" stroke="#33415533" />
                 <XAxis dataKey="transportadora" stroke="#94a3b8" />
                 <YAxis stroke="#94a3b8" />
-                <Tooltip formatter={(value: number) => currency(value)} />
+                <Tooltip formatter={(value: number | undefined) => (value === undefined ? "-" : currency(value))} />
                 <Legend />
                 <Bar dataKey="divergencias" fill="#2563eb" radius={[8, 8, 0, 0]} name="Qtd divergencias" />
                 <Bar dataKey="prejuizo" fill="#f97316" radius={[8, 8, 0, 0]} name="Prejuizo" />

@@ -29,7 +29,7 @@ type SupportSubject =
 const VIEW_LABELS: Record<PageView, string> = {
   dashboard: "Dashboard Executivo",
   orders: "Gerenciamento de Pedidos",
-  "monitored-orders": "Pedidos Monitorados",
+  "monitored-orders": "Monitorados",
   upload: "Importacao de Dados",
   alerts: "Monitoramento de Riscos",
   "delivery-failures": "Falhas na Entrega",

@@ -143,10 +143,34 @@ const buildAjaxHeaders = (cookieHeader: string, referer: string) => ({
   'X-Requested-With': 'XMLHttpRequest',
 });
 
-const hasTrackingMarkers = (text: string) =>
-  /documento de transporte emitido|saida de unidade|sa[ií]da de unidade|chegada em unidade|mercadoria entregue|previs[aã]o de entrega|em tr[aâ]nsito|ocorr|insucesso|entregue|despachado/i.test(
-    text,
-  );
+const normalizeStatusText = (value: string) =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+
+const hasTrackingMarkers = (text: string) => {
+  const normalized = normalizeStatusText(text);
+
+  return [
+    'documento de transporte emitido',
+    'saida de unidade',
+    'chegada em unidade',
+    'mercadoria entregue',
+    'previsao de entrega',
+    'em transito',
+    'ocorr',
+    'insucesso',
+    'entregue',
+    'despachado',
+    'saida para entrega',
+    'saiu para entrega',
+    'local de entrega fechado',
+    'ausente',
+    'fiscalizacao',
+    'sem contato valido',
+  ].some((marker) => normalized.includes(marker));
+};
 
 const hasDirectTrackingTable = (html: string) =>
   /Data\/Hora|Situa[cç][aã]o|class=["']titulo["']/i.test(String(html || ''));
@@ -558,33 +582,41 @@ export const matchSswTrackingToOrder = (
 };
 
 const mapSswStatusToEnum = (text: string): OrderStatus | null => {
-  const normalized = text.toLowerCase();
+  const normalized = normalizeStatusText(text);
 
   if (normalized.includes('entregue')) return OrderStatus.DELIVERED;
-  if (normalized.includes('saiu para entrega')) {
+  if (
+    normalized.includes('saiu para entrega') ||
+    normalized.includes('saida para entrega')
+  ) {
     return OrderStatus.DELIVERY_ATTEMPT;
   }
   if (
     normalized.includes('ocorr') ||
     normalized.includes('insucesso') ||
     normalized.includes('nao entregue') ||
-    normalized.includes('não entregue') ||
-    normalized.includes('falha')
+    normalized.includes('falha') ||
+    normalized.includes('local de entrega fechado') ||
+    normalized.includes('destinatario ausente') ||
+    normalized.includes('ausente') ||
+    normalized.includes('sem contato valido') ||
+    normalized.includes('nao localizado') ||
+    normalized.includes('endereco invalido')
   ) {
     return OrderStatus.FAILURE;
   }
   if (normalized.includes('devol')) return OrderStatus.RETURNED;
   if (normalized.includes('cancel')) return OrderStatus.CANCELED;
   if (
-    normalized.includes('em trânsito') ||
     normalized.includes('em transito') ||
     normalized.includes('despach') ||
     normalized.includes('ct-e autorizado') ||
     normalized.includes('transfer') ||
     normalized.includes('emissao do ct-e') ||
-    normalized.includes('emissão do ct-e') ||
     normalized.includes('documento de transporte emitido') ||
-    normalized.includes('chegada em unidade')
+    normalized.includes('chegada em unidade') ||
+    normalized.includes('fiscalizacao') ||
+    normalized.includes('liberada pela fiscalizacao')
   ) {
     return OrderStatus.SHIPPED;
   }
@@ -663,8 +695,8 @@ const buildResultFromHtml = (
   const events = extractSswEvents(normalizedHtml);
 
   if (events.length === 0) {
-    const statusSource =
-      lines.find((line) => mapSswStatusToEnum(line) !== null) || text;
+    const statusLines = lines.filter((line) => mapSswStatusToEnum(line) !== null);
+    const statusSource = statusLines[statusLines.length - 1] || text;
     const status = mapSswStatusToEnum(statusSource);
 
     if (!status) {
