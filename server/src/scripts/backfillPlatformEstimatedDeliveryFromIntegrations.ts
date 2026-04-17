@@ -33,7 +33,25 @@ const formatError = (error: unknown) =>
 
 const toValidDate = (value: unknown) => {
   if (!value) return null;
-  const parsed = value instanceof Date ? value : new Date(value as string);
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+
+  const normalized = String(value).trim();
+  if (!normalized || normalized === '0000-00-00' || /^\d+$/.test(normalized)) {
+    return null;
+  }
+
+  const dateOnly = normalized.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (dateOnly) {
+    const year = Number(dateOnly[1]);
+    const monthIndex = Number(dateOnly[2]) - 1;
+    const day = Number(dateOnly[3]);
+    const parsed = new Date(Date.UTC(year, monthIndex, day, 12, 0, 0));
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  const parsed = new Date(normalized);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
 

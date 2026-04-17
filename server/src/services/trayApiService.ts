@@ -63,6 +63,77 @@ const pickFirstString = (values: unknown[]) => {
   return null;
 };
 
+const parseIsoDateOnly = (value: string) => {
+  const normalized = String(value || '').trim();
+  const match = normalized.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) {
+    return null;
+  }
+
+  const year = Number(match[1]);
+  const monthIndex = Number(match[2]) - 1;
+  const day = Number(match[3]);
+
+  const parsed = new Date(Date.UTC(year, monthIndex, day, 12, 0, 0));
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const parsePositiveDays = (value: unknown) => {
+  const normalized = String(value ?? '').trim();
+  if (!/^\d+$/.test(normalized)) {
+    return null;
+  }
+
+  const days = Number(normalized);
+  if (!Number.isFinite(days) || days <= 0 || days > 365) {
+    return null;
+  }
+
+  return days;
+};
+
+const parseTrayEstimatedDeliveryDate = (input: {
+  estimatedDeliveryDate: unknown;
+  orderDate?: unknown;
+  deliveryTime?: unknown;
+}) => {
+  const rawValue = String(input.estimatedDeliveryDate ?? '').trim();
+  if (!rawValue || rawValue === '0000-00-00') {
+    return null;
+  }
+
+  const candidateDateText = rawValue.slice(0, 10);
+  const parsedDate = parseIsoDateOnly(candidateDateText);
+  if (parsedDate) {
+    return parsedDate;
+  }
+
+  const days =
+    parsePositiveDays(input.estimatedDeliveryDate) ??
+    parsePositiveDays(input.deliveryTime);
+  if (days === null) {
+    return null;
+  }
+
+  const parsedOrderDate =
+    parseIsoDateOnly(String(input.orderDate ?? '').trim().slice(0, 10)) ||
+    null;
+  const baseDate = parsedOrderDate || new Date();
+
+  const projectedDate = new Date(
+    Date.UTC(
+      baseDate.getUTCFullYear(),
+      baseDate.getUTCMonth(),
+      baseDate.getUTCDate() + days,
+      12,
+      0,
+      0,
+    ),
+  );
+
+  return Number.isNaN(projectedDate.getTime()) ? null : projectedDate;
+};
+
 const normalizeComparableText = (value: unknown) =>
   String(value || '')
     .normalize('NFD')
@@ -622,11 +693,11 @@ export class TrayApiService {
       trayOrder.OrderInvoice?.[0]?.OrderInvoice ||
       trayOrder.OrderInvoice?.[0] ||
       null;
-    const trayEstimatedDeliveryDate =
-      trayOrder.estimated_delivery_date &&
-      trayOrder.estimated_delivery_date !== '0000-00-00'
-        ? new Date(trayOrder.estimated_delivery_date)
-        : null;
+    const trayEstimatedDeliveryDate = parseTrayEstimatedDeliveryDate({
+      estimatedDeliveryDate: trayOrder.estimated_delivery_date,
+      orderDate: trayOrder.date,
+      deliveryTime: trayOrder.delivery_time,
+    });
     const cheapestQuote = extractCheapestTrayQuote(trayOrder);
     const originalCheckoutQuote = extractOriginalCheckoutQuote(trayOrder);
 

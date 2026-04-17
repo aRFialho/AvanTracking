@@ -234,7 +234,7 @@ export const Login: React.FC = () => {
     return {
       title: isLogiSyncModule ? "LOGISYNC ACCESS" : "SYSTEM ACCESS",
       subtitle: isLogiSyncModule
-        ? "Modulo de integracoes LogiSync"
+        ? "conciliacao inteligente de frete"
         : "Avantracking Intelligence",
     };
   };

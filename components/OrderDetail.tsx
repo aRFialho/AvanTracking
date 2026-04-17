@@ -379,13 +379,25 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
       <div className="bg-white dark:bg-dark-card w-full max-w-5xl max-h-[90vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 border border-slate-200 dark:border-white/10">
         <div className="flex items-center justify-between p-6 border-b border-slate-100 dark:border-white/10 bg-slate-50/50 dark:bg-black/20">
-          <div>
-            <h2 className="text-xl font-bold text-slate-800 dark:text-white">
-              Pedido #{order.orderNumber}
-            </h2>
-            <p className="text-sm text-slate-500 dark:text-slate-400">
-              Detalhes completos, frete e rastreamento
-            </p>
+          <div className="flex items-start gap-3">
+            <div>
+              <h2 className="text-xl font-bold text-slate-800 dark:text-white">
+                Pedido #{order.orderNumber}
+              </h2>
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                Detalhes completos, frete e rastreamento
+              </p>
+            </div>
+            {!isEditingManualData && (
+              <button
+                type="button"
+                onClick={handleStartManualEdit}
+                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-[11px] font-medium text-slate-600 transition-colors hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5 dark:hover:text-white"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+                Editar dados
+              </button>
+            )}
           </div>
           <button
             onClick={onClose}
@@ -404,16 +416,6 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({
                     <div className="flex items-center gap-2 text-slate-800 dark:text-white font-semibold text-sm">
                       <User className="w-4 h-4 text-accent" /> Cliente
                     </div>
-                    {!isEditingManualData && (
-                      <button
-                        type="button"
-                        onClick={handleStartManualEdit}
-                        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-[11px] font-medium text-slate-600 transition-colors hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5 dark:hover:text-white"
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                        Editar dados
-                      </button>
-                    )}
                   </div>
                   <p className="font-medium text-slate-700 dark:text-slate-200">
                     {order.customerName}
