@@ -46,7 +46,6 @@ const MONITORED_EMAIL_IMAGE_URL =
   'https://res.cloudinary.com/dhqxp3tuo/image/upload/v1771249579/ChatGPT_Image_13_de_fev._de_2026_16_40_14_kldj3k.png';
 const TERMINAL_MONITORED_STATUSES = new Set<OrderStatus>([
   OrderStatus.DELIVERED,
-  OrderStatus.FAILURE,
   OrderStatus.RETURNED,
   OrderStatus.CANCELED,
   OrderStatus.CHANNEL_LOGISTICS,
@@ -157,7 +156,7 @@ class NotificationService {
   async getFeed(companyId: string, limit = 40) {
     const db = prisma as any;
 
-    const [generalRows, monitoredRows, monitoredOrders, monitoredOrderRows] = await Promise.all([
+    const [generalRows, monitoredRows, monitoredOrders, monitoredOrderRows, monitoredHistoryRows] = await Promise.all([
       db.syncNotification.findMany({
         where: { companyId, category: 'GENERAL', readAt: null },
         orderBy: [{ createdAt: 'desc' }],
@@ -197,7 +196,86 @@ class NotificationService {
           },
         },
       }),
+      db.syncNotification.findMany({
+        where: { companyId, category: 'MONITORED' },
+        orderBy: [{ createdAt: 'desc' }],
+        take: Math.max(limit * 5, 100),
+        select: {
+          id: true,
+          payload: true,
+          createdAt: true,
+        },
+      }),
     ]);
+
+    const activeMonitoredOrderRows = (Array.isArray(monitoredOrderRows) ? monitoredOrderRows : [])
+      .map((item: any) => {
+        const order = item?.order;
+        if (!order?.id) return null;
+
+        return {
+          id: String(item.id || ''),
+          orderId: String(order.id),
+          orderNumber: String(order.orderNumber || ''),
+          invoiceNumber: order.invoiceNumber ? String(order.invoiceNumber) : null,
+          status: String(order.status || ''),
+          statusLabel: STATUS_LABELS[order.status as OrderStatus] || String(order.status || ''),
+          lastUpdate: safeDateString(order.lastUpdate),
+          createdAt: safeDateString(item.createdAt),
+        };
+      })
+      .filter(Boolean);
+
+    const monitoredOrderFallbackRows = (Array.isArray(monitoredHistoryRows) ? monitoredHistoryRows : [])
+      .map((item: any) => {
+        const payload =
+          item?.payload && typeof item.payload === 'object' ? item.payload : {};
+        const orderId = String(payload.orderId || '').trim();
+        const orderNumber = String(payload.orderNumber || '').trim();
+
+        if (!orderId && !orderNumber) {
+          return null;
+        }
+
+        const status = String(payload.currentStatus || payload.previousStatus || 'PENDING');
+        const parsedStatus = Object.values(OrderStatus).includes(status as OrderStatus)
+          ? (status as OrderStatus)
+          : null;
+
+        return {
+          id: `notification-${String(item.id || '')}`,
+          orderId,
+          orderNumber,
+          invoiceNumber: null as string | null,
+          status,
+          statusLabel: parsedStatus ? STATUS_LABELS[parsedStatus] : status,
+          lastUpdate: safeDateString(item.createdAt),
+          createdAt: safeDateString(item.createdAt),
+        };
+      })
+      .filter(Boolean);
+
+    const monitoredOrdersMap = new Map<string, any>();
+    for (const item of activeMonitoredOrderRows) {
+      const key = `${String(item.orderId || '').trim()}::${String(item.orderNumber || '').trim()}`;
+      if (!key || key === '::') {
+        continue;
+      }
+      monitoredOrdersMap.set(key, item);
+    }
+    for (const item of monitoredOrderFallbackRows) {
+      const key = `${String(item.orderId || '').trim()}::${String(item.orderNumber || '').trim()}`;
+      if (!key || key === '::' || monitoredOrdersMap.has(key)) {
+        continue;
+      }
+      monitoredOrdersMap.set(key, item);
+    }
+
+    const mergedMonitoredOrders = Array.from(monitoredOrdersMap.values()).sort((left, right) => {
+      const leftDate = new Date(String(left?.lastUpdate || left?.createdAt || 0)).getTime();
+      const rightDate = new Date(String(right?.lastUpdate || right?.createdAt || 0)).getTime();
+      return rightDate - leftDate;
+    });
 
     return {
       general: (Array.isArray(generalRows) ? generalRows : []).map(toNotificationItem),
@@ -205,23 +283,7 @@ class NotificationService {
       monitoredOrderIds: (Array.isArray(monitoredOrders) ? monitoredOrders : [])
         .map((item: any) => String(item.orderId || ''))
         .filter(Boolean),
-      monitoredOrders: (Array.isArray(monitoredOrderRows) ? monitoredOrderRows : [])
-        .map((item: any) => {
-          const order = item?.order;
-          if (!order?.id) return null;
-
-          return {
-            id: String(item.id || ''),
-            orderId: String(order.id),
-            orderNumber: String(order.orderNumber || ''),
-            invoiceNumber: order.invoiceNumber ? String(order.invoiceNumber) : null,
-            status: String(order.status || ''),
-            statusLabel: STATUS_LABELS[order.status as OrderStatus] || String(order.status || ''),
-            lastUpdate: safeDateString(order.lastUpdate),
-            createdAt: safeDateString(item.createdAt),
-          };
-        })
-        .filter(Boolean),
+      monitoredOrders: mergedMonitoredOrders,
       unreadCount:
         (Array.isArray(generalRows) ? generalRows.length : 0) +
         (Array.isArray(monitoredRows) ? monitoredRows.length : 0),

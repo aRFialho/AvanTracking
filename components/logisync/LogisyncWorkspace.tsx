@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   ArrowDownRight,
@@ -12,7 +12,9 @@ import {
   LogOut,
   Menu,
   Moon,
+  Pencil,
   Plus,
+  Save,
   Shield,
   SlidersHorizontal,
   Sun,
@@ -21,6 +23,7 @@ import {
   Trash2,
   Truck,
   Wallet,
+  X,
 } from "lucide-react";
 import {
   Area,
@@ -39,6 +42,8 @@ import {
 import { clsx } from "clsx";
 import { useAuth } from "../../contexts/AuthContext";
 import { useTheme } from "../../contexts/ThemeContext";
+import { fetchWithAuth } from "../../utils/authFetch";
+import { showToast } from "../../utils/toast";
 
 type SectionKey = "dashboard" | "conciliacao" | "integracao" | "admin";
 type RuleScope = "all" | "carriers";
@@ -61,6 +66,11 @@ type FreightOrder = {
   freteCobradoPago: number;
 };
 
+type CompanyOption = {
+  id: string;
+  name: string;
+};
+
 const SECTION_TABS: Record<SectionKey, Array<{ key: string; label: string }>> = {
   dashboard: [
     { key: "visao-geral", label: "Visao Geral" },
@@ -68,8 +78,8 @@ const SECTION_TABS: Record<SectionKey, Array<{ key: string; label: string }>> = 
     { key: "alertas", label: "Alertas" },
   ],
   conciliacao: [
-    { key: "resumo", label: "Resumo" },
     { key: "regras-inteligentes", label: "Regras Inteligentes" },
+    { key: "resumo", label: "Resumo" },
     { key: "pedidos", label: "Pedidos" },
   ],
   integracao: [
@@ -143,28 +153,7 @@ const ADMIN_USERS = [
   { name: "Analista Frete 2", email: "analista2@logisync.com.br", role: "ANALYST", lastAccess: "Ontem 18:21" },
 ];
 
-const INITIAL_RULES: FreightRule[] = [
-  {
-    id: "rule-global-1",
-    name: "Ajuste geral comercial",
-    description: "Ajuste global aplicado em todos os fretes.",
-    scope: "all",
-    carriers: [],
-    percentAdd: 30,
-    fixedAdd: 0,
-    active: true,
-  },
-  {
-    id: "rule-carrier-1",
-    name: "Taxa fixa SSW",
-    description: "Cobertura operacional especifica da SSW.",
-    scope: "carriers",
-    carriers: ["SSW"],
-    percentAdd: 0,
-    fixedAdd: 8,
-    active: true,
-  },
-];
+const INITIAL_RULES: FreightRule[] = [];
 
 const currency = (value: number) =>
   new Intl.NumberFormat("pt-BR", {
@@ -174,6 +163,8 @@ const currency = (value: number) =>
   }).format(value);
 
 const formatPercent = (value: number) => `${value.toFixed(1).replace(".", ",")}%`;
+
+const LOGISYNC_COMPANY_STORAGE_KEY = "logisync:selectedCompanyId";
 
 const statusTone = (status: "Conciliado" | "Prejuizo" | "Economia") => {
   if (status === "Prejuizo") return "bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-300";
@@ -185,6 +176,7 @@ export const LogisyncWorkspace: React.FC = () => {
   const { user, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const isSuperAdmin = Boolean(user?.isSuperAdmin);
+  const isAdminProfile = isSuperAdmin || user?.role === "ADMIN";
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -199,6 +191,25 @@ export const LogisyncWorkspace: React.FC = () => {
   const [rulePercent, setRulePercent] = useState("");
   const [ruleFixed, setRuleFixed] = useState("");
   const [ruleError, setRuleError] = useState("");
+  const [companies, setCompanies] = useState<CompanyOption[]>([]);
+  const [selectedCompanyId, setSelectedCompanyId] = useState("");
+  const [isLoadingCompanies, setIsLoadingCompanies] = useState(false);
+  const [isLoadingRules, setIsLoadingRules] = useState(false);
+  const [isSavingRule, setIsSavingRule] = useState(false);
+  const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
+  const [editingRuleDraft, setEditingRuleDraft] = useState<{
+    name: string;
+    description: string;
+    scope: RuleScope;
+    carriers: string[];
+    percentAdd: string;
+    fixedAdd: string;
+  } | null>(null);
+  const [conciliationOrders, setConciliationOrders] =
+    useState<FreightOrder[]>(BASE_ORDERS);
+  const [isLoadingConciliationOrders, setIsLoadingConciliationOrders] =
+    useState(false);
+  const [mindMapCarrier, setMindMapCarrier] = useState("");
 
   const navSections = useMemo(() => {
     const sections: Array<{ key: SectionKey; label: string; icon: React.ElementType }> = [
@@ -212,10 +223,223 @@ export const LogisyncWorkspace: React.FC = () => {
     return sections;
   }, [isSuperAdmin]);
 
+  const loadRules = useCallback(async (companyId: string) => {
+    const normalizedCompanyId = String(companyId || "").trim();
+    if (!normalizedCompanyId) {
+      setRules(INITIAL_RULES);
+      return;
+    }
+
+    setIsLoadingRules(true);
+    try {
+      const response = await fetchWithAuth(
+        `/api/logisync/rules?companyId=${encodeURIComponent(normalizedCompanyId)}`,
+      );
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.error || `HTTP ${response.status}`);
+      }
+
+      setRules(Array.isArray(data.rules) ? (data.rules as FreightRule[]) : []);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel carregar as regras inteligentes.";
+      showToast({
+        tone: "error",
+        title: "Logisync",
+        message,
+      });
+      setRules(INITIAL_RULES);
+    } finally {
+      setIsLoadingRules(false);
+    }
+  }, []);
+
+  const loadConciliationOrders = useCallback(async (companyId: string) => {
+    const normalizedCompanyId = String(companyId || "").trim();
+    if (!normalizedCompanyId) {
+      setConciliationOrders(BASE_ORDERS);
+      return;
+    }
+
+    setIsLoadingConciliationOrders(true);
+    try {
+      const response = await fetchWithAuth(
+        `/api/logisync/rules/context?companyId=${encodeURIComponent(normalizedCompanyId)}`,
+      );
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.error || `HTTP ${response.status}`);
+      }
+
+      const orders = Array.isArray(data.orders)
+        ? (data.orders as FreightOrder[])
+        : [];
+
+      setConciliationOrders(orders.length > 0 ? orders : BASE_ORDERS);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel carregar os pedidos de conciliacao.";
+      showToast({
+        tone: "warning",
+        title: "Logisync",
+        message,
+      });
+      setConciliationOrders(BASE_ORDERS);
+    } finally {
+      setIsLoadingConciliationOrders(false);
+    }
+  }, []);
+
+  const loadCompanies = useCallback(async () => {
+    setIsLoadingCompanies(true);
+    try {
+      const response = await fetchWithAuth("/api/companies");
+      const data = await response.json().catch(() => []);
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const availableCompanies = (Array.isArray(data) ? data : [])
+        .map((company: any) => ({
+          id: String(company?.id || ""),
+          name: String(company?.name || ""),
+        }))
+        .filter((company: CompanyOption) => company.id && company.name);
+
+      setCompanies(availableCompanies);
+
+      const savedCompanyId =
+        typeof window !== "undefined"
+          ? String(window.localStorage.getItem(LOGISYNC_COMPANY_STORAGE_KEY) || "")
+          : "";
+      const preferredCompany = availableCompanies.find(
+        (company) => company.id === savedCompanyId,
+      );
+
+      const nextCompanyId = preferredCompany?.id || availableCompanies[0]?.id || "";
+      setSelectedCompanyId(nextCompanyId);
+    } catch (error) {
+      setCompanies([]);
+      setSelectedCompanyId("");
+      showToast({
+        tone: "error",
+        title: "Logisync",
+        message: "Nao foi possivel carregar as empresas para as regras inteligentes.",
+      });
+    } finally {
+      setIsLoadingCompanies(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadCompanies();
+  }, [loadCompanies]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      if (selectedCompanyId) {
+        window.localStorage.setItem(
+          LOGISYNC_COMPANY_STORAGE_KEY,
+          selectedCompanyId,
+        );
+      } else {
+        window.localStorage.removeItem(LOGISYNC_COMPANY_STORAGE_KEY);
+      }
+    }
+
+    if (!selectedCompanyId) {
+      setRules(INITIAL_RULES);
+      setConciliationOrders(BASE_ORDERS);
+      return;
+    }
+
+    void loadRules(selectedCompanyId);
+    void loadConciliationOrders(selectedCompanyId);
+  }, [selectedCompanyId, loadConciliationOrders, loadRules]);
+
   const carrierOptions = useMemo(
-    () => Array.from(new Set(BASE_ORDERS.map((row) => row.transportadora))).sort(),
-    [],
+    () =>
+      Array.from(new Set(conciliationOrders.map((row) => row.transportadora))).sort(),
+    [conciliationOrders],
   );
+
+  useEffect(() => {
+    if (carrierOptions.length === 0) {
+      setMindMapCarrier("");
+      return;
+    }
+
+    setMindMapCarrier((current) =>
+      carrierOptions.includes(current) ? current : carrierOptions[0],
+    );
+  }, [carrierOptions]);
+
+  const activeRules = useMemo(
+    () => rules.filter((rule) => rule.active),
+    [rules],
+  );
+
+  const ruleLinkMatrix = useMemo(() => {
+    return carrierOptions.map((carrier) => {
+      const linkedRules = activeRules.filter(
+        (rule) =>
+          rule.scope === "all" ||
+          (rule.scope === "carriers" && rule.carriers.includes(carrier)),
+      );
+      const percentFactor = linkedRules.reduce(
+        (accumulator, rule) => accumulator * (1 + rule.percentAdd / 100),
+        1,
+      );
+      const fixedTotal = linkedRules.reduce(
+        (accumulator, rule) => accumulator + rule.fixedAdd,
+        0,
+      );
+
+      return {
+        carrier,
+        linkedRules,
+        percentFactor,
+        fixedTotal,
+      };
+    });
+  }, [activeRules, carrierOptions]);
+
+  const mindMapCarrierData = useMemo(() => {
+    if (ruleLinkMatrix.length === 0) {
+      return null;
+    }
+
+    return (
+      ruleLinkMatrix.find((row) => row.carrier === mindMapCarrier) ||
+      ruleLinkMatrix[0]
+    );
+  }, [mindMapCarrier, ruleLinkMatrix]);
+
+  const mindMapNodes = useMemo(() => {
+    if (!mindMapCarrierData || mindMapCarrierData.linkedRules.length === 0) {
+      return [] as Array<{ rule: FreightRule; x: number; y: number }>;
+    }
+
+    const radius = 34;
+    const total = mindMapCarrierData.linkedRules.length;
+
+    return mindMapCarrierData.linkedRules.map((rule, index) => {
+      const angle = (2 * Math.PI * index) / Math.max(total, 1) - Math.PI / 2;
+      return {
+        rule,
+        x: 50 + Math.cos(angle) * radius,
+        y: 50 + Math.sin(angle) * radius,
+      };
+    });
+  }, [mindMapCarrierData]);
 
   const getApplicableRules = (carrier: string) =>
     rules.filter(
@@ -236,7 +460,7 @@ export const LogisyncWorkspace: React.FC = () => {
   };
 
   const ordersWithConciliation = useMemo(() => {
-    return BASE_ORDERS.map((order) => {
+    return conciliationOrders.map((order) => {
       const appliedRules = getApplicableRules(order.transportadora);
       const freteDeveriaSerCobrado = calculateFreightShouldBeCharged(
         order.freteCobradoPago,
@@ -260,7 +484,7 @@ export const LogisyncWorkspace: React.FC = () => {
         appliedRulesCount: appliedRules.length,
       };
     });
-  }, [rules]);
+  }, [conciliationOrders, rules]);
 
   const summary = useMemo(() => {
     const totalPaid = ordersWithConciliation.reduce(
@@ -360,6 +584,8 @@ export const LogisyncWorkspace: React.FC = () => {
         : activeSection === "integracao"
           ? "Integracoes"
           : "Admin Super";
+  const isRuleFormDisabled =
+    !selectedCompanyId || isSavingRule || isLoadingRules || isLoadingCompanies;
 
   const handleRuleCarrierToggle = (carrier: string) => {
     setRuleCarriers((current) =>
@@ -369,8 +595,139 @@ export const LogisyncWorkspace: React.FC = () => {
     );
   };
 
-  const handleCreateRule = () => {
+  const handleEditRuleCarrierToggle = (carrier: string) => {
+    setEditingRuleDraft((current) => {
+      if (!current) {
+        return current;
+      }
+
+      return {
+        ...current,
+        carriers: current.carriers.includes(carrier)
+          ? current.carriers.filter((item) => item !== carrier)
+          : [...current.carriers, carrier],
+      };
+    });
+  };
+
+  const startRuleInlineEdit = (rule: FreightRule) => {
+    setEditingRuleId(rule.id);
+    setEditingRuleDraft({
+      name: rule.name,
+      description: rule.description,
+      scope: rule.scope,
+      carriers: [...rule.carriers],
+      percentAdd: String(rule.percentAdd),
+      fixedAdd: String(rule.fixedAdd),
+    });
     setRuleError("");
+  };
+
+  const cancelRuleInlineEdit = () => {
+    setEditingRuleId(null);
+    setEditingRuleDraft(null);
+  };
+
+  const saveRuleInlineEdit = async (ruleId: string) => {
+    if (!selectedCompanyId) {
+      setRuleError("Selecione uma empresa para salvar as regras.");
+      return;
+    }
+
+    if (!editingRuleDraft) {
+      return;
+    }
+
+    const name = editingRuleDraft.name.trim();
+    const description =
+      editingRuleDraft.description.trim() || "Regra criada manualmente.";
+    const scope = editingRuleDraft.scope;
+    const carriers =
+      scope === "all"
+        ? []
+        : Array.from(
+            new Set(
+              editingRuleDraft.carriers
+                .map((carrier) => carrier.trim())
+                .filter(Boolean),
+            ),
+          );
+    const percentAdd = Number.parseFloat(editingRuleDraft.percentAdd || "0");
+    const fixedAdd = Number.parseFloat(editingRuleDraft.fixedAdd || "0");
+    const normalizedPercent = Number.isFinite(percentAdd) ? percentAdd : 0;
+    const normalizedFixed = Number.isFinite(fixedAdd) ? fixedAdd : 0;
+
+    if (!name) {
+      setRuleError("Informe um nome para a regra.");
+      return;
+    }
+
+    if (scope === "carriers" && carriers.length === 0) {
+      setRuleError("Selecione ao menos uma transportadora para a regra.");
+      return;
+    }
+
+    if (normalizedPercent <= 0 && normalizedFixed <= 0) {
+      setRuleError("Informe ao menos um adicional percentual ou fixo.");
+      return;
+    }
+
+    setIsSavingRule(true);
+    try {
+      const response = await fetchWithAuth(
+        `/api/logisync/rules/${encodeURIComponent(ruleId)}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            companyId: selectedCompanyId,
+            rule: {
+              name,
+              description,
+              scope,
+              carriers,
+              percentAdd: normalizedPercent,
+              fixedAdd: normalizedFixed,
+            },
+          }),
+        },
+      );
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error || `HTTP ${response.status}`);
+      }
+
+      setRules(Array.isArray(data.rules) ? (data.rules as FreightRule[]) : []);
+      setEditingRuleId(null);
+      setEditingRuleDraft(null);
+      showToast({
+        tone: "success",
+        title: "Logisync",
+        message: "Regra atualizada com sucesso.",
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel atualizar a regra.";
+      setRuleError(message);
+      showToast({
+        tone: "error",
+        title: "Logisync",
+        message,
+      });
+    } finally {
+      setIsSavingRule(false);
+    }
+  };
+
+  const handleCreateRule = async () => {
+    setRuleError("");
+    if (!selectedCompanyId) {
+      setRuleError("Selecione uma empresa para salvar as regras.");
+      return;
+    }
+
     const parsedPercent = Number.parseFloat(rulePercent || "0");
     const parsedFixed = Number.parseFloat(ruleFixed || "0");
     const percentAdd = Number.isFinite(parsedPercent) ? parsedPercent : 0;
@@ -389,36 +746,140 @@ export const LogisyncWorkspace: React.FC = () => {
       return;
     }
 
-    const newRule: FreightRule = {
-      id: `rule-${Date.now()}-${Math.round(Math.random() * 1000)}`,
-      name: ruleName.trim(),
-      description: ruleDescription.trim() || "Regra criada manualmente.",
-      scope: ruleScope,
-      carriers: ruleScope === "all" ? [] : ruleCarriers,
-      percentAdd,
-      fixedAdd,
-      active: true,
-    };
+    setIsSavingRule(true);
+    try {
+      const response = await fetchWithAuth("/api/logisync/rules", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          companyId: selectedCompanyId,
+          rule: {
+            name: ruleName.trim(),
+            description: ruleDescription.trim() || "Regra criada manualmente.",
+            scope: ruleScope,
+            carriers: ruleScope === "all" ? [] : ruleCarriers,
+            percentAdd,
+            fixedAdd,
+          },
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error || `HTTP ${response.status}`);
+      }
 
-    setRules((current) => [newRule, ...current]);
-    setRuleName("");
-    setRuleDescription("");
-    setRuleScope("all");
-    setRuleCarriers([]);
-    setRulePercent("");
-    setRuleFixed("");
+      setRules(Array.isArray(data.rules) ? (data.rules as FreightRule[]) : []);
+      setRuleName("");
+      setRuleDescription("");
+      setRuleScope("all");
+      setRuleCarriers([]);
+      setRulePercent("");
+      setRuleFixed("");
+      showToast({
+        tone: "success",
+        title: "Logisync",
+        message: "Regra inteligente salva para a empresa selecionada.",
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel salvar a regra inteligente.";
+      setRuleError(message);
+      showToast({
+        tone: "error",
+        title: "Logisync",
+        message,
+      });
+    } finally {
+      setIsSavingRule(false);
+    }
   };
 
-  const toggleRuleStatus = (ruleId: string) => {
-    setRules((current) =>
-      current.map((rule) =>
-        rule.id === ruleId ? { ...rule, active: !rule.active } : rule,
-      ),
-    );
+  const toggleRuleStatus = async (ruleId: string) => {
+    if (!selectedCompanyId) {
+      return;
+    }
+
+    const targetRule = rules.find((rule) => rule.id === ruleId);
+    if (!targetRule) {
+      return;
+    }
+
+    setIsSavingRule(true);
+    try {
+      const response = await fetchWithAuth(
+        `/api/logisync/rules/${encodeURIComponent(ruleId)}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            companyId: selectedCompanyId,
+            rule: {
+              active: !targetRule.active,
+            },
+          }),
+        },
+      );
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error || `HTTP ${response.status}`);
+      }
+      setRules(Array.isArray(data.rules) ? (data.rules as FreightRule[]) : []);
+      if (editingRuleId === ruleId) {
+        setEditingRuleId(null);
+        setEditingRuleDraft(null);
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel atualizar o status da regra.";
+      showToast({
+        tone: "error",
+        title: "Logisync",
+        message,
+      });
+    } finally {
+      setIsSavingRule(false);
+    }
   };
 
-  const removeRule = (ruleId: string) => {
-    setRules((current) => current.filter((rule) => rule.id !== ruleId));
+  const removeRule = async (ruleId: string) => {
+    if (!selectedCompanyId) {
+      return;
+    }
+
+    setIsSavingRule(true);
+    try {
+      const response = await fetchWithAuth(
+        `/api/logisync/rules/${encodeURIComponent(ruleId)}?companyId=${encodeURIComponent(selectedCompanyId)}`,
+        {
+          method: "DELETE",
+        },
+      );
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error || `HTTP ${response.status}`);
+      }
+      setRules(Array.isArray(data.rules) ? (data.rules as FreightRule[]) : []);
+      if (editingRuleId === ruleId) {
+        setEditingRuleId(null);
+        setEditingRuleDraft(null);
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel remover a regra.";
+      showToast({
+        tone: "error",
+        title: "Logisync",
+        message,
+      });
+    } finally {
+      setIsSavingRule(false);
+    }
   };
 
   const renderDashboard = () => (
@@ -538,22 +999,37 @@ export const LogisyncWorkspace: React.FC = () => {
         Regras Inteligentes de Custo Adicional
       </h3>
 
+      {!selectedCompanyId && (
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+          Selecione uma empresa para carregar e salvar as regras inteligentes.
+        </div>
+      )}
+
+      {(isLoadingRules || isLoadingCompanies) && (
+        <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-300">
+          Carregando regras da empresa selecionada...
+        </div>
+      )}
+
       <div className="grid gap-3 md:grid-cols-2">
         <input
           value={ruleName}
           onChange={(event) => setRuleName(event.target.value)}
+          disabled={isRuleFormDisabled}
           className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-white/10 dark:bg-white/5"
           placeholder="Nome da regra"
         />
         <input
           value={ruleDescription}
           onChange={(event) => setRuleDescription(event.target.value)}
+          disabled={isRuleFormDisabled}
           className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-white/10 dark:bg-white/5"
           placeholder="Descricao da regra"
         />
         <select
           value={ruleScope}
           onChange={(event) => setRuleScope(event.target.value as RuleScope)}
+          disabled={isRuleFormDisabled}
           className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-white/10 dark:bg-white/5"
         >
           <option value="all">Geral (todas as transportadoras)</option>
@@ -564,6 +1040,7 @@ export const LogisyncWorkspace: React.FC = () => {
           onChange={(event) => setRulePercent(event.target.value)}
           type="number"
           step="0.1"
+          disabled={isRuleFormDisabled}
           className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-white/10 dark:bg-white/5"
           placeholder="Adicional percentual (%)"
         />
@@ -572,16 +1049,18 @@ export const LogisyncWorkspace: React.FC = () => {
           onChange={(event) => setRuleFixed(event.target.value)}
           type="number"
           step="0.01"
+          disabled={isRuleFormDisabled}
           className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-white/10 dark:bg-white/5"
           placeholder="Adicional fixo (R$)"
         />
         <button
           type="button"
           onClick={handleCreateRule}
+          disabled={isRuleFormDisabled}
           className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-orange-500 px-3 py-2 text-sm font-semibold text-white transition hover:brightness-110"
         >
           <Plus className="h-4 w-4" />
-          Adicionar regra
+          {isSavingRule ? "Salvando..." : "Adicionar regra"}
         </button>
       </div>
 
@@ -596,6 +1075,7 @@ export const LogisyncWorkspace: React.FC = () => {
                 key={carrier}
                 type="button"
                 onClick={() => handleRuleCarrierToggle(carrier)}
+                disabled={isRuleFormDisabled}
                 className={clsx(
                   "rounded-lg border px-2 py-1.5 text-xs text-left transition-colors",
                   ruleCarriers.includes(carrier)
@@ -622,7 +1102,126 @@ export const LogisyncWorkspace: React.FC = () => {
         </p>
       </div>
 
+      <div className="mt-4 rounded-xl border border-slate-200 bg-white p-3 dark:border-white/10 dark:bg-white/5">
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
+          Ligacao Inteligente (Mapa Mental)
+        </p>
+        <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
+          O sistema combina todas as regras ativas gerais + regras por transportadora para calcular o frete base sem acrescimo.
+        </p>
+        <div className="mt-3 grid gap-3 xl:grid-cols-[260px_1fr]">
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-white/10 dark:bg-[#0d1220]">
+            <label className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+              Transportadora alvo
+            </label>
+            <select
+              value={mindMapCarrier}
+              onChange={(event) => setMindMapCarrier(event.target.value)}
+              className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm text-slate-700 focus:outline-none dark:border-white/10 dark:bg-[#111524] dark:text-slate-200"
+            >
+              {carrierOptions.map((carrier) => (
+                <option key={carrier} value={carrier}>
+                  {carrier}
+                </option>
+              ))}
+            </select>
+            <div className="mt-3 space-y-1 text-xs text-slate-600 dark:text-slate-300">
+              <p>
+                Regras ativas ligadas:{" "}
+                <strong>{mindMapCarrierData?.linkedRules.length || 0}</strong>
+              </p>
+              <p>
+                Fator % acumulado:{" "}
+                <strong>
+                  {(mindMapCarrierData?.percentFactor || 1)
+                    .toFixed(4)
+                    .replace(".", ",")}
+                </strong>
+              </p>
+              <p>
+                Total fixo acumulado:{" "}
+                <strong>{currency(mindMapCarrierData?.fixedTotal || 0)}</strong>
+              </p>
+            </div>
+          </div>
+
+          <div className="relative h-[340px] overflow-hidden rounded-xl border border-slate-200 bg-[radial-gradient(circle_at_center,rgba(59,130,246,0.12),transparent_62%)] dark:border-white/10 dark:bg-[radial-gradient(circle_at_center,rgba(56,189,248,0.12),transparent_62%)]">
+            <svg
+              className="absolute inset-0 h-full w-full"
+              viewBox="0 0 100 100"
+              preserveAspectRatio="none"
+            >
+              {mindMapNodes.map((node) => (
+                <line
+                  key={`line-${node.rule.id}`}
+                  x1={50}
+                  y1={50}
+                  x2={node.x}
+                  y2={node.y}
+                  stroke="rgba(59,130,246,0.55)"
+                  strokeWidth="0.45"
+                />
+              ))}
+            </svg>
+
+            <div className="absolute left-1/2 top-1/2 w-[170px] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-blue-300 bg-blue-50 px-3 py-2 text-center text-xs text-blue-800 dark:border-blue-400/40 dark:bg-blue-500/20 dark:text-blue-200">
+              <p className="font-bold">{mindMapCarrierData?.carrier || "Transportadora"}</p>
+              <p className="mt-1">Frete base = (Cobrado - fixo) / fator %</p>
+            </div>
+
+            {mindMapNodes.map((node) => (
+              <div
+                key={node.rule.id}
+                className="absolute w-[170px] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-slate-200 bg-white px-2 py-2 text-[11px] text-slate-700 shadow-sm dark:border-white/10 dark:bg-[#111524] dark:text-slate-200"
+                style={{
+                  left: `${node.x}%`,
+                  top: `${node.y}%`,
+                }}
+              >
+                <p className="font-semibold">{node.rule.name}</p>
+                <p className="mt-1 text-slate-500 dark:text-slate-400">
+                  {node.rule.scope === "all"
+                    ? "Regra geral"
+                    : `Transportadoras: ${node.rule.carriers.join(", ")}`}
+                </p>
+                <p className="mt-1">
+                  +{formatPercent(node.rule.percentAdd)} e {currency(node.rule.fixedAdd)}
+                </p>
+              </div>
+            ))}
+
+            {mindMapCarrierData && mindMapCarrierData.linkedRules.length === 0 && (
+              <div className="absolute inset-x-0 bottom-3 mx-auto w-fit rounded-full border border-slate-300 bg-white px-3 py-1 text-xs text-slate-500 dark:border-white/20 dark:bg-[#111524] dark:text-slate-400">
+                Sem regras ativas ligadas para esta transportadora
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+          {ruleLinkMatrix.map((row) => (
+            <div key={row.carrier} className="rounded-lg border border-slate-200 px-3 py-2 dark:border-white/10">
+              <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{row.carrier}</p>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                {row.linkedRules.length} regra(s) ativa(s) ligada(s)
+              </p>
+              <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
+                Fator % acumulado: {row.percentFactor.toFixed(4).replace(".", ",")}
+              </p>
+              <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
+                Total fixo acumulado: {currency(row.fixedTotal)}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+
       <div className="mt-4 space-y-2">
+        {rules.length === 0 && (
+          <div className="rounded-xl border border-dashed border-slate-300 px-3 py-4 text-sm text-slate-500 dark:border-white/20 dark:text-slate-400">
+            Nenhuma regra cadastrada para esta empresa.
+          </div>
+        )}
         {rules.map((rule) => (
           <div
             key={rule.id}
@@ -633,36 +1232,187 @@ export const LogisyncWorkspace: React.FC = () => {
                 : "border-slate-200 bg-slate-50 dark:border-white/10 dark:bg-white/5",
             )}
           >
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{rule.name}</p>
-                <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">{rule.description}</p>
-                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  Escopo: {rule.scope === "all" ? "Geral" : rule.carriers.join(", ")}
-                </p>
-                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  Adicional: {formatPercent(rule.percentAdd)} e {currency(rule.fixedAdd)}
-                </p>
+            {editingRuleId === rule.id && editingRuleDraft ? (
+              <div className="space-y-3">
+                <div className="grid gap-2 md:grid-cols-2">
+                  <input
+                    value={editingRuleDraft.name}
+                    onChange={(event) =>
+                      setEditingRuleDraft((current) =>
+                        current
+                          ? { ...current, name: event.target.value }
+                          : current,
+                      )
+                    }
+                    disabled={isSavingRule}
+                    className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-white/10 dark:bg-white/5"
+                    placeholder="Nome da regra"
+                  />
+                  <input
+                    value={editingRuleDraft.description}
+                    onChange={(event) =>
+                      setEditingRuleDraft((current) =>
+                        current
+                          ? { ...current, description: event.target.value }
+                          : current,
+                      )
+                    }
+                    disabled={isSavingRule}
+                    className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-white/10 dark:bg-white/5"
+                    placeholder="Descricao da regra"
+                  />
+                  <select
+                    value={editingRuleDraft.scope}
+                    onChange={(event) =>
+                      setEditingRuleDraft((current) =>
+                        current
+                          ? {
+                              ...current,
+                              scope: event.target.value as RuleScope,
+                              carriers:
+                                event.target.value === "all"
+                                  ? []
+                                  : current.carriers,
+                            }
+                          : current,
+                      )
+                    }
+                    disabled={isSavingRule}
+                    className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-white/10 dark:bg-white/5"
+                  >
+                    <option value="all">Geral</option>
+                    <option value="carriers">Por transportadora</option>
+                  </select>
+                  <input
+                    value={editingRuleDraft.percentAdd}
+                    onChange={(event) =>
+                      setEditingRuleDraft((current) =>
+                        current
+                          ? { ...current, percentAdd: event.target.value }
+                          : current,
+                      )
+                    }
+                    type="number"
+                    step="0.1"
+                    disabled={isSavingRule}
+                    className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-white/10 dark:bg-white/5"
+                    placeholder="Adicional %"
+                  />
+                  <input
+                    value={editingRuleDraft.fixedAdd}
+                    onChange={(event) =>
+                      setEditingRuleDraft((current) =>
+                        current
+                          ? { ...current, fixedAdd: event.target.value }
+                          : current,
+                      )
+                    }
+                    type="number"
+                    step="0.01"
+                    disabled={isSavingRule}
+                    className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-white/10 dark:bg-white/5"
+                    placeholder="Adicional R$"
+                  />
+                </div>
+
+                {editingRuleDraft.scope === "carriers" && (
+                  <div className="rounded-lg border border-slate-200 p-2 dark:border-white/10">
+                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
+                      Transportadoras da regra
+                    </p>
+                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                      {carrierOptions.map((carrier) => (
+                        <button
+                          key={`${rule.id}-${carrier}`}
+                          type="button"
+                          onClick={() => handleEditRuleCarrierToggle(carrier)}
+                          disabled={isSavingRule}
+                          className={clsx(
+                            "rounded-lg border px-2 py-1 text-xs text-left transition-colors",
+                            editingRuleDraft.carriers.includes(carrier)
+                              ? "border-blue-400 bg-blue-50 text-blue-700 dark:border-blue-300 dark:bg-blue-500/20 dark:text-blue-200"
+                              : "border-slate-200 text-slate-600 hover:bg-slate-100 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/10",
+                          )}
+                        >
+                          {carrier}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => saveRuleInlineEdit(rule.id)}
+                    disabled={isSavingRule || !selectedCompanyId}
+                    className="inline-flex items-center gap-1 rounded-lg border border-emerald-300 px-2 py-1 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-50 dark:border-emerald-400/30 dark:text-emerald-300 dark:hover:bg-emerald-500/10"
+                  >
+                    <Save className="h-4 w-4" />
+                    Salvar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={cancelRuleInlineEdit}
+                    disabled={isSavingRule}
+                    className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-2 py-1 text-xs text-slate-600 transition-colors hover:bg-slate-100 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/10"
+                  >
+                    <X className="h-4 w-4" />
+                    Cancelar
+                  </button>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => toggleRuleStatus(rule.id)}
-                  className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-2 py-1 text-xs text-slate-600 transition-colors hover:bg-slate-100 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/10"
-                >
-                  {rule.active ? <ToggleRight className="h-4 w-4 text-emerald-500" /> : <ToggleLeft className="h-4 w-4 text-slate-400" />}
-                  {rule.active ? "Ativa" : "Inativa"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => removeRule(rule.id)}
-                  className="inline-flex items-center gap-1 rounded-lg border border-rose-300 px-2 py-1 text-xs text-rose-600 transition-colors hover:bg-rose-50 dark:border-rose-400/30 dark:text-rose-300 dark:hover:bg-rose-500/10"
-                >
-                  <Trash2 className="h-4 w-4" />
-                  Remover
-                </button>
+            ) : (
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                    {rule.name}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
+                    {rule.description}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    Escopo: {rule.scope === "all" ? "Geral" : rule.carriers.join(", ")}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    Adicional: {formatPercent(rule.percentAdd)} e {currency(rule.fixedAdd)}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => startRuleInlineEdit(rule)}
+                    disabled={isSavingRule || !selectedCompanyId}
+                    className="inline-flex items-center gap-1 rounded-lg border border-blue-300 px-2 py-1 text-xs text-blue-700 transition-colors hover:bg-blue-50 dark:border-blue-400/30 dark:text-blue-300 dark:hover:bg-blue-500/10"
+                  >
+                    <Pencil className="h-4 w-4" />
+                    Editar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => toggleRuleStatus(rule.id)}
+                    disabled={isSavingRule || !selectedCompanyId}
+                    className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-2 py-1 text-xs text-slate-600 transition-colors hover:bg-slate-100 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/10"
+                  >
+                    {rule.active ? (
+                      <ToggleRight className="h-4 w-4 text-emerald-500" />
+                    ) : (
+                      <ToggleLeft className="h-4 w-4 text-slate-400" />
+                    )}
+                    {rule.active ? "Ativa" : "Inativa"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => removeRule(rule.id)}
+                    disabled={isSavingRule || !selectedCompanyId}
+                    className="inline-flex items-center gap-1 rounded-lg border border-rose-300 px-2 py-1 text-xs text-rose-600 transition-colors hover:bg-rose-50 dark:border-rose-400/30 dark:text-rose-300 dark:hover:bg-rose-500/10"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Remover
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         ))}
       </div>
@@ -674,6 +1424,15 @@ export const LogisyncWorkspace: React.FC = () => {
       <h3 className="mb-4 text-sm font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-300">
         Pedidos em Conciliacao
       </h3>
+      {isLoadingConciliationOrders ? (
+        <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-4 text-sm text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-300">
+          Carregando pedidos de conciliacao da empresa selecionada...
+        </div>
+      ) : ordersWithConciliation.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-slate-300 px-3 py-4 text-sm text-slate-500 dark:border-white/20 dark:text-slate-400">
+          Nenhum pedido disponivel para conciliacao nesta empresa.
+        </div>
+      ) : (
       <div className="overflow-x-auto">
         <table className="min-w-full text-sm">
           <thead>
@@ -713,6 +1472,7 @@ export const LogisyncWorkspace: React.FC = () => {
           </tbody>
         </table>
       </div>
+      )}
     </div>
   );
 
@@ -1072,9 +1832,38 @@ export const LogisyncWorkspace: React.FC = () => {
               </div>
             </div>
 
-            <div className="hidden items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-600 md:flex dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
-              <BellRing className="h-3.5 w-3.5" />
-              {summary.divergentCount} alertas de conciliacao
+            <div className="hidden items-center gap-3 md:flex">
+              {isAdminProfile && (
+                <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
+                  <span className="uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
+                    Empresa
+                  </span>
+                  <select
+                    value={selectedCompanyId}
+                    onChange={(event) => setSelectedCompanyId(event.target.value)}
+                    disabled={isLoadingCompanies || companies.length === 0}
+                    className="min-w-[220px] rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 focus:outline-none dark:border-white/10 dark:bg-[#111524] dark:text-slate-200"
+                  >
+                    {companies.length === 0 ? (
+                      <option value="">
+                        {isLoadingCompanies
+                          ? "Carregando empresas..."
+                          : "Nenhuma empresa"}
+                      </option>
+                    ) : (
+                      companies.map((company) => (
+                        <option key={company.id} value={company.id}>
+                          {company.name}
+                        </option>
+                      ))
+                    )}
+                  </select>
+                </div>
+              )}
+              <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
+                <BellRing className="h-3.5 w-3.5" />
+                {summary.divergentCount} alertas de conciliacao
+              </div>
             </div>
           </div>
         </header>

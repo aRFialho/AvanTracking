@@ -6,6 +6,7 @@ import companyRoutes from "./routes/companies";
 import releaseNotesRoutes from "./routes/releaseNotes";
 import supportRoutes from "./routes/support";
 import notificationRoutes from "./routes/notifications";
+import logisyncRulesRoutes from "./routes/logisyncRules";
 import {
   startTrayAuthorization,
   showInstallPage,
@@ -217,6 +218,9 @@ app.use("/api/support", authenticateToken, supportRoutes);
 
 // Notifications API (protegida)
 app.use("/api/notifications", authenticateToken, notificationRoutes);
+
+// Logisync Rules API (protegida)
+app.use("/api/logisync/rules", authenticateToken, logisyncRulesRoutes);
 
 // Orders API (protegida)
 app.use("/api/orders", authenticateToken, orderRoutes);

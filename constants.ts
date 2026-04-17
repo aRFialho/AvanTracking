@@ -1,4 +1,4 @@
-export const LOGO_URL = "https://res.cloudinary.com/dhqxp3tuo/image/upload/v1771249579/ChatGPT_Image_13_de_fev._de_2026_16_40_14_kldj3k.png";
+export const LOGO_URL = "/avanlog.png";
 
 export const CSV_HEADERS = [
   "Pedido",
