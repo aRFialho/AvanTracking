@@ -242,6 +242,16 @@ const extractLocationFromText = (text: string) => {
 const normalizeDigits = (value: string | null | undefined) =>
   String(value || '').replace(/\D/g, '').trim();
 
+const normalizeIdentifierDigits = (value: string | null | undefined) => {
+  const normalized = normalizeDigits(value);
+  if (!normalized) {
+    return '';
+  }
+
+  const withoutLeadingZeros = normalized.replace(/^0+/, '');
+  return withoutLeadingZeros || '0';
+};
+
 const normalizeComparableText = (value: string | null | undefined) =>
   String(value || '')
     .normalize('NFD')
@@ -443,7 +453,7 @@ export const matchSswTrackingToOrder = (
   const orderIdentifierCandidates = Array.from(
     new Set(
       [order.invoiceNumber, order.trackingCode]
-        .map((value) => normalizeDigits(value))
+        .map((value) => normalizeIdentifierDigits(value))
         .filter(Boolean),
     ),
   );
@@ -495,32 +505,52 @@ export const matchSswTrackingToOrder = (
     );
   }
 
-  const hasIdentifierMatch = orderIdentifierCandidates.some((candidate) =>
-    metadata.invoiceIdentifiers.some((identifier) => {
-      const normalizedIdentifier = normalizeDigits(identifier);
+  let hasExactIdentifierMatch = false;
+  let hasPartialIdentifierMatch = false;
+  for (const candidate of orderIdentifierCandidates) {
+    for (const identifier of metadata.invoiceIdentifiers) {
+      const normalizedIdentifier = normalizeIdentifierDigits(identifier);
       if (!candidate || !normalizedIdentifier) {
-        return false;
+        continue;
       }
+
       if (candidate === normalizedIdentifier) {
-        return true;
+        hasExactIdentifierMatch = true;
+        break;
       }
-      return (
-        candidate.length >= 3 &&
-        normalizedIdentifier.length >= 3 &&
+
+      const hasSuffixMatch =
+        candidate.length >= 6 &&
+        normalizedIdentifier.length >= 6 &&
         (candidate.endsWith(normalizedIdentifier) ||
-          normalizedIdentifier.endsWith(candidate))
-      );
-    }),
-  );
-  if (hasIdentifierMatch) {
+          normalizedIdentifier.endsWith(candidate));
+
+      if (hasSuffixMatch) {
+        hasPartialIdentifierMatch = true;
+      }
+    }
+
+    if (hasExactIdentifierMatch) {
+      break;
+    }
+  }
+
+  if (hasExactIdentifierMatch) {
+    score += 2;
+    reasons.push('identificador consultado bate exatamente com o pedido');
+  } else if (hasPartialIdentifierMatch) {
     score += 1;
-    reasons.push('identificador consultado bate com o pedido');
+    reasons.push('identificador consultado parcialmente compatível');
   }
 
   const hasRecipientMatch = nameStrength >= 2;
 
   return {
-    isMatch: hasDocumentMatch || hasRecipientMatch || hasDestinationMatch,
+    isMatch:
+      hasDocumentMatch ||
+      hasRecipientMatch ||
+      hasDestinationMatch ||
+      hasExactIdentifierMatch,
     score,
     reasons,
     metadata,

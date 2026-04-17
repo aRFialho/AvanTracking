@@ -435,6 +435,12 @@ export class TrackingService {
       result: ReturnType<typeof matchSswTrackingToOrder>;
       payload: any;
     }> = [];
+    const rejectedStandardMatches: Array<{
+      score: number;
+      lookupMode: SswLookupMode;
+      cnpj: string;
+      reasons: string[];
+    }> = [];
 
     for (const candidate of standardCandidates) {
       for (const cnpj of sswRequireCnpjs) {
@@ -457,6 +463,12 @@ export class TrackingService {
 
         const match = matchSswTrackingToOrder(order, result);
         if (!match.isMatch) {
+          rejectedStandardMatches.push({
+            score: match.score,
+            lookupMode: candidate.lookupMode,
+            cnpj,
+            reasons: match.reasons,
+          });
           continue;
         }
 
@@ -487,6 +499,20 @@ export class TrackingService {
       });
 
       return acceptedStandardMatches[0].payload;
+    }
+
+    if (rejectedStandardMatches.length > 0) {
+      rejectedStandardMatches.sort((left, right) => right.score - left.score);
+      const bestRejected = rejectedStandardMatches[0];
+      console.warn('SSW retornou dados, mas o match com o pedido foi rejeitado.', {
+        orderNumber: order.orderNumber,
+        invoiceNumber: order.invoiceNumber,
+        trackingCode: order.trackingCode,
+        lookupMode: bestRejected.lookupMode,
+        cnpj: bestRejected.cnpj,
+        score: bestRejected.score,
+        reasons: bestRejected.reasons,
+      });
     }
 
     if (hasXmlTrackingKey) {
@@ -784,16 +810,6 @@ export class TrackingService {
         };
       }
 
-      if (!options?.forceFinalized && shouldSkipTerminalSync(order)) {
-        return {
-          success: false,
-          message: 'Pedido jÃƒÂ¡ finalizado',
-          change: {
-            ...baseChange,
-            errorMessage: 'Pedido jÃƒÂ¡ finalizado',
-          },
-        };
-      }
 
 
       const shouldUseCorreiosProvider = correiosTrackingService.shouldUseForCarrier(

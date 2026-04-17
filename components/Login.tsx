@@ -613,7 +613,14 @@ export const Login: React.FC = () => {
       {authView === "login" && experienceStage === "intro" && (
         <div className="login-stage-overlay">
           <div className="login-intro-mark">
-            <img src={LOGO_URL} alt="Avantracking" className="login-intro-logo h-24 w-auto" />
+            <img
+              src="/avanlog.png"
+              alt="Avantracking"
+              className="login-intro-logo h-24 w-auto"
+              onError={(event) => {
+                event.currentTarget.src = LOGO_URL;
+              }}
+            />
           </div>
         </div>
       )}
