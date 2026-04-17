@@ -84,6 +84,26 @@ export const isChannelManagedOrder = (order: Pick<Order, "status" | "freightType
 export const parseOptionalDate = (value: unknown): Date | null => {
   if (!value) return null;
 
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    const dateOnlyMatch = normalized.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    const isoMidnightMatch = normalized.match(
+      /^(\d{4})-(\d{2})-(\d{2})T00:00(?::00(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})?$/i,
+    );
+
+    if (dateOnlyMatch || isoMidnightMatch) {
+      const [, yearRaw, monthRaw, dayRaw] = (dateOnlyMatch || isoMidnightMatch)!;
+      const year = Number(yearRaw);
+      const month = Number(monthRaw) - 1;
+      const day = Number(dayRaw);
+      const localNoon = new Date(year, month, day, 12, 0, 0, 0);
+
+      if (!Number.isNaN(localNoon.getTime()) && year >= 1900) {
+        return localNoon;
+      }
+    }
+  }
+
   const parsed = new Date(value as string | number | Date);
   if (Number.isNaN(parsed.getTime()) || parsed.getFullYear() < 1900) {
     return null;

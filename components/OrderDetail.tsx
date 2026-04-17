@@ -379,25 +379,26 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
       <div className="bg-white dark:bg-dark-card w-full max-w-5xl max-h-[90vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 border border-slate-200 dark:border-white/10">
         <div className="flex items-center justify-between p-6 border-b border-slate-100 dark:border-white/10 bg-slate-50/50 dark:bg-black/20">
-          <div className="flex items-start gap-3">
-            <div>
-              <h2 className="text-xl font-bold text-slate-800 dark:text-white">
-                Pedido #{order.orderNumber}
-              </h2>
-              <p className="text-sm text-slate-500 dark:text-slate-400">
-                Detalhes completos, frete e rastreamento
-              </p>
-            </div>
-            {!isEditingManualData && (
-              <button
-                type="button"
-                onClick={handleStartManualEdit}
-                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-[11px] font-medium text-slate-600 transition-colors hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5 dark:hover:text-white"
-              >
-                <Pencil className="h-3.5 w-3.5" />
-                Editar dados
-              </button>
-            )}
+          <div>
+            <h2 className="text-xl font-bold text-slate-800 dark:text-white flex flex-wrap items-center gap-2">
+              <span>Pedido #{order.orderNumber}</span>
+              {!isEditingManualData && (
+                <>
+                  <span className="text-slate-400 dark:text-slate-500">&gt;</span>
+                  <button
+                    type="button"
+                    onClick={handleStartManualEdit}
+                    className="inline-flex items-center gap-1 rounded-lg bg-gradient-to-r from-orange-500 to-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-transform hover:scale-[1.02] hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/60"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                    Editar Dados
+                  </button>
+                </>
+              )}
+            </h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              Detalhes completos, frete e rastreamento
+            </p>
           </div>
           <button
             onClick={onClose}
@@ -620,251 +621,6 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({
                     {formatCarrierForecast(order.carrierEstimatedDeliveryDate)}
                   </p>
                 </div>
-
-                {isEditingManualData && (
-                  <div className="p-4 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50/30 dark:bg-white/5 md:col-span-2">
-                    <div className="flex items-center gap-2 mb-3 text-slate-800 dark:text-white font-semibold text-sm">
-                      <Pencil className="w-4 h-4 text-accent" /> Edicao manual do pedido
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <input
-                        type="text"
-                        value={manualDataDraft.customerName}
-                        onChange={(event) =>
-                          handleManualFieldChange("customerName", event.target.value)
-                        }
-                        placeholder="Nome do cliente"
-                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
-                      />
-                      <input
-                        type="text"
-                        value={manualDataDraft.recipient}
-                        onChange={(event) =>
-                          handleManualFieldChange("recipient", event.target.value)
-                        }
-                        placeholder="Destinatario"
-                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
-                      />
-                      <div className="md:col-span-2 rounded-lg border border-slate-200 bg-white/80 p-3 dark:border-white/10 dark:bg-white/5">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                          Adicionar status personalizado
-                        </p>
-                        <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
-                          <select
-                            value={
-                              customStatusOptions.includes(manualDataDraft.manualCustomStatus)
-                                ? manualDataDraft.manualCustomStatus
-                                : ""
-                            }
-                            onChange={(event) =>
-                              handleManualFieldChange(
-                                "manualCustomStatus",
-                                event.target.value,
-                              )
-                            }
-                            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
-                          >
-                            <option value="">Selecionar status salvo</option>
-                            {customStatusOptions.map((status) => (
-                              <option key={status} value={status}>
-                                {status}
-                              </option>
-                            ))}
-                          </select>
-                          <input
-                            type="text"
-                            value={manualDataDraft.manualCustomStatus}
-                            onChange={(event) =>
-                              handleManualFieldChange(
-                                "manualCustomStatus",
-                                event.target.value,
-                              )
-                            }
-                            placeholder="Digite o status personalizado"
-                            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
-                          />
-                        </div>
-                        <label className="mt-2 inline-flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
-                          <input
-                            type="checkbox"
-                            checked={saveStatusForOtherOrders}
-                            onChange={(event) =>
-                              setSaveStatusForOtherOrders(event.target.checked)
-                            }
-                            className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600"
-                          />
-                          Salvar status personalizado para usar em outros pedidos
-                        </label>
-                      </div>
-                      <input
-                        type="text"
-                        value={manualDataDraft.cpf}
-                        onChange={(event) =>
-                          handleManualFieldChange("cpf", event.target.value)
-                        }
-                        placeholder="CPF"
-                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
-                      />
-                      <input
-                        type="text"
-                        value={manualDataDraft.cnpj}
-                        onChange={(event) =>
-                          handleManualFieldChange("cnpj", event.target.value)
-                        }
-                        placeholder="CNPJ"
-                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
-                      />
-                      <input
-                        type="text"
-                        value={manualDataDraft.phone}
-                        onChange={(event) =>
-                          handleManualFieldChange("phone", event.target.value)
-                        }
-                        placeholder="Telefone"
-                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
-                      />
-                      <input
-                        type="text"
-                        value={manualDataDraft.mobile}
-                        onChange={(event) =>
-                          handleManualFieldChange("mobile", event.target.value)
-                        }
-                        placeholder="Celular"
-                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
-                      />
-                      <input
-                        type="text"
-                        value={manualDataDraft.address}
-                        onChange={(event) =>
-                          handleManualFieldChange("address", event.target.value)
-                        }
-                        placeholder="Endereco"
-                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white md:col-span-2"
-                      />
-                      <input
-                        type="text"
-                        value={manualDataDraft.number}
-                        onChange={(event) =>
-                          handleManualFieldChange("number", event.target.value)
-                        }
-                        placeholder="Numero"
-                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
-                      />
-                      <input
-                        type="text"
-                        value={manualDataDraft.complement}
-                        onChange={(event) =>
-                          handleManualFieldChange("complement", event.target.value)
-                        }
-                        placeholder="Complemento"
-                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
-                      />
-                      <input
-                        type="text"
-                        value={manualDataDraft.neighborhood}
-                        onChange={(event) =>
-                          handleManualFieldChange("neighborhood", event.target.value)
-                        }
-                        placeholder="Bairro"
-                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
-                      />
-                      <input
-                        type="text"
-                        value={manualDataDraft.zipCode}
-                        onChange={(event) =>
-                          handleManualFieldChange("zipCode", event.target.value)
-                        }
-                        placeholder="CEP"
-                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
-                      />
-                      <input
-                        type="text"
-                        value={manualDataDraft.city}
-                        onChange={(event) =>
-                          handleManualFieldChange("city", event.target.value)
-                        }
-                        placeholder="Cidade"
-                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
-                      />
-                      <input
-                        type="text"
-                        value={manualDataDraft.state}
-                        onChange={(event) =>
-                          handleManualFieldChange("state", event.target.value)
-                        }
-                        placeholder="UF"
-                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
-                      />
-                      <input
-                        type="text"
-                        value={manualDataDraft.invoiceNumber}
-                        onChange={(event) =>
-                          handleManualFieldChange("invoiceNumber", event.target.value)
-                        }
-                        placeholder="Nota fiscal"
-                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
-                      />
-                      <input
-                        type="text"
-                        value={manualDataDraft.trackingCode}
-                        onChange={(event) =>
-                          handleManualFieldChange("trackingCode", event.target.value)
-                        }
-                        placeholder="Codigo de envio"
-                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
-                      />
-                      <input
-                        type="text"
-                        value={manualDataDraft.trackingUrl}
-                        onChange={(event) =>
-                          handleManualFieldChange("trackingUrl", event.target.value)
-                        }
-                        placeholder="Link de rastreio"
-                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white md:col-span-2"
-                      />
-                      <textarea
-                        value={manualDataDraft.observation}
-                        onChange={(event) =>
-                          handleManualFieldChange("observation", event.target.value)
-                        }
-                        placeholder="Observacao interna do pedido"
-                        rows={3}
-                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white md:col-span-2"
-                      />
-                    </div>
-
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={handleSaveManualData}
-                        disabled={isSavingManualData}
-                        className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-60"
-                      >
-                        {isSavingManualData ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <Check className="h-3.5 w-3.5" />
-                        )}
-                        Salvar dados
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleCancelManualEdit}
-                        disabled={isSavingManualData}
-                        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
-                      >
-                        Cancelar
-                      </button>
-                    </div>
-
-                    {manualDataError && (
-                      <p className="mt-3 text-xs text-red-600 dark:text-red-300">
-                        {manualDataError}
-                      </p>
-                    )}
-                  </div>
-                )}
               </div>
 
               {order.isDelayed && order.status !== OrderStatus.DELIVERED && (
@@ -950,6 +706,253 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({
           </div>
         </div>
       </div>
+      {isEditingManualData && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4"
+          onClick={handleCancelManualEdit}
+        >
+          <div
+            className="w-full max-w-4xl max-h-[88vh] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-white/10 dark:bg-dark-card"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/70 p-4 dark:border-white/10 dark:bg-black/20">
+              <div className="flex items-center gap-2 text-slate-800 dark:text-white font-semibold text-sm">
+                <Pencil className="w-4 h-4 text-accent" />
+                Edicao manual do pedido #{order.orderNumber}
+              </div>
+              <button
+                type="button"
+                onClick={handleCancelManualEdit}
+                className="rounded-full p-2 text-slate-500 transition-colors hover:bg-slate-200 dark:text-slate-400 dark:hover:bg-white/10"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="max-h-[calc(88vh-140px)] overflow-auto p-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <input
+                  type="text"
+                  value={manualDataDraft.customerName}
+                  onChange={(event) =>
+                    handleManualFieldChange("customerName", event.target.value)
+                  }
+                  placeholder="Nome do cliente"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
+                />
+                <input
+                  type="text"
+                  value={manualDataDraft.recipient}
+                  onChange={(event) =>
+                    handleManualFieldChange("recipient", event.target.value)
+                  }
+                  placeholder="Destinatario"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
+                />
+                <div className="md:col-span-2 rounded-lg border border-slate-200 bg-white/80 p-3 dark:border-white/10 dark:bg-white/5">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    Adicionar status personalizado
+                  </p>
+                  <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
+                    <select
+                      value={
+                        customStatusOptions.includes(manualDataDraft.manualCustomStatus)
+                          ? manualDataDraft.manualCustomStatus
+                          : ""
+                      }
+                      onChange={(event) =>
+                        handleManualFieldChange(
+                          "manualCustomStatus",
+                          event.target.value,
+                        )
+                      }
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
+                    >
+                      <option value="">Selecionar status salvo</option>
+                      {customStatusOptions.map((status) => (
+                        <option key={status} value={status}>
+                          {status}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="text"
+                      value={manualDataDraft.manualCustomStatus}
+                      onChange={(event) =>
+                        handleManualFieldChange("manualCustomStatus", event.target.value)
+                      }
+                      placeholder="Digite o status personalizado"
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
+                    />
+                  </div>
+                  <label className="mt-2 inline-flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+                    <input
+                      type="checkbox"
+                      checked={saveStatusForOtherOrders}
+                      onChange={(event) =>
+                        setSaveStatusForOtherOrders(event.target.checked)
+                      }
+                      className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600"
+                    />
+                    Salvar status personalizado para usar em outros pedidos
+                  </label>
+                </div>
+                <input
+                  type="text"
+                  value={manualDataDraft.cpf}
+                  onChange={(event) => handleManualFieldChange("cpf", event.target.value)}
+                  placeholder="CPF"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
+                />
+                <input
+                  type="text"
+                  value={manualDataDraft.cnpj}
+                  onChange={(event) => handleManualFieldChange("cnpj", event.target.value)}
+                  placeholder="CNPJ"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
+                />
+                <input
+                  type="text"
+                  value={manualDataDraft.phone}
+                  onChange={(event) => handleManualFieldChange("phone", event.target.value)}
+                  placeholder="Telefone"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
+                />
+                <input
+                  type="text"
+                  value={manualDataDraft.mobile}
+                  onChange={(event) => handleManualFieldChange("mobile", event.target.value)}
+                  placeholder="Celular"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
+                />
+                <input
+                  type="text"
+                  value={manualDataDraft.address}
+                  onChange={(event) => handleManualFieldChange("address", event.target.value)}
+                  placeholder="Endereco"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white md:col-span-2"
+                />
+                <input
+                  type="text"
+                  value={manualDataDraft.number}
+                  onChange={(event) => handleManualFieldChange("number", event.target.value)}
+                  placeholder="Numero"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
+                />
+                <input
+                  type="text"
+                  value={manualDataDraft.complement}
+                  onChange={(event) =>
+                    handleManualFieldChange("complement", event.target.value)
+                  }
+                  placeholder="Complemento"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
+                />
+                <input
+                  type="text"
+                  value={manualDataDraft.neighborhood}
+                  onChange={(event) =>
+                    handleManualFieldChange("neighborhood", event.target.value)
+                  }
+                  placeholder="Bairro"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
+                />
+                <input
+                  type="text"
+                  value={manualDataDraft.zipCode}
+                  onChange={(event) =>
+                    handleManualFieldChange("zipCode", event.target.value)
+                  }
+                  placeholder="CEP"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
+                />
+                <input
+                  type="text"
+                  value={manualDataDraft.city}
+                  onChange={(event) => handleManualFieldChange("city", event.target.value)}
+                  placeholder="Cidade"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
+                />
+                <input
+                  type="text"
+                  value={manualDataDraft.state}
+                  onChange={(event) => handleManualFieldChange("state", event.target.value)}
+                  placeholder="UF"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
+                />
+                <input
+                  type="text"
+                  value={manualDataDraft.invoiceNumber}
+                  onChange={(event) =>
+                    handleManualFieldChange("invoiceNumber", event.target.value)
+                  }
+                  placeholder="Nota fiscal"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
+                />
+                <input
+                  type="text"
+                  value={manualDataDraft.trackingCode}
+                  onChange={(event) =>
+                    handleManualFieldChange("trackingCode", event.target.value)
+                  }
+                  placeholder="Codigo de envio"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
+                />
+                <input
+                  type="text"
+                  value={manualDataDraft.trackingUrl}
+                  onChange={(event) =>
+                    handleManualFieldChange("trackingUrl", event.target.value)
+                  }
+                  placeholder="Link de rastreio"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white md:col-span-2"
+                />
+                <textarea
+                  value={manualDataDraft.observation}
+                  onChange={(event) =>
+                    handleManualFieldChange("observation", event.target.value)
+                  }
+                  placeholder="Observacao interna do pedido"
+                  rows={3}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white md:col-span-2"
+                />
+              </div>
+            </div>
+
+            <div className="border-t border-slate-100 p-4 dark:border-white/10">
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={handleSaveManualData}
+                  disabled={isSavingManualData}
+                  className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-60"
+                >
+                  {isSavingManualData ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Check className="h-3.5 w-3.5" />
+                  )}
+                  Salvar dados
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCancelManualEdit}
+                  disabled={isSavingManualData}
+                  className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
+                >
+                  Cancelar
+                </button>
+              </div>
+              {manualDataError && (
+                <p className="mt-3 text-xs text-red-600 dark:text-red-300">
+                  {manualDataError}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+
