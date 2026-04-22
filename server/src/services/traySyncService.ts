@@ -185,18 +185,12 @@ export class TraySyncService {
         .filter((order) => isBlankIdentifier(order.invoiceNumber))
         .map((order) => String(order.orderNumber)),
     );
-    const pendingStatusCorrectionOrderNumbers = new Set(
-      eligibleStoredOrders
-        .filter((order) => String(order.status) === 'CHANNEL_LOGISTICS')
-        .map((order) => String(order.orderNumber)),
-    );
     const skipOrderNumbers = new Set(
       eligibleStoredOrders
         .map((order) => String(order.orderNumber))
         .filter(
           (orderNumber) =>
-            !pendingIdentifierOrderNumbers.has(orderNumber) &&
-            !pendingStatusCorrectionOrderNumbers.has(orderNumber),
+            !pendingIdentifierOrderNumbers.has(orderNumber),
         ),
     );
     const aggregateResults = {
@@ -218,11 +212,6 @@ export class TraySyncService {
     if (pendingIdentifierOrderNumbers.size > 0) {
       hooks?.onLog?.(
         `${pendingIdentifierOrderNumbers.size} pedido(s) existente(s) sem NF serao revisitados na Tray.`,
-      );
-    }
-    if (pendingStatusCorrectionOrderNumbers.size > 0) {
-      hooks?.onLog?.(
-        `${pendingStatusCorrectionOrderNumbers.size} pedido(s) com status legado "Logistica do Canal" serao revisitados para corrigir o status real.`,
       );
     }
     for (let index = 0; index < statusesToSync.length; index += 1) {
@@ -247,8 +236,7 @@ export class TraySyncService {
               const orderNumber = String(order.id);
               return (
                 !existingOrderNumbers.has(orderNumber) ||
-                pendingIdentifierOrderNumbers.has(orderNumber) ||
-                pendingStatusCorrectionOrderNumbers.has(orderNumber)
+                pendingIdentifierOrderNumbers.has(orderNumber)
               );
             });
 
@@ -257,8 +245,7 @@ export class TraySyncService {
             }
 
             const revisitedOrders = ordersToProcess.filter((order) =>
-              pendingIdentifierOrderNumbers.has(String(order.id)) ||
-              pendingStatusCorrectionOrderNumbers.has(String(order.id)),
+              pendingIdentifierOrderNumbers.has(String(order.id)),
             );
             const mappedOrders = ordersToProcess.map((order) =>
               trayApi.mapTrayOrderToSystem(order, {
@@ -365,7 +352,6 @@ export class TraySyncService {
 
             for (const orderNumber of processedOrderNumbers) {
               existingOrderNumbers.add(orderNumber);
-              pendingStatusCorrectionOrderNumbers.delete(orderNumber);
 
               const invoiceNumber = refreshedByOrderNumber.get(orderNumber);
               const stillMissingInvoice = isBlankIdentifier(invoiceNumber);
@@ -377,8 +363,7 @@ export class TraySyncService {
               }
 
               const shouldSkipOrder =
-                !pendingIdentifierOrderNumbers.has(orderNumber) &&
-                !pendingStatusCorrectionOrderNumbers.has(orderNumber);
+                !pendingIdentifierOrderNumbers.has(orderNumber);
 
               if (shouldSkipOrder) {
                 skipOrderNumbers.add(orderNumber);
@@ -406,18 +391,14 @@ export class TraySyncService {
     }
 
     const remainingOrderNumbers = Array.from(
-      new Set([
-        ...pendingIdentifierOrderNumbers,
-        ...pendingStatusCorrectionOrderNumbers,
-      ]),
+      pendingIdentifierOrderNumbers,
     );
 
     if (remainingOrderNumbers.length > 0) {
       const pendingIdentifierCount = pendingIdentifierOrderNumbers.size;
-      const pendingStatusCorrectionCount = pendingStatusCorrectionOrderNumbers.size;
 
       hooks?.onLog?.(
-        `Revisita direta iniciada para ${remainingOrderNumbers.length} pedido(s) fora da janela automatica (${pendingIdentifierCount} sem NF e ${pendingStatusCorrectionCount} em Logistica do Canal).`,
+        `Revisita direta iniciada para ${remainingOrderNumbers.length} pedido(s) fora da janela automatica (${pendingIdentifierCount} sem NF).`,
       );
 
       for (
@@ -493,7 +474,6 @@ export class TraySyncService {
         );
 
         for (const orderNumber of completeOrderNumbers) {
-          pendingStatusCorrectionOrderNumbers.delete(orderNumber);
           existingOrderNumbers.add(orderNumber);
 
           const invoiceNumber = refreshedByOrderNumber.get(orderNumber);
@@ -515,12 +495,12 @@ export class TraySyncService {
 
     if (processedOrdersCount === 0) {
       hooks?.onLog?.(
-        'Nenhum pedido novo, sem NF ou em Logistica do Canal encontrado na Tray para importacao.',
+        'Nenhum pedido novo ou sem NF encontrado na Tray para importacao.',
       );
       return {
         success: true,
         message:
-          'Nenhum pedido novo, sem NF ou em Logistica do Canal encontrado na Tray com os filtros selecionados.',
+          'Nenhum pedido novo ou sem NF encontrado na Tray com os filtros selecionados.',
         storeId: auth.storeId,
         statuses: statusesToSync,
         modified,
@@ -538,7 +518,7 @@ export class TraySyncService {
     const importMessage =
       `Importacao concluida: ${aggregateResults.created} criados, ${aggregateResults.updated} atualizados, ` +
       `${aggregateResults.skipped} ignorados, ${aggregateResults.totalTrackingEvents} evento(s) iniciais de rastreio, ` +
-      `${revisitedOrdersCount} pedido(s) revisitado(s) por falta de NF ou status legado de Logistica do Canal.`;
+      `${revisitedOrdersCount} pedido(s) revisitado(s) por falta de NF.`;
     hooks?.onLog?.(importMessage);
 
     return {
