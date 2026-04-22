@@ -157,7 +157,7 @@ const INTEGRATIONS_WITH_SYNC = ["tray", "anymarket"] as const;
 
 interface IntegrationStatusOptionsResponse {
   success: boolean;
-  integration: "tray" | "magazord" | "bling" | "sysemp" | null;
+  integration: "tray" | "anymarket" | "magazord" | "bling" | "sysemp" | null;
   integrationLabel: string;
   statuses: IntegrationOrderStatusOption[];
   cancelStatusValues: string[];
@@ -371,10 +371,14 @@ export const OrderList: React.FC<OrderListProps> = ({
   const [showArchivedOrders, setShowArchivedOrders] = useState(false);
   const [archivedOrders, setArchivedOrders] = useState<Order[]>([]);
   const [isLoadingArchivedOrders, setIsLoadingArchivedOrders] = useState(false);
-  const isTrayAvailable = Boolean(
-    trayIntegrationStatus?.authorized ||
-    (activeIntegration &&
-      INTEGRATIONS_WITH_SYNC.includes(activeIntegration as any)),
+  const hasSyncableIntegration = Boolean(
+    activeIntegration &&
+      INTEGRATIONS_WITH_SYNC.includes(
+        activeIntegration as (typeof INTEGRATIONS_WITH_SYNC)[number],
+      ),
+  );
+  const canShowIntegratorSyncButton = Boolean(
+    onStartTraySync && !isNoMovementView && !showArchivedOrders,
   );
   const [isSyncing, setIsSyncing] = useState(false); // ✅ Novo state
 
@@ -1104,7 +1108,7 @@ export const OrderList: React.FC<OrderListProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [isTraySyncModalOpen, onStartTraySync]);
+  }, [isTraySyncModalOpen, onStartTraySync, trayIntegrationStatus]);
 
   // Carregar a integradora ativa ao montar o componente ou quando deps mudam
   useEffect(() => {
@@ -1134,7 +1138,7 @@ export const OrderList: React.FC<OrderListProps> = ({
       }
     };
 
-    // Carregar sempre que temos onStartTraySync disponível
+    // Carregar sempre que temos onStartTraySync disponível ou quando a empresa muda
     if (onStartTraySync) {
       void loadActiveIntegration();
     }
@@ -1142,7 +1146,7 @@ export const OrderList: React.FC<OrderListProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [onStartTraySync]);
+  }, [onStartTraySync, trayIntegrationStatus]);
 
   useEffect(() => {
     if (integrationStatusOptions.length === 0) {
@@ -1158,8 +1162,56 @@ export const OrderList: React.FC<OrderListProps> = ({
     );
   }, [integrationStatusOptions]);
 
+  // Carregar activeIntegration na montagem e quando empresa muda
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadActiveIntegrationOnMount = async () => {
+      try {
+        const response = await fetchWithAuth(
+          "/api/integrations/order-status-options",
+        );
+        const data = (await response
+          .json()
+          .catch(() => ({}))) as Partial<IntegrationStatusOptionsResponse>;
+
+        if (!cancelled && response.ok) {
+          setActiveIntegration((data as any).integration || null);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.error(
+            "Erro ao carregar integradora ativa na montagem:",
+            error,
+          );
+        }
+      }
+    };
+
+    // Carregar quando temos onStartTraySync, independente de outras condições
+    if (onStartTraySync) {
+      void loadActiveIntegrationOnMount();
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [onStartTraySync, trayIntegrationStatus]);
+
   const handleTraySync = async () => {
     if (!onStartTraySync) return;
+
+    if (!hasSyncableIntegration) {
+      showToast({
+        tone: "warning",
+        title: "Sync da Integradora",
+        message:
+          activeIntegration
+            ? `A integradora ativa ${integrationLabel} ainda nao possui sync manual disponivel nesta tela.`
+            : "Nenhuma integradora ativa foi identificada para esta empresa.",
+      });
+      return;
+    }
 
     if (trayStatusMode === "selected" && selectedTrayStatuses.length === 0) {
       showToast({
@@ -2302,10 +2354,7 @@ export const OrderList: React.FC<OrderListProps> = ({
               </button>
             </div>
 
-            {onStartTraySync &&
-              !isNoMovementView &&
-              isTrayAvailable &&
-              !showArchivedOrders && (
+            {canShowIntegratorSyncButton && (
                 <button
                   onClick={() => setIsTraySyncModalOpen(true)}
                   disabled={isTraySyncing}
@@ -2785,7 +2834,7 @@ export const OrderList: React.FC<OrderListProps> = ({
         />
       )}
 
-      {isTraySyncModalOpen && onStartTraySync && isTrayAvailable && (
+      {isTraySyncModalOpen && onStartTraySync && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div className="flex min-h-full items-center justify-center">
             <div className="glass-card flex w-full max-w-3xl max-h-[calc(100vh-2rem)] flex-col overflow-hidden rounded-xl p-6 shadow-2xl animate-in zoom-in-95 border border-slate-200 dark:border-white/10 bg-white dark:bg-dark-card sm:max-h-[calc(100vh-4rem)]">
@@ -2808,6 +2857,18 @@ export const OrderList: React.FC<OrderListProps> = ({
               </div>
 
               <div className="min-h-0 flex-1 space-y-5 overflow-y-auto pr-1">
+                {!activeIntegration && (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-900/30 dark:bg-amber-900/10 dark:text-amber-200">
+                    Nenhuma integradora ativa foi identificada para esta empresa no momento. O botao permanece visivel para todos os usuarios, mas o sync manual depende de uma integracao configurada.
+                  </div>
+                )}
+
+                {activeIntegration && !hasSyncableIntegration && (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-900/30 dark:bg-amber-900/10 dark:text-amber-200">
+                    A integradora ativa desta empresa e a {integrationLabel}, mas o sync manual pela aba Pedidos ainda nao esta disponivel para esse conector.
+                  </div>
+                )}
+
                 <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 p-4">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
@@ -3044,7 +3105,9 @@ export const OrderList: React.FC<OrderListProps> = ({
                 <button
                   type="button"
                   onClick={handleTraySync}
-                  disabled={isTraySyncing || isTrayJobRunning}
+                  disabled={
+                    isTraySyncing || isTrayJobRunning || !hasSyncableIntegration
+                  }
                   className="flex-1 px-4 py-3 bg-accent dark:bg-neon-blue hover:bg-blue-600 dark:hover:bg-cyan-400 text-white dark:text-black rounded-lg font-bold shadow-lg shadow-blue-500/20 dark:shadow-neon-blue/20 flex items-center justify-center gap-2 disabled:opacity-50"
                 >
                   {isTraySyncing ? (

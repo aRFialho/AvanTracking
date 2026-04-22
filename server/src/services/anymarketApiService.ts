@@ -101,11 +101,11 @@ const pickFirstString = (...values: unknown[]) => {
   return null;
 };
 
-const resolvePersonDocument = (buyer: any, shipping: any) => {
+const resolvePersonDocument = (buyer: any, shippingLike: any) => {
   const buyerDocumentType = normalizeComparableText(buyer?.documentType).toUpperCase();
   const buyerDigits = normalizeDigits(buyer?.documentNumberNormalized || buyer?.document);
-  const shippingDocumentType = normalizeComparableText(shipping?.shipmentUserDocumentType).toUpperCase();
-  const shippingDigits = normalizeDigits(shipping?.shipmentUserDocument);
+  const shippingDocumentType = normalizeComparableText(shippingLike?.shipmentUserDocumentType).toUpperCase();
+  const shippingDigits = normalizeDigits(shippingLike?.shipmentUserDocument);
 
   if (buyerDocumentType === 'CPF' || buyerDigits.length === 11) {
     return { cpf: buyerDigits || null, cnpj: null };
@@ -130,6 +130,7 @@ const mapShipmentStatusToInternal = (value: unknown) => {
   const normalized = normalizeComparableText(value).toUpperCase();
 
   const map: Record<string, string> = {
+    PENDING: 'PENDING',
     IN_TRANSIT: 'SHIPPED',
     SHIPPED: 'SHIPPED',
     DELIVERED: 'DELIVERED',
@@ -168,9 +169,21 @@ const mapAnymarketStatusToInternal = (order: any) => {
 
   return (
     mapShipmentStatusToInternal(order?.tracking?.deliveryStatus) ||
+    mapShipmentStatusToInternal(order?.deliveryStatus) ||
     mapShipmentStatusToInternal(order?.marketPlaceShipmentStatus) ||
     'PENDING'
   );
+};
+
+const collectOrderShippings = (order: any) => {
+  const topLevelShippings = Array.isArray(order?.shippings) ? order.shippings : [];
+  const itemLevelShippings = Array.isArray(order?.items)
+    ? order.items.flatMap((item: any) =>
+        Array.isArray(item?.shippings) ? item.shippings : [],
+      )
+    : [];
+
+  return [...topLevelShippings, ...itemLevelShippings];
 };
 
 const buildTrackingHistory = (order: any, mappedStatus: string, address: any) => {
@@ -178,7 +191,12 @@ const buildTrackingHistory = (order: any, mappedStatus: string, address: any) =>
   const createdAt = safeDate(order?.createdAt);
   const shippedAt = safeDate(tracking?.shippedDate || tracking?.date);
   const deliveredAt = safeDate(tracking?.deliveredDate);
-  const updatedAt = safeDate(order?.updatedAt);
+  const updatedAt = safeDate(order?.updatedAt || order?.lastUpdate);
+  const shipmentStatusLabel = pickFirstString(
+    tracking?.deliveryStatus,
+    order?.deliveryStatus,
+    order?.marketPlaceShipmentStatus,
+  );
   const city = pickFirstString(address?.city);
   const state = pickFirstString(address?.state, address?.stateAcronymNormalized);
 
@@ -204,8 +222,8 @@ const buildTrackingHistory = (order: any, mappedStatus: string, address: any) =>
     history.push({
       status: mapShipmentStatusToInternal(tracking?.deliveryStatus) || 'SHIPPED',
       description:
-        pickFirstString(tracking?.deliveryStatus)
-          ? `Rastreamento ANYMARKET: ${tracking.deliveryStatus}.`
+        shipmentStatusLabel
+          ? `Rastreamento ANYMARKET: ${shipmentStatusLabel}.`
           : 'Pedido enviado para a transportadora.',
       date: shippedAt,
       city,
@@ -468,11 +486,15 @@ export class AnymarketApiService {
     const tracking = anymarketOrder?.tracking || {};
     const invoice = anymarketOrder?.invoice || {};
     const quoteReconciliation = anymarketOrder?.quoteReconciliation || {};
-    const shippings = Array.isArray(anymarketOrder?.shippings)
-      ? anymarketOrder.shippings
-      : [];
+    const payments = Array.isArray(anymarketOrder?.payments) ? anymarketOrder.payments : [];
+    const items = Array.isArray(anymarketOrder?.items) ? anymarketOrder.items : [];
+    const shippings = collectOrderShippings(anymarketOrder);
     const primaryShipping = shippings[0] || {};
-    const document = resolvePersonDocument(buyer, shipping);
+    const primaryPayment = payments[0] || {};
+    const primaryItem = items[0] || {};
+    const primaryItemSku = primaryItem?.sku || {};
+    const primaryItemProduct = primaryItem?.product || {};
+    const document = resolvePersonDocument(buyer, billingAddress);
     const mappedStatus = mapAnymarketStatusToInternal(anymarketOrder);
     const primaryAddress = shipping?.street || shipping?.address ? shipping : anymarketAddress;
     const salesChannelParts = [
@@ -487,12 +509,15 @@ export class AnymarketApiService {
     );
 
     const quotedFreightValue = safeNumber(quoteReconciliation?.price);
-    const quotedFreightDate = safeDate(anymarketOrder?.updatedAt || anymarketOrder?.createdAt);
+    const quotedFreightDate = safeDate(
+      anymarketOrder?.updatedAt || anymarketOrder?.lastUpdate || anymarketOrder?.createdAt,
+    );
     const shippingDate =
       safeDate(tracking?.shippedDate) ||
       safeDate(tracking?.date) ||
       safeDate(shipping?.promisedDispatchTime) ||
       safeDate(anymarketOrder?.paymentDate) ||
+      safeDate(anymarketOrder?.lastUpdate) ||
       safeDate(anymarketOrder?.createdAt);
     const estimatedDeliveryDate =
       safeDate(tracking?.estimateDate) ||
@@ -506,7 +531,7 @@ export class AnymarketApiService {
     return {
       orderNumber: resolvedOrderNumber,
       invoiceNumber: pickFirstString(invoice?.number),
-      trackingCode: pickFirstString(tracking?.number),
+      trackingCode: pickFirstString(tracking?.number, anymarketOrder?.shippingId),
       customerName: pickFirstString(buyer?.name, shipping?.receiverName, anymarketAddress?.receiverName) || 'Desconhecido',
       corporateName:
         document.cnpj && buyer?.name && buyer?.name !== shipping?.receiverName
@@ -514,8 +539,17 @@ export class AnymarketApiService {
           : null,
       cpf: document.cpf,
       cnpj: document.cnpj,
-      phone: pickFirstString(buyer?.phone),
-      mobile: pickFirstString(buyer?.cellPhone),
+      phone: pickFirstString(
+        buyer?.phone,
+        shipping?.receiverPhone,
+        billingAddress?.receiverPhone,
+      ),
+      mobile: pickFirstString(
+        buyer?.cellPhone,
+        buyer?.phone,
+        shipping?.receiverPhone,
+        billingAddress?.receiverPhone,
+      ),
       salesChannel: salesChannelParts.join(' - '),
       freightType:
         pickFirstString(
@@ -573,6 +607,8 @@ export class AnymarketApiService {
       totalValue: safeNumber(anymarketOrder?.total) || 0,
       recipient:
         pickFirstString(
+          billingAddress?.shipmentUserName,
+          billingAddress?.receiverName,
           shipping?.shipmentUserName,
           shipping?.receiverName,
           anymarketAddress?.receiverName,
@@ -586,7 +622,46 @@ export class AnymarketApiService {
       carrierEstimatedDeliveryDate: safeDate(tracking?.estimateDate),
       status: mappedStatus,
       isDelayed: false,
-      apiRawPayload: anymarketOrder,
+      apiRawPayload: {
+        ...anymarketOrder,
+        source: 'ANYMARKET',
+        anymarketMeta: {
+          lastUpdate: anymarketOrder?.lastUpdate || null,
+          transmissionStatus: pickFirstString(anymarketOrder?.transmissionStatus),
+          deliveryStatus: pickFirstString(
+            anymarketOrder?.deliveryStatus,
+            tracking?.deliveryStatus,
+            anymarketOrder?.marketPlaceShipmentStatus,
+          ),
+          marketPlaceUrl: pickFirstString(anymarketOrder?.marketPlaceUrl),
+          paymentSummary:
+            primaryPayment && Object.keys(primaryPayment).length > 0
+              ? {
+                  method: pickFirstString(primaryPayment?.method),
+                  normalizedMethod: pickFirstString(primaryPayment?.paymentMethodNormalized),
+                  detail: pickFirstString(primaryPayment?.paymentDetailNormalized),
+                  installments: safeNumber(primaryPayment?.installments),
+                  value: safeNumber(primaryPayment?.value),
+                }
+              : null,
+          primaryItem:
+            primaryItem && Object.keys(primaryItem).length > 0
+              ? {
+                  orderItemId: pickFirstString(primaryItem?.orderItemId),
+                  marketplaceItemId: pickFirstString(
+                    primaryItem?.marketPlaceId,
+                    primaryItem?.idInMarketPlace,
+                  ),
+                  skuPartnerId: pickFirstString(primaryItemSku?.partnerId),
+                  skuId: pickFirstString(primaryItemSku?.id),
+                  skuTitle: pickFirstString(primaryItemSku?.title),
+                  productId: pickFirstString(primaryItemProduct?.id),
+                  productTitle: pickFirstString(primaryItemProduct?.title),
+                  quantity: safeNumber(primaryItem?.amount),
+                }
+              : null,
+        },
+      },
       trackingHistory: buildTrackingHistory(anymarketOrder, mappedStatus, primaryAddress),
     };
   }
