@@ -524,40 +524,25 @@ const MainApp: React.FC = () => {
     }
 
     try {
-      const statusResponse = await fetchWithAuth("/api/tray/status");
-      const statusData = await statusResponse.json().catch(() => ({}));
+      const response = await fetchWithAuth("/api/integrations/sync/status");
+      const data = await response.json().catch(() => ({}));
 
-      if (!statusResponse.ok) {
-        throw new Error(`HTTP ${statusResponse.status}`);
+      if (!response.ok) {
+        throw new Error(data.error || `HTTP ${response.status}`);
       }
 
-      const normalizedTrayIntegrationStatus: TrayIntegrationStatus = {
-        authorized: Boolean(statusData.authorized),
-        status: statusData.status === "online" ? "online" : "offline",
-        storeId: statusData.storeId || null,
-        storeName: statusData.storeName || null,
-        updatedAt: statusData.updatedAt || null,
+      setTrayIntegrationStatus({
+        authorized: Boolean(data.authorized),
+        status: data.status === "online" ? "online" : "offline",
+        storeId: null,
+        storeName: data.integrationLabel || null,
+        updatedAt: null,
         message:
-          statusData.message ||
-          (statusData.authorized
+          data.message ||
+          (data.authorized
             ? "Integracao da Integradora online."
             : "Nenhuma integracao da Integradora autorizada."),
-      };
-
-      setTrayIntegrationStatus(normalizedTrayIntegrationStatus);
-
-      if (!normalizedTrayIntegrationStatus.authorized) {
-        setTraySyncJob(null);
-        setNextTraySyncAt(null);
-        return;
-      }
-
-      const response = await fetchWithAuth("/api/tray/sync/status");
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      const data = await response.json();
+      });
       setTraySyncJob(data.job || null);
       setNextTraySyncAt(parseDate(data.schedule?.nextScheduledAt));
     } catch (error) {
@@ -934,99 +919,20 @@ const MainApp: React.FC = () => {
   const handleTraySync = useCallback(
     async (filters: TraySyncFilters) => {
       try {
-        const integrationResponse = await fetchWithAuth(
-          "/api/integrations/order-status-options",
-        );
-        const integrationData = await integrationResponse.json().catch(() => ({}));
+        const response = await fetchWithAuth("/api/integrations/sync/start", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(filters),
+        });
 
-        if (!integrationResponse.ok) {
-          throw new Error(
-            integrationData.error || `HTTP ${integrationResponse.status}`,
-          );
+        const data = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+          throw new Error(data.error || `HTTP ${response.status}`);
         }
 
-        const activeIntegration = String(integrationData.integration || "").trim();
-
-        if (activeIntegration === "tray") {
-          const response = await fetchWithAuth("/api/tray/sync/start", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(filters),
-          });
-
-          const data = await response.json().catch(() => ({}));
-
-          if (!response.ok) {
-            throw new Error(data.error || `HTTP ${response.status}`);
-          }
-
-          setTraySyncJob(data.job || null);
-          return;
-        }
-
-        if (activeIntegration === "anymarket") {
-          const response = await fetchWithAuth("/api/anymarket/sync", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(filters),
-          });
-
-          const data = await response.json().catch(() => ({}));
-
-          if (!response.ok) {
-            throw new Error(data.error || `HTTP ${response.status}`);
-          }
-
-          const results = data.results || {};
-          const created = Number(results.created || 0);
-          const updated = Number(results.updated || 0);
-          const skipped = Number(results.skipped || 0);
-          const failed = Array.isArray(results.errors) ? results.errors.length : 0;
-          const total = created + updated + skipped;
-          const nowIso = new Date().toISOString();
-
-          setTraySyncJob({
-            jobId:
-              typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-                ? crypto.randomUUID()
-                : `anymarket-${Date.now()}`,
-            companyId: user?.companyId || "",
-            userId: user?.id || "",
-            status: "completed",
-            total,
-            processed: total,
-            success: created + updated,
-            failed,
-            currentOrderNumber: null,
-            startedAt: nowIso,
-            finishedAt: nowIso,
-            lastUpdatedAt: nowIso,
-            error: null,
-            warnings: [],
-            logs: [
-              {
-                timestamp: nowIso,
-                level: "success",
-                message:
-                  data.message ||
-                  "Sincronizacao ANYMARKET concluida com sucesso.",
-              },
-            ],
-          });
-
-          await Promise.allSettled([loadOrdersFromDatabase(), loadNotifications()]);
-
-          showToast({
-            message:
-              data.message || "Pedidos da ANYMARKET sincronizados com sucesso.",
-            tone: "success",
-          });
-          return;
-        }
-
-        throw new Error(
-          "Nenhuma integradora com sync manual disponivel foi identificada para esta empresa.",
-        );
+        setTraySyncJob(data.job || null);
+        setNextTraySyncAt(parseDate(data.schedule?.nextScheduledAt));
       } catch (error: any) {
         console.error("Integradora sync failed:", error);
         showToast({
@@ -1035,8 +941,63 @@ const MainApp: React.FC = () => {
         });
       }
     },
-    [loadNotifications, loadOrdersFromDatabase, user?.companyId, user?.id],
+    [],
   );
+
+  const handleCancelTraySync = useCallback(async () => {
+    try {
+      const response = await fetchWithAuth("/api/integrations/sync/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.error || `HTTP ${response.status}`);
+      }
+
+      setTraySyncJob(data.job || null);
+      setNextTraySyncAt(parseDate(data.schedule?.nextScheduledAt));
+      showToast({
+        message:
+          data.message || "Solicitacao de cancelamento enviada para a integradora.",
+        tone: "info",
+      });
+    } catch (error: any) {
+      showToast({
+        message:
+          error.message || "Nao foi possivel cancelar o sync da integradora.",
+        tone: "error",
+      });
+    }
+  }, []);
+
+  const handleCancelSync = useCallback(async () => {
+    try {
+      const response = await fetchWithAuth("/api/orders/sync-all/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.error || `HTTP ${response.status}`);
+      }
+
+      setSyncJob(data.job || null);
+      setNextSyncAt(parseDate(data.schedule?.nextScheduledAt));
+      showToast({
+        message:
+          data.message || "Solicitacao de cancelamento enviada para o rastreio.",
+        tone: "info",
+      });
+    } catch (error: any) {
+      showToast({
+        message: error.message || "Nao foi possivel cancelar o sync de rastreio.",
+        tone: "error",
+      });
+    }
+  }, []);
 
   const handleFetchSingleOrder = useCallback(
     async (identifier: string) => {
@@ -1446,7 +1407,9 @@ const MainApp: React.FC = () => {
             onFetchSingle={handleFetchSingleOrder}
             onOrderUpdated={upsertOrder}
             onStartSync={handleSync}
+            onCancelSync={handleCancelSync}
             onStartTraySync={handleTraySync}
+            onCancelTraySync={handleCancelTraySync}
             syncJob={syncJob}
             traySyncJob={traySyncJob}
             trayIntegrationStatus={trayIntegrationStatus}
@@ -1492,7 +1455,9 @@ const MainApp: React.FC = () => {
                 onFetchSingle={handleFetchSingleOrder}
                 onOrderUpdated={upsertOrder}
                 onStartSync={handleSync}
+                onCancelSync={handleCancelSync}
                 onStartTraySync={handleTraySync}
+                onCancelTraySync={handleCancelTraySync}
                 syncJob={syncJob}
                 traySyncJob={traySyncJob}
                 trayIntegrationStatus={trayIntegrationStatus}
@@ -1512,6 +1477,7 @@ const MainApp: React.FC = () => {
             isNoMovementView={true}
             onOrderUpdated={upsertOrder}
             onStartSync={handleSync}
+            onCancelSync={handleCancelSync}
             syncJob={syncJob}
             traySyncJob={traySyncJob}
             trayIntegrationStatus={trayIntegrationStatus}
@@ -1585,6 +1551,7 @@ const MainApp: React.FC = () => {
           currentView={currentView}
           onChangeView={handleChangeView}
           onSync={handleSync}
+          onCancelSync={handleCancelSync}
           isSyncing={isSyncing}
           lastSync={lastSyncTime}
           syncJob={syncJob}

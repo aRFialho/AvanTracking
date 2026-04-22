@@ -5,6 +5,7 @@ import { AnymarketApiService } from './anymarketApiService';
 import { integrationOrderStatusService } from './integrationOrderStatusService';
 import { importOrdersForCompany } from './orderImportService';
 import { shouldSkipPlatformOrderImport } from '../utils/orderExclusion';
+import { SyncCancellationError } from '../utils/syncCancellation';
 
 const VALID_DAY_OPTIONS = [120, 90, 60, 30, 15, 7, 2] as const;
 const ANYMARKET_FALLBACK_STATUSES = [
@@ -34,6 +35,7 @@ interface AnymarketSyncHooks {
     imported: number;
   }) => void;
   onLog?: (message: string) => void;
+  shouldCancel?: () => boolean;
 }
 
 const normalizeRequestedStatuses = (value: unknown) => {
@@ -172,6 +174,10 @@ export class AnymarketSyncService {
     );
 
     for (let index = 0; index < statusesToSync.length; index += 1) {
+      if (hooks?.shouldCancel?.()) {
+        throw new SyncCancellationError();
+      }
+
       const anymarketStatus = statusesToSync[index];
 
       hooks?.onStatusStart?.({
@@ -195,7 +201,12 @@ export class AnymarketSyncService {
         },
         {
           onLog: hooks?.onLog,
+          shouldCancel: hooks?.shouldCancel,
           onOrdersBatch: async (batchOrders) => {
+            if (hooks?.shouldCancel?.()) {
+              throw new SyncCancellationError();
+            }
+
             const mappedOrders = batchOrders.map((order) =>
               anymarketApi.mapAnymarketOrderToSystem(order),
             );

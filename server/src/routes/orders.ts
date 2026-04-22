@@ -7,6 +7,7 @@ import {
   syncAllOrders,
   startSyncAllOrders,
   getSyncAllStatus,
+  cancelSyncAllOrders,
   clearOrdersDatabase,
   openOrderTracking,
   searchExternalOrder,
@@ -63,5 +64,6 @@ router.post('/:id/sync', syncSingleOrder);
 router.post('/sync-all', syncAllOrders);
 router.post('/sync-all/start', startSyncAllOrders);
 router.get('/sync-all/status', getSyncAllStatus);
+router.post('/sync-all/cancel', cancelSyncAllOrders);
 
 export default router;

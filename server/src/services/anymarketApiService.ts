@@ -1,6 +1,7 @@
 import axios, { AxiosInstance } from 'axios';
 import { prisma } from '../lib/prisma';
 import { anymarketRateLimiter } from './anymarketRateLimiter';
+import { SyncCancellationError } from '../utils/syncCancellation';
 
 export interface AnymarketPagingInfo {
   size?: number;
@@ -431,6 +432,7 @@ export class AnymarketApiService {
     hooks?: {
       onLog?: (message: string) => void;
       onOrdersBatch?: (orders: any[]) => Promise<void> | void;
+      shouldCancel?: () => boolean;
     },
   ): Promise<number> {
     const pageSize = 100;
@@ -439,6 +441,10 @@ export class AnymarketApiService {
     let pageNumber = 1;
 
     while (true) {
+      if (hooks?.shouldCancel?.()) {
+        throw new SyncCancellationError();
+      }
+
       hooks?.onLog?.(
         `Buscando pagina ${pageNumber} do ANYMARKET com offset ${offset}${params.status ? ` para status "${params.status}"` : ''}.`,
       );
@@ -457,6 +463,10 @@ export class AnymarketApiService {
       const orders = Array.isArray(response.content) ? response.content : [];
       if (orders.length === 0) {
         break;
+      }
+
+      if (hooks?.shouldCancel?.()) {
+        throw new SyncCancellationError();
       }
 
       await hooks?.onOrdersBatch?.(orders);

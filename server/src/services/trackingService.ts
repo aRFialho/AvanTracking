@@ -9,6 +9,7 @@ import { correiosTrackingService } from './correiosTrackingService';
 import { matchSswTrackingToOrder, sswTrackingService } from './sswTrackingService';
 import { isDemoCompanyById } from './demoCompanyService';
 import { prisma } from '../lib/prisma';
+import { SyncCancellationError } from '../utils/syncCancellation';
 
 const INTELIPOST_API_URL = 'https://tracking-graphql.intelipost.com.br/';
 const DEFAULT_CLIENT_ID = '40115';
@@ -1063,6 +1064,7 @@ export class TrackingService {
         message: string;
         durationMs: number;
       }) => void;
+      shouldCancel?: () => boolean;
     },
   ) {
     const executeSync = async () => {
@@ -1162,6 +1164,10 @@ export class TrackingService {
       hooks?.onStart?.({ total: eligibleOrders.length });
 
       for (let index = 0; index < eligibleOrders.length; index += 1) {
+        if (hooks?.shouldCancel?.()) {
+          throw new SyncCancellationError();
+        }
+
         const order = eligibleOrders[index];
         const startedAt = Date.now();
 
@@ -1191,6 +1197,10 @@ export class TrackingService {
           message: String(result.message || ''),
           durationMs,
         });
+
+        if (hooks?.shouldCancel?.()) {
+          throw new SyncCancellationError();
+        }
 
         if (syncDelayMs > 0) {
           await new Promise((resolve) => setTimeout(resolve, syncDelayMs));

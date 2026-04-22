@@ -312,7 +312,9 @@ interface OrderListProps {
   onOrderUpdated?: (order: Order) => void;
   isNoMovementView?: boolean;
   onStartSync?: () => Promise<void> | void;
+  onCancelSync?: () => Promise<void> | void;
   onStartTraySync?: (filters: TraySyncFilters) => Promise<void>;
+  onCancelTraySync?: () => Promise<void> | void;
   syncJob?: SyncJobStatus | null;
   traySyncJob?: SyncJobStatus | null;
   trayIntegrationStatus?: TrayIntegrationStatus | null;
@@ -328,7 +330,9 @@ export const OrderList: React.FC<OrderListProps> = ({
   onOrderUpdated,
   isNoMovementView = false,
   onStartSync,
+  onCancelSync,
   onStartTraySync,
+  onCancelTraySync,
   syncJob,
   traySyncJob,
   trayIntegrationStatus,
@@ -1765,6 +1769,8 @@ export const OrderList: React.FC<OrderListProps> = ({
       ? "Em andamento"
       : traySyncJob?.status === "completed"
         ? "Concluido"
+        : traySyncJob?.status === "canceled"
+          ? "Cancelado"
         : traySyncJob?.status === "failed"
           ? "Falhou"
           : "Pronto";
@@ -1773,6 +1779,8 @@ export const OrderList: React.FC<OrderListProps> = ({
       ? "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-300 dark:border-blue-800/40"
       : traySyncJob?.status === "completed"
         ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-300 dark:border-emerald-800/40"
+        : traySyncJob?.status === "canceled"
+          ? "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-800/40"
         : traySyncJob?.status === "failed"
           ? "bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-300 dark:border-red-800/40"
           : "bg-slate-100 text-slate-700 border-slate-200 dark:bg-white/10 dark:text-slate-300 dark:border-white/10";
@@ -2410,6 +2418,16 @@ export const OrderList: React.FC<OrderListProps> = ({
                 </>
               )}
             </button>
+
+            {isSyncRunning && onCancelSync && (
+              <button
+                onClick={() => void onCancelSync()}
+                className="inline-flex h-10 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-red-200 bg-red-50 px-4 text-sm font-semibold tracking-tight text-red-700 transition-colors hover:bg-red-100 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300 dark:hover:bg-red-500/20"
+              >
+                <X className="h-3.5 w-3.5" />
+                Cancelar Rastreio
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -3123,6 +3141,15 @@ export const OrderList: React.FC<OrderListProps> = ({
                 >
                   Fechar
                 </button>
+                {isTrayJobRunning && onCancelTraySync && (
+                  <button
+                    type="button"
+                    onClick={() => void onCancelTraySync()}
+                    className="flex-1 px-4 py-3 border border-red-200 bg-red-50 rounded-lg text-red-700 hover:bg-red-100 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300 dark:hover:bg-red-500/20"
+                  >
+                    Cancelar Sync de Pedidos
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={handleTraySync}

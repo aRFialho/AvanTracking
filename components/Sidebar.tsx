@@ -30,6 +30,7 @@ interface SidebarProps {
   currentView: PageView;
   onChangeView: (view: PageView) => void;
   onSync: () => void;
+  onCancelSync?: () => void;
   isSyncing: boolean;
   lastSync: Date | null;
   syncJob: SyncJobStatus | null;
@@ -77,6 +78,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   currentView,
   onChangeView,
   onSync,
+  onCancelSync,
   isSyncing,
   syncJob,
   isCollapsed,
@@ -351,6 +353,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {!isCollapsed && (isSyncing ? "Sync..." : "Sincronizar")}
         </button>
 
+        {!isCollapsed && isSyncing && onCancelSync && (
+          <button
+            onClick={onCancelSync}
+            className="w-full flex items-center justify-center rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm font-medium text-red-300 transition-all mb-2 hover:bg-red-500/20"
+          >
+            Cancelar Rastreio
+          </button>
+        )}
+
         {!isCollapsed && syncJob && (
           <div className="mb-3 rounded-lg border border-white/10 bg-black/20 p-3">
             <div className="flex items-center justify-between gap-2 text-[11px] text-slate-300">
@@ -380,6 +391,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       "h-full transition-all duration-300",
                       syncJob.status === "failed"
                         ? "bg-red-500"
+                        : syncJob.status === "canceled"
+                          ? "bg-amber-500"
                         : syncJob.status === "completed"
                           ? "bg-emerald-500"
                           : "bg-accent",

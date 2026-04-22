@@ -13,6 +13,10 @@ import { syncReportService } from './syncReportService';
 import type { SyncTrigger } from '../types/syncReport';
 import { isDemoCompany, isDemoCompanyById } from './demoCompanyService';
 import { prisma } from '../lib/prisma';
+import {
+  isSyncCancellationError,
+  SYNC_CANCELLATION_MESSAGE,
+} from '../utils/syncCancellation';
 
 const MAX_LOGS = 1000;
 const AUTO_TRAY_SYNC_INTERVAL_MS = 0;
@@ -47,9 +51,24 @@ class TraySyncJobService {
   private jobs: Map<string, SyncJobStatus> = new Map();
   private schedules: Map<string, ScheduleEntry> = new Map();
   private requesters: Map<string, RequesterEntry> = new Map();
+  private cancelRequests: Set<string> = new Set();
 
   getJob(companyId: string) {
     return this.jobs.get(companyId) || null;
+  }
+
+  cancelJob(companyId: string) {
+    const job = this.jobs.get(companyId);
+
+    if (!job || job.status !== 'running') {
+      return job || null;
+    }
+
+    this.cancelRequests.add(companyId);
+    job.cancelRequested = true;
+    this.pushLog(job, 'info', 'Cancelamento do sync de pedidos solicitado.');
+
+    return job;
   }
 
   ensureSchedule(companyId: string, userId: string) {
@@ -163,6 +182,7 @@ class TraySyncJobService {
       finishedAt: null,
       lastUpdatedAt: now,
       error: null,
+      cancelRequested: false,
       warnings: [],
       logs: [],
     };
@@ -235,6 +255,7 @@ class TraySyncJobService {
         onLog: (message) => {
           this.pushLog(job, 'info', message);
         },
+        shouldCancel: () => this.cancelRequests.has(job.companyId),
       });
 
       job.status = 'completed';
@@ -295,6 +316,17 @@ class TraySyncJobService {
 
       this.scheduleNext(job.companyId, job.userId);
     } catch (error) {
+      if (isSyncCancellationError(error)) {
+        job.status = 'canceled';
+        job.currentOrderNumber = null;
+        job.finishedAt = new Date().toISOString();
+        job.error = null;
+        this.touch(job);
+        this.pushLog(job, 'info', SYNC_CANCELLATION_MESSAGE);
+        this.scheduleNext(job.companyId, job.userId);
+        return;
+      }
+
       job.status = 'failed';
       job.currentOrderNumber = null;
       job.finishedAt = new Date().toISOString();
@@ -303,6 +335,9 @@ class TraySyncJobService {
       this.touch(job);
       this.pushLog(job, 'error', job.error);
       this.scheduleNext(job.companyId, job.userId);
+    } finally {
+      this.cancelRequests.delete(job.companyId);
+      job.cancelRequested = false;
     }
   }
 

@@ -6,6 +6,8 @@ import { syncReportService } from '../services/syncReportService';
 import { isDemoCompanyById } from '../services/demoCompanyService';
 import { prisma } from '../lib/prisma';
 import { integrationOrderStatusService } from '../services/integrationOrderStatusService';
+import { anymarketSyncJobService } from '../services/anymarketSyncJobService';
+import { AnymarketApiService } from '../services/anymarketApiService';
 
 const DEMO_TRAY_SYNC_DISABLED_MESSAGE =
   'Sincronizacao da Integradora desabilitada para empresa demonstrativa.';
@@ -34,6 +36,58 @@ const isTrayIntegrationEnabled = async (companyId: string) => {
   });
 
   return company?.trayIntegrationEnabled !== false;
+};
+
+const resolveActiveIntegrationSyncContext = async (companyId: string) => {
+  const activeIntegration =
+    await integrationOrderStatusService.getOrderImportStatuses(companyId);
+
+  if (activeIntegration.integration === 'tray') {
+    const enabled = await isTrayIntegrationEnabled(companyId);
+    const auth = enabled ? await trayAuthService.getCurrentAuth(companyId) : null;
+
+    return {
+      integration: 'tray' as const,
+      integrationLabel: activeIntegration.integrationLabel,
+      enabled,
+      authorized: Boolean(auth),
+      message: auth
+        ? 'Integracao Tray online.'
+        : enabled
+          ? 'Nenhuma integracao Tray autorizada para a empresa atual.'
+          : 'A integracao Tray esta desativada para a empresa atual.',
+      job: enabled && auth ? traySyncJobService.getJob(companyId) : null,
+      schedule:
+        enabled && auth
+          ? traySyncJobService.getSchedule(companyId)
+          : traySyncJobService.getDisabledSchedule(),
+    };
+  }
+
+  if (activeIntegration.integration === 'anymarket') {
+    const api = new AnymarketApiService(companyId);
+    const status = await api.getConnectionStatus();
+
+    return {
+      integration: 'anymarket' as const,
+      integrationLabel: activeIntegration.integrationLabel,
+      enabled: status.configured,
+      authorized: status.authorized,
+      message: status.message,
+      job: status.configured ? anymarketSyncJobService.getJob(companyId) : null,
+      schedule: anymarketSyncJobService.getSchedule(),
+    };
+  }
+
+  return {
+    integration: activeIntegration.integration,
+    integrationLabel: activeIntegration.integrationLabel,
+    enabled: false,
+    authorized: false,
+    message: 'Nenhuma integradora ativa foi identificada para esta empresa.',
+    job: null,
+    schedule: traySyncJobService.getDisabledSchedule(),
+  };
 };
 
 export const syncTrayOrders = async (req: Request, res: Response) => {
@@ -205,6 +259,208 @@ export const getTraySyncStatus = async (req: Request, res: Response) => {
     console.error('Erro ao consultar status da sincronizacao da Tray:', error);
     return res.status(500).json({
       error: 'Erro ao consultar status da sincronizacao da Tray',
+    });
+  }
+};
+
+export const startIntegrationSyncJob = async (req: Request, res: Response) => {
+  try {
+    const context = getUserCompany(req);
+    if ('error' in context) {
+      return res.status(context.status).json({ error: context.error });
+    }
+
+    if (await isDemoCompanyById(context.companyId)) {
+      return res.status(400).json({ error: DEMO_TRAY_SYNC_DISABLED_MESSAGE });
+    }
+
+    const active = await resolveActiveIntegrationSyncContext(context.companyId);
+
+    if (active.integration === 'tray') {
+      if (!active.enabled) {
+        return res.status(400).json({
+          error: 'A integracao da Integradora esta desativada para a empresa atual.',
+        });
+      }
+
+      if (!active.authorized) {
+        return res.status(400).json({
+          error: active.message,
+        });
+      }
+
+      traySyncJobService.ensureSchedule(context.companyId, context.userId);
+      const existing = traySyncJobService.getJob(context.companyId);
+      if (existing?.status === 'running') {
+        return res.json({
+          success: true,
+          message: 'A sincronizacao da Integradora ja esta em andamento.',
+          integration: active.integration,
+          integrationLabel: active.integrationLabel,
+          job: existing,
+          schedule: traySyncJobService.getSchedule(context.companyId),
+        });
+      }
+
+      const job = traySyncJobService.startJob(
+        context.companyId,
+        context.userId,
+        req.body || {},
+        'manual',
+        {
+          email: req.user?.email,
+          name: req.user?.email,
+        },
+      );
+
+      return res.json({
+        success: true,
+        message: 'Sincronizacao da Integradora iniciada em segundo plano.',
+        integration: active.integration,
+        integrationLabel: active.integrationLabel,
+        job,
+        schedule: traySyncJobService.getSchedule(context.companyId),
+      });
+    }
+
+    if (active.integration === 'anymarket') {
+      if (!active.enabled || !active.authorized) {
+        return res.status(400).json({
+          error: active.message,
+        });
+      }
+
+      const existing = anymarketSyncJobService.getJob(context.companyId);
+      if (existing?.status === 'running') {
+        return res.json({
+          success: true,
+          message: 'A sincronizacao da Integradora ja esta em andamento.',
+          integration: active.integration,
+          integrationLabel: active.integrationLabel,
+          job: existing,
+          schedule: anymarketSyncJobService.getSchedule(),
+        });
+      }
+
+      const job = anymarketSyncJobService.startJob(
+        context.companyId,
+        context.userId,
+        req.body || {},
+        {
+          email: req.user?.email,
+          name: req.user?.email,
+        },
+      );
+
+      return res.json({
+        success: true,
+        message: 'Sincronizacao da Integradora iniciada em segundo plano.',
+        integration: active.integration,
+        integrationLabel: active.integrationLabel,
+        job,
+        schedule: anymarketSyncJobService.getSchedule(),
+      });
+    }
+
+    return res.status(400).json({
+      error: 'Nenhuma integradora ativa com sync manual disponivel foi identificada para esta empresa.',
+    });
+  } catch (error) {
+    console.error('Erro ao iniciar sync da integradora ativa:', error);
+    return res.status(500).json({
+      error: 'Erro ao iniciar sync da integradora ativa',
+    });
+  }
+};
+
+export const getIntegrationSyncStatus = async (req: Request, res: Response) => {
+  try {
+    const context = getUserCompany(req);
+    if ('error' in context) {
+      return res.status(context.status).json({ error: context.error });
+    }
+
+    if (await isDemoCompanyById(context.companyId)) {
+      return res.json({
+        success: true,
+        integration: null,
+        integrationLabel: 'Integradora',
+        authorized: false,
+        status: 'offline',
+        message: DEMO_TRAY_SYNC_DISABLED_MESSAGE,
+        job: null,
+        schedule: traySyncJobService.getDisabledSchedule(),
+      });
+    }
+
+    const active = await resolveActiveIntegrationSyncContext(context.companyId);
+
+    if (active.integration === 'tray') {
+      traySyncJobService.ensureSchedule(context.companyId, context.userId);
+    }
+
+    return res.json({
+      success: true,
+      integration: active.integration,
+      integrationLabel: active.integrationLabel,
+      authorized: active.authorized,
+      status: active.authorized ? 'online' : 'offline',
+      message: active.message,
+      job: active.job,
+      schedule: active.schedule,
+    });
+  } catch (error) {
+    console.error('Erro ao consultar status do sync da integradora ativa:', error);
+    return res.status(500).json({
+      error: 'Erro ao consultar status do sync da integradora ativa',
+    });
+  }
+};
+
+export const cancelIntegrationSyncJob = async (req: Request, res: Response) => {
+  try {
+    const context = getUserCompany(req);
+    if ('error' in context) {
+      return res.status(context.status).json({ error: context.error });
+    }
+
+    const active = await resolveActiveIntegrationSyncContext(context.companyId);
+
+    if (active.integration === 'tray') {
+      const job = traySyncJobService.cancelJob(context.companyId);
+      return res.json({
+        success: true,
+        integration: active.integration,
+        integrationLabel: active.integrationLabel,
+        message: job
+          ? 'Solicitacao de cancelamento enviada para o sync da integradora.'
+          : 'Nenhum sync da integradora em andamento para cancelar.',
+        job,
+        schedule: active.schedule,
+      });
+    }
+
+    if (active.integration === 'anymarket') {
+      const job = anymarketSyncJobService.cancelJob(context.companyId);
+      return res.json({
+        success: true,
+        integration: active.integration,
+        integrationLabel: active.integrationLabel,
+        message: job
+          ? 'Solicitacao de cancelamento enviada para o sync da integradora.'
+          : 'Nenhum sync da integradora em andamento para cancelar.',
+        job,
+        schedule: anymarketSyncJobService.getSchedule(),
+      });
+    }
+
+    return res.status(400).json({
+      error: 'Nenhuma integradora ativa foi identificada para esta empresa.',
+    });
+  } catch (error) {
+    console.error('Erro ao cancelar sync da integradora ativa:', error);
+    return res.status(500).json({
+      error: 'Erro ao cancelar sync da integradora ativa',
     });
   }
 };

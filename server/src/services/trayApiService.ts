@@ -1,6 +1,7 @@
 import axios, { AxiosInstance } from 'axios';
 import { trayAuthService } from './trayAuthService';
 import { trayRateLimiter } from './rateLimiter';
+import { SyncCancellationError } from '../utils/syncCancellation';
 
 interface TrayPaging {
   total: number;
@@ -582,6 +583,7 @@ export class TrayApiService {
   } = {}, hooks?: {
     onLog?: (message: string) => void;
     onOrdersBatch?: (orders: any[]) => Promise<void> | void;
+    shouldCancel?: () => boolean;
   }): Promise<number> {
     const statusLabel = String(params.status || 'todos');
     console.log(`Iniciando etapa da Tray para status "${statusLabel}"...`);
@@ -592,6 +594,10 @@ export class TrayApiService {
     let hasMorePages = true;
 
     while (hasMorePages) {
+      if (hooks?.shouldCancel?.()) {
+        throw new SyncCancellationError();
+      }
+
       console.log(`Buscando pagina ${currentPage} para status "${statusLabel}"...`);
       hooks?.onLog?.(`Buscando pagina ${currentPage} da Tray para status "${statusLabel}".`);
 
@@ -619,6 +625,10 @@ export class TrayApiService {
 
       const pageOrders: any[] = [];
       const completeOrderTasks = orders.map(async (orderWrapper) => {
+        if (hooks?.shouldCancel?.()) {
+          throw new SyncCancellationError();
+        }
+
         const orderId = orderWrapper.Order.id;
 
         if (params.skipOrderNumbers?.has(String(orderId))) {
@@ -638,6 +648,10 @@ export class TrayApiService {
       });
 
       await Promise.all(completeOrderTasks);
+
+      if (hooks?.shouldCancel?.()) {
+        throw new SyncCancellationError();
+      }
 
       if (pageOrders.length > 0) {
         await hooks?.onOrdersBatch?.(pageOrders);

@@ -19,6 +19,9 @@ import {
   startTraySyncJob,
   getTraySyncStatus,
   getOrderImportStatusOptions,
+  startIntegrationSyncJob,
+  getIntegrationSyncStatus,
+  cancelIntegrationSyncJob,
 } from './controllers/traySyncController';
 import {
   checkAnymarketStatus,
@@ -244,6 +247,9 @@ app.post('/api/tray/sync', authenticateToken, syncTrayOrders);
 app.post('/api/tray/sync/start', authenticateToken, startTraySyncJob);
 app.get('/api/tray/sync/status', authenticateToken, getTraySyncStatus);
 app.get('/api/integrations/order-status-options', authenticateToken, getOrderImportStatusOptions);
+app.post('/api/integrations/sync/start', authenticateToken, startIntegrationSyncJob);
+app.get('/api/integrations/sync/status', authenticateToken, getIntegrationSyncStatus);
+app.post('/api/integrations/sync/cancel', authenticateToken, cancelIntegrationSyncJob);
 app.get('/api/anymarket/status', authenticateToken, checkAnymarketStatus);
 app.post('/api/anymarket/sync', authenticateToken, syncAnymarketOrders);
 app.get('/tray/callback', showInstallPage);

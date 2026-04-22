@@ -11,6 +11,7 @@ import {
 } from './freightRecalculationService';
 import { integrationOrderStatusService } from './integrationOrderStatusService';
 import { isDemoCompany } from './demoCompanyService';
+import { SyncCancellationError } from '../utils/syncCancellation';
 
 const TRAY_STATUS_OPTIONS = [
   'pedido cadastrado',
@@ -42,6 +43,7 @@ interface TraySyncHooks {
     imported: number;
   }) => void;
   onLog?: (message: string) => void;
+  shouldCancel?: () => boolean;
 }
 
 const normalizeRequestedStatuses = (value: unknown) => {
@@ -215,6 +217,10 @@ export class TraySyncService {
       );
     }
     for (let index = 0; index < statusesToSync.length; index += 1) {
+      if (hooks?.shouldCancel?.()) {
+        throw new SyncCancellationError();
+      }
+
       const trayStatus = statusesToSync[index];
       hooks?.onStatusStart?.({
         status: trayStatus,
@@ -231,7 +237,12 @@ export class TraySyncService {
         },
         {
           onLog: hooks?.onLog,
+          shouldCancel: hooks?.shouldCancel,
           onOrdersBatch: async (batchOrders) => {
+            if (hooks?.shouldCancel?.()) {
+              throw new SyncCancellationError();
+            }
+
             const ordersToProcess = batchOrders.filter((order) => {
               const orderNumber = String(order.id);
               return (
@@ -298,6 +309,10 @@ export class TraySyncService {
               let skippedRecalculationCount = 0;
 
               for (const order of ordersForFreight) {
+                if (hooks?.shouldCancel?.()) {
+                  throw new SyncCancellationError();
+                }
+
                 try {
                   if (!needsFreightRecalculation(order)) {
                     skippedRecalculationCount += 1;
@@ -406,6 +421,10 @@ export class TraySyncService {
         batchStart < remainingOrderNumbers.length;
         batchStart += DIRECT_REVISIT_BATCH_SIZE
       ) {
+        if (hooks?.shouldCancel?.()) {
+          throw new SyncCancellationError();
+        }
+
         const batchOrderNumbers = remainingOrderNumbers.slice(
           batchStart,
           batchStart + DIRECT_REVISIT_BATCH_SIZE,

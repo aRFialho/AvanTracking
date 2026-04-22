@@ -8,7 +8,7 @@ export interface SyncJobStatus {
   jobId: string;
   companyId: string;
   userId: string;
-  status: 'running' | 'completed' | 'failed';
+  status: 'running' | 'completed' | 'failed' | 'canceled';
   total: number;
   processed: number;
   success: number;
@@ -18,6 +18,7 @@ export interface SyncJobStatus {
   finishedAt: string | null;
   lastUpdatedAt: string;
   error: string | null;
+  cancelRequested?: boolean;
   warnings: string[];
   logs: SyncLogEntry[];
 }

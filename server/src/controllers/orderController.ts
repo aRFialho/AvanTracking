@@ -2199,6 +2199,31 @@ export const getSyncAllStatus = async (req: Request, res: Response) => {
   }
 };
 
+export const cancelSyncAllOrders = async (req: Request, res: Response) => {
+  try {
+    // @ts-ignore
+    const user = req.user;
+
+    if (!user || !user.companyId) {
+      return res.status(403).json({ error: 'Acesso negado. Usuario sem empresa.' });
+    }
+
+    const job = syncJobService.cancelJob(user.companyId);
+
+    return res.json({
+      success: true,
+      message: job
+        ? 'Solicitacao de cancelamento enviada para o sync de rastreio.'
+        : 'Nenhum sync de rastreio em andamento para cancelar.',
+      job,
+      schedule: syncJobService.getSchedule(user.companyId),
+    });
+  } catch (error) {
+    console.error('Erro ao cancelar sincronizacao:', error);
+    return res.status(500).json({ error: 'Erro ao cancelar sincronizacao' });
+  }
+};
+
 export const clearOrdersDatabase = async (req: Request, res: Response) => {
   try {
     const {
