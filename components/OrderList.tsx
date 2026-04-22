@@ -160,6 +160,7 @@ interface IntegrationStatusOptionsResponse {
   integration: "tray" | "anymarket" | "magazord" | "bling" | "sysemp" | null;
   integrationLabel: string;
   statuses: IntegrationOrderStatusOption[];
+  manualStatuses?: IntegrationOrderStatusOption[];
   cancelStatusValues: string[];
 }
 
@@ -358,6 +359,8 @@ export const OrderList: React.FC<OrderListProps> = ({
   const [integrationStatusOptions, setIntegrationStatusOptions] = useState<
     IntegrationOrderStatusOption[]
   >([]);
+  const [hasConfiguredManualStatuses, setHasConfiguredManualStatuses] =
+    useState(false);
   const [integrationLabel, setIntegrationLabel] = useState("Integradora");
   const [activeIntegration, setActiveIntegration] = useState<string | null>(
     null,
@@ -373,9 +376,9 @@ export const OrderList: React.FC<OrderListProps> = ({
   const [isLoadingArchivedOrders, setIsLoadingArchivedOrders] = useState(false);
   const hasSyncableIntegration = Boolean(
     activeIntegration &&
-      INTEGRATIONS_WITH_SYNC.includes(
-        activeIntegration as (typeof INTEGRATIONS_WITH_SYNC)[number],
-      ),
+    INTEGRATIONS_WITH_SYNC.includes(
+      activeIntegration as (typeof INTEGRATIONS_WITH_SYNC)[number],
+    ),
   );
   const canShowIntegratorSyncButton = Boolean(
     onStartTraySync && !isNoMovementView && !showArchivedOrders,
@@ -1083,10 +1086,16 @@ export const OrderList: React.FC<OrderListProps> = ({
           return;
         }
 
-        const nextOptions = Array.isArray(data.statuses) ? data.statuses : [];
+        const manualOptions = Array.isArray(data.manualStatuses)
+          ? data.manualStatuses
+          : [];
+        const statusOptions = Array.isArray(data.statuses) ? data.statuses : [];
+        const nextOptions =
+          manualOptions.length > 0 ? manualOptions : statusOptions;
         setIntegrationLabel(data.integrationLabel || "Integradora");
         setActiveIntegration((data as any).integration || null);
         setIntegrationStatusOptions(nextOptions);
+        setHasConfiguredManualStatuses(manualOptions.length > 0);
       } catch (error) {
         if (cancelled) {
           return;
@@ -1096,6 +1105,7 @@ export const OrderList: React.FC<OrderListProps> = ({
         setIntegrationLabel("Integradora");
         setActiveIntegration(null);
         setIntegrationStatusOptions([]);
+        setHasConfiguredManualStatuses(false);
       } finally {
         if (!cancelled) {
           setIsLoadingIntegrationStatuses(false);
@@ -1205,10 +1215,9 @@ export const OrderList: React.FC<OrderListProps> = ({
       showToast({
         tone: "warning",
         title: "Sync da Integradora",
-        message:
-          activeIntegration
-            ? `A integradora ativa ${integrationLabel} ainda nao possui sync manual disponivel nesta tela.`
-            : "Nenhuma integradora ativa foi identificada para esta empresa.",
+        message: activeIntegration
+          ? `A integradora ativa ${integrationLabel} ainda nao possui sync manual disponivel nesta tela.`
+          : "Nenhuma integradora ativa foi identificada para esta empresa.",
       });
       return;
     }
@@ -2355,29 +2364,29 @@ export const OrderList: React.FC<OrderListProps> = ({
             </div>
 
             {canShowIntegratorSyncButton && (
-                <button
-                  onClick={() => setIsTraySyncModalOpen(true)}
-                  disabled={isTraySyncing}
-                  className="inline-flex h-10 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-semibold tracking-tight text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:bg-white/5 dark:text-white dark:hover:bg-white/10"
-                >
-                  {isTraySyncing ? (
-                    <>
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      Iniciando...
-                    </>
-                  ) : isTrayJobRunning ? (
-                    <>
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      Acompanhar Sync
-                    </>
-                  ) : (
-                    <>
-                      <RefreshCw className="h-3.5 w-3.5" />
-                      Sync Integradora
-                    </>
-                  )}
-                </button>
-              )}
+              <button
+                onClick={() => setIsTraySyncModalOpen(true)}
+                disabled={isTraySyncing}
+                className="inline-flex h-10 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-semibold tracking-tight text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:bg-white/5 dark:text-white dark:hover:bg-white/10"
+              >
+                {isTraySyncing ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Iniciando...
+                  </>
+                ) : isTrayJobRunning ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Acompanhar Sync
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="h-3.5 w-3.5" />
+                    Sync Integradora
+                  </>
+                )}
+              </button>
+            )}
 
             <button
               onClick={handleSyncAll}
@@ -2859,13 +2868,18 @@ export const OrderList: React.FC<OrderListProps> = ({
               <div className="min-h-0 flex-1 space-y-5 overflow-y-auto pr-1">
                 {!activeIntegration && (
                   <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-900/30 dark:bg-amber-900/10 dark:text-amber-200">
-                    Nenhuma integradora ativa foi identificada para esta empresa no momento. O botao permanece visivel para todos os usuarios, mas o sync manual depende de uma integracao configurada.
+                    Nenhuma integradora ativa foi identificada para esta empresa
+                    no momento. O botao permanece visivel para todos os
+                    usuarios, mas o sync manual depende de uma integracao
+                    configurada.
                   </div>
                 )}
 
                 {activeIntegration && !hasSyncableIntegration && (
                   <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-900/30 dark:bg-amber-900/10 dark:text-amber-200">
-                    A integradora ativa desta empresa e a {integrationLabel}, mas o sync manual pela aba Pedidos ainda nao esta disponivel para esse conector.
+                    A integradora ativa desta empresa e a {integrationLabel},
+                    mas o sync manual pela aba Pedidos ainda nao esta disponivel
+                    para esse conector.
                   </div>
                 )}
 
@@ -2993,7 +3007,14 @@ export const OrderList: React.FC<OrderListProps> = ({
                         <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
                           {isLoadingIntegrationStatuses
                             ? `Carregando status da ${integrationLabel}...`
-                            : `${integrationStatusOptions.length} status disponivel(eis) na ${integrationLabel}.`}
+                            : hasConfiguredManualStatuses
+                              ? `${integrationStatusOptions.length} status manual(is) configurado(s) para esta empresa na ${integrationLabel}.`
+                              : `${integrationStatusOptions.length} status disponivel(eis) na ${integrationLabel}.`}
+                        </p>
+                        <p className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">
+                          {hasConfiguredManualStatuses
+                            ? "A selecao manual usa a lista cadastrada em Integracao > Configuracoes."
+                            : "Se a empresa ainda nao tiver uma lista manual cadastrada, usamos os status retornados pela integradora ativa."}
                         </p>
                         <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
                           {(integrationStatusOptions.length > 0

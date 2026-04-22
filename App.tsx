@@ -934,19 +934,99 @@ const MainApp: React.FC = () => {
   const handleTraySync = useCallback(
     async (filters: TraySyncFilters) => {
       try {
-        const response = await fetchWithAuth("/api/tray/sync/start", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(filters),
-        });
+        const integrationResponse = await fetchWithAuth(
+          "/api/integrations/order-status-options",
+        );
+        const integrationData = await integrationResponse.json().catch(() => ({}));
 
-        const data = await response.json().catch(() => ({}));
-
-        if (!response.ok) {
-          throw new Error(data.error || `HTTP ${response.status}`);
+        if (!integrationResponse.ok) {
+          throw new Error(
+            integrationData.error || `HTTP ${integrationResponse.status}`,
+          );
         }
 
-        setTraySyncJob(data.job || null);
+        const activeIntegration = String(integrationData.integration || "").trim();
+
+        if (activeIntegration === "tray") {
+          const response = await fetchWithAuth("/api/tray/sync/start", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(filters),
+          });
+
+          const data = await response.json().catch(() => ({}));
+
+          if (!response.ok) {
+            throw new Error(data.error || `HTTP ${response.status}`);
+          }
+
+          setTraySyncJob(data.job || null);
+          return;
+        }
+
+        if (activeIntegration === "anymarket") {
+          const response = await fetchWithAuth("/api/anymarket/sync", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(filters),
+          });
+
+          const data = await response.json().catch(() => ({}));
+
+          if (!response.ok) {
+            throw new Error(data.error || `HTTP ${response.status}`);
+          }
+
+          const results = data.results || {};
+          const created = Number(results.created || 0);
+          const updated = Number(results.updated || 0);
+          const skipped = Number(results.skipped || 0);
+          const failed = Array.isArray(results.errors) ? results.errors.length : 0;
+          const total = created + updated + skipped;
+          const nowIso = new Date().toISOString();
+
+          setTraySyncJob({
+            jobId:
+              typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+                ? crypto.randomUUID()
+                : `anymarket-${Date.now()}`,
+            companyId: user?.companyId || "",
+            userId: user?.id || "",
+            status: "completed",
+            total,
+            processed: total,
+            success: created + updated,
+            failed,
+            currentOrderNumber: null,
+            startedAt: nowIso,
+            finishedAt: nowIso,
+            lastUpdatedAt: nowIso,
+            error: null,
+            warnings: [],
+            logs: [
+              {
+                timestamp: nowIso,
+                level: "success",
+                message:
+                  data.message ||
+                  "Sincronizacao ANYMARKET concluida com sucesso.",
+              },
+            ],
+          });
+
+          await Promise.allSettled([loadOrdersFromDatabase(), loadNotifications()]);
+
+          showToast({
+            message:
+              data.message || "Pedidos da ANYMARKET sincronizados com sucesso.",
+            tone: "success",
+          });
+          return;
+        }
+
+        throw new Error(
+          "Nenhuma integradora com sync manual disponivel foi identificada para esta empresa.",
+        );
       } catch (error: any) {
         console.error("Integradora sync failed:", error);
         showToast({
@@ -955,7 +1035,7 @@ const MainApp: React.FC = () => {
         });
       }
     },
-    [],
+    [loadNotifications, loadOrdersFromDatabase, user?.companyId, user?.id],
   );
 
   const handleFetchSingleOrder = useCallback(

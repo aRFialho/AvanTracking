@@ -49,6 +49,7 @@ interface Company {
   magazordApiPasswordConfigured?: boolean;
   sswRequireCnpjs?: string[];
   integrationCarrierExceptions?: string[];
+  integrationManualStatuses?: string[];
   createdAt: string;
 }
 
@@ -313,11 +314,13 @@ export const AdminPanel: React.FC = () => {
     useState(false);
   const [sswRequireCnpjs, setSswRequireCnpjs] = useState<string[]>([""]);
   const [integrationCarrierExceptions, setIntegrationCarrierExceptions] = useState<string[]>([""]);
+  const [integrationManualStatuses, setIntegrationManualStatuses] = useState<string[]>([""]);
   const [isSavingIntelipost, setIsSavingIntelipost] = useState(false);
   const [isSavingAnymarket, setIsSavingAnymarket] = useState(false);
   const [isSavingMagazord, setIsSavingMagazord] = useState(false);
   const [isSavingSswRequire, setIsSavingSswRequire] = useState(false);
   const [isSavingCarrierExceptions, setIsSavingCarrierExceptions] = useState(false);
+  const [isSavingIntegrationManualStatuses, setIsSavingIntegrationManualStatuses] = useState(false);
   const [isSavingIntegrationToggle, setIsSavingIntegrationToggle] = useState(false);
   const [patchNotesForm, setPatchNotesForm] = useState<PatchNotesFormData>({
     version: "",
@@ -483,6 +486,12 @@ export const AdminPanel: React.FC = () => {
       Array.isArray(companyData?.integrationCarrierExceptions) &&
         companyData.integrationCarrierExceptions.length > 0
         ? companyData.integrationCarrierExceptions
+        : [""],
+    );
+    setIntegrationManualStatuses(
+      Array.isArray(companyData?.integrationManualStatuses) &&
+        companyData.integrationManualStatuses.length > 0
+        ? companyData.integrationManualStatuses
         : [""],
     );
   };
@@ -852,6 +861,65 @@ export const AdminPanel: React.FC = () => {
       adminToast(err.message || "Erro ao salvar as excecoes de transportadora.");
     } finally {
       setIsSavingCarrierExceptions(false);
+    }
+  };
+
+  const handleAddIntegrationManualStatus = () => {
+    setIntegrationManualStatuses((currentValues) => [...currentValues, ""]);
+  };
+
+  const handleChangeIntegrationManualStatus = (index: number, value: string) => {
+    setIntegrationManualStatuses((currentValues) =>
+      currentValues.map((item, itemIndex) =>
+        itemIndex === index ? value : item,
+      ),
+    );
+  };
+
+  const handleRemoveIntegrationManualStatus = (index: number) => {
+    setIntegrationManualStatuses((currentValues) => {
+      const nextValues = currentValues.filter((_, itemIndex) => itemIndex !== index);
+      return nextValues.length > 0 ? nextValues : [""];
+    });
+  };
+
+  const handleSaveIntegrationManualStatuses = async () => {
+    const normalizedStatuses = Array.from(
+      new Set(
+        integrationManualStatuses
+          .map((value) => value.trim())
+          .filter(Boolean),
+      ),
+    );
+
+    setIsSavingIntegrationManualStatuses(true);
+    try {
+      const response = await fetchWithAuth("/api/companies/current/integration", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          integrationManualStatuses: normalizedStatuses,
+        }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(
+          data.error || "Nao foi possivel salvar os status manuais da integradora.",
+        );
+      }
+
+      applyCompanyIntegrationState(data.company || null);
+      adminToast(
+        data.message || "Status manuais da integradora atualizados com sucesso.",
+      );
+    } catch (err: any) {
+      adminToast(
+        err.message || "Erro ao salvar os status manuais da integradora.",
+      );
+    } finally {
+      setIsSavingIntegrationManualStatuses(false);
     }
   };
 
@@ -2377,6 +2445,84 @@ export const AdminPanel: React.FC = () => {
 
           {integrationSubTab === "settings" && (
           <div className="grid grid-cols-1 gap-6">
+            {integrationCardMatches("configuracoes status manual integradora pedidos sync") && (
+            <div className="glass-card rounded-2xl overflow-hidden border border-slate-200 dark:border-white/10">
+              <div className="p-5 border-b border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-white/5">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Configuracoes</p>
+                    <h4 className="mt-2 text-lg font-bold text-slate-800 dark:text-white">Status manuais da integradora</h4>
+                    <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+                      Defina aqui os status que a empresa usa no sync manual de pedidos pela integradora.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleAddIntegrationManualStatus}
+                    className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-medium text-white bg-blue-600 hover:bg-blue-700 transition-colors"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Adicionar
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-5 space-y-5">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 dark:border-white/10 dark:bg-white/5">
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+                    Lista usada na tela de pedidos
+                  </p>
+                  <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+                    A opcao <strong>Selecionar status manualmente</strong> da janela de sync usara esta lista. A opcao <strong>Todos exceto cancelados</strong> continua automatica e busca todos os status da integradora, ignorando apenas os cancelados.
+                  </p>
+                </div>
+
+                <div className="space-y-3">
+                  {integrationManualStatuses.map((statusName, index) => (
+                    <div
+                      key={`integration-manual-status-${index}`}
+                      className="flex flex-col gap-3 sm:flex-row"
+                    >
+                      <input
+                        type="text"
+                        value={statusName}
+                        onChange={(e) =>
+                          handleChangeIntegrationManualStatus(index, e.target.value)
+                        }
+                        placeholder="Ex.: PAID_WAITING_SHIP"
+                        className="w-full bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white focus:border-blue-500 outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveIntegrationManualStatus(index)}
+                        disabled={integrationManualStatuses.length === 1}
+                        className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-medium border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 hover:border-red-500 hover:text-red-600 disabled:opacity-50 transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        Remover
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-[11px] text-slate-400">
+                    Salve apenas os status que fazem sentido para a operacao desta empresa.
+                  </p>
+
+                  <button
+                    type="button"
+                    onClick={handleSaveIntegrationManualStatuses}
+                    disabled={isSavingIntegrationManualStatuses || !currentCompany}
+                    className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-medium text-white bg-slate-700 hover:bg-slate-800 disabled:opacity-50 transition-colors"
+                  >
+                    {isSavingIntegrationManualStatuses ? "Salvando..." : "Salvar status"}
+                  </button>
+                </div>
+              </div>
+            </div>
+            )}
+
             {integrationCardMatches("configuracoes regras de importacao excecao de transportadora ignorar") && (
             <div className="glass-card rounded-2xl overflow-hidden border border-slate-200 dark:border-white/10">
               <div className="p-5 border-b border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-white/5">
