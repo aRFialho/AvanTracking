@@ -501,24 +501,27 @@ export const ensureDemoCompanyData = async (prisma: PrismaClient) => {
   });
 
   if (!company) {
-    company = await prisma.company.create({
+    company = await (prisma.company as any).create({
       data: {
         name: DEMO_COMPANY_NAME,
         cnpj: DEMO_COMPANY_CNPJ,
         trayIntegrationEnabled: false,
+        anymarketIntegrationEnabled: false,
         intelipostIntegrationEnabled: false,
       },
     });
   } else if (
     company.cnpj !== DEMO_COMPANY_CNPJ ||
     company.trayIntegrationEnabled !== false ||
+    (company as any).anymarketIntegrationEnabled !== false ||
     company.intelipostIntegrationEnabled !== false
   ) {
-    company = await prisma.company.update({
+    company = await (prisma.company as any).update({
       where: { id: company.id },
       data: {
         cnpj: DEMO_COMPANY_CNPJ,
         trayIntegrationEnabled: false,
+        anymarketIntegrationEnabled: false,
         intelipostIntegrationEnabled: false,
       },
     });

@@ -7,6 +7,7 @@ import releaseNotesRoutes from "./routes/releaseNotes";
 import supportRoutes from "./routes/support";
 import notificationRoutes from "./routes/notifications";
 import logisyncRulesRoutes from "./routes/logisyncRules";
+import logisyncUsersRoutes from "./routes/logisyncUsers";
 import {
   startTrayAuthorization,
   showInstallPage,
@@ -18,6 +19,11 @@ import {
   startTraySyncJob,
   getTraySyncStatus,
 } from './controllers/traySyncController';
+import {
+  checkAnymarketStatus,
+  syncAnymarketOrders,
+  getAnymarketRateLimitStats,
+} from './controllers/anymarketController';
 import { trayRateLimiter } from './services/rateLimiter';
 import {
   backfillMissingFreightQuotes,
@@ -222,6 +228,9 @@ app.use("/api/notifications", authenticateToken, notificationRoutes);
 // Logisync Rules API (protegida)
 app.use("/api/logisync/rules", authenticateToken, logisyncRulesRoutes);
 
+// Logisync Users API (protegida)
+app.use("/api/logisync/users", authenticateToken, logisyncUsersRoutes);
+
 // Orders API (protegida)
 app.use("/api/orders", authenticateToken, orderRoutes);
 
@@ -233,6 +242,8 @@ app.get('/api/tray/status', authenticateToken, checkAuthStatus);
 app.post('/api/tray/sync', authenticateToken, syncTrayOrders);
 app.post('/api/tray/sync/start', authenticateToken, startTraySyncJob);
 app.get('/api/tray/sync/status', authenticateToken, getTraySyncStatus);
+app.get('/api/anymarket/status', authenticateToken, checkAnymarketStatus);
+app.post('/api/anymarket/sync', authenticateToken, syncAnymarketOrders);
 app.get('/tray/callback', showInstallPage);
 app.get('/tray/callback/auth', handleAuthCallback);
 
@@ -322,6 +333,7 @@ app.get('/reports/:scope/:fileName', (req, res, next) => {
     return next(typedError);
   });
 });
+app.get('/api/anymarket/rate-limit-stats', authenticateToken, getAnymarketRateLimitStats);
 
 app.use(express.static(frontendPath));
 

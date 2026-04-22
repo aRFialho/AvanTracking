@@ -405,11 +405,19 @@ export class TraySyncService {
       );
     }
 
-    const remainingOrderNumbers = Array.from(pendingIdentifierOrderNumbers);
+    const remainingOrderNumbers = Array.from(
+      new Set([
+        ...pendingIdentifierOrderNumbers,
+        ...pendingStatusCorrectionOrderNumbers,
+      ]),
+    );
 
     if (remainingOrderNumbers.length > 0) {
+      const pendingIdentifierCount = pendingIdentifierOrderNumbers.size;
+      const pendingStatusCorrectionCount = pendingStatusCorrectionOrderNumbers.size;
+
       hooks?.onLog?.(
-        `Revisita direta iniciada para ${remainingOrderNumbers.length} pedido(s) ainda sem NF, independente da janela automatica.`,
+        `Revisita direta iniciada para ${remainingOrderNumbers.length} pedido(s) fora da janela automatica (${pendingIdentifierCount} sem NF e ${pendingStatusCorrectionCount} em Logistica do Canal).`,
       );
 
       for (
@@ -507,12 +515,12 @@ export class TraySyncService {
 
     if (processedOrdersCount === 0) {
       hooks?.onLog?.(
-        'Nenhum pedido novo ou incompleto encontrado na Tray para importacao.',
+        'Nenhum pedido novo, sem NF ou em Logistica do Canal encontrado na Tray para importacao.',
       );
       return {
         success: true,
         message:
-          'Nenhum pedido novo ou sem NF encontrado na Tray com os filtros selecionados.',
+          'Nenhum pedido novo, sem NF ou em Logistica do Canal encontrado na Tray com os filtros selecionados.',
         storeId: auth.storeId,
         statuses: statusesToSync,
         modified,
@@ -530,7 +538,7 @@ export class TraySyncService {
     const importMessage =
       `Importacao concluida: ${aggregateResults.created} criados, ${aggregateResults.updated} atualizados, ` +
       `${aggregateResults.skipped} ignorados, ${aggregateResults.totalTrackingEvents} evento(s) iniciais de rastreio, ` +
-      `${revisitedOrdersCount} pedido(s) revisitado(s) por falta de NF.`;
+      `${revisitedOrdersCount} pedido(s) revisitado(s) por falta de NF ou status legado de Logistica do Canal.`;
     hooks?.onLog?.(importMessage);
 
     return {

@@ -32,6 +32,7 @@ const normalizeBooleanSetting = (value: unknown) => {
 
 const ERP_INTEGRATION_FIELDS = [
   'trayIntegrationEnabled',
+  'anymarketIntegrationEnabled',
   'blingIntegrationEnabled',
   'magazordIntegrationEnabled',
   'sysempIntegrationEnabled',
@@ -92,6 +93,7 @@ const companyPublicSelect = {
   documentType: true,
   documentNumber: true,
   trayIntegrationEnabled: true,
+  anymarketIntegrationEnabled: true,
   blingIntegrationEnabled: true,
   magazordIntegrationEnabled: true,
   sysempIntegrationEnabled: true,
@@ -113,11 +115,12 @@ const companyPublicSelect = {
 } as const;
 
 const sanitizeCompanyResponse = (company: any) => {
-  const { magazordApiPassword, ...safeCompany } = company || {};
+  const { magazordApiPassword, anymarketToken, ...safeCompany } = company || {};
 
   return {
     ...safeCompany,
     magazordApiPasswordConfigured: Boolean(magazordApiPassword),
+    anymarketTokenConfigured: Boolean(anymarketToken),
   };
 };
 
@@ -126,11 +129,21 @@ export const getCompanies = async (req: Request, res: Response) => {
   try {
     await ensureDemoCompanyData(prisma);
 
+    const isLogisyncUser = req.user?.module === 'logisync';
+    const isLogisyncSuperAdmin = Boolean(req.user?.isSuperAdmin);
+    const companyScope =
+      isLogisyncUser && !isLogisyncSuperAdmin
+        ? String(req.user?.companyId || '').trim()
+        : '';
+
+    const whereClause = companyScope ? { id: companyScope } : undefined;
     const companies = await (prisma.company as any).findMany({
+      ...(whereClause ? { where: whereClause } : {}),
       orderBy: { name: 'asc' },
       select: {
         ...companyPublicSelect,
         magazordApiPassword: true,
+        anymarketToken: true,
       },
     });
     res.json(companies.map(sanitizeCompanyResponse));
@@ -167,6 +180,9 @@ export const createCompany = async (req: Request, res: Response) => {
     const blingIntegrationEnabled = normalizeBooleanSetting(
       req.body?.blingIntegrationEnabled,
     );
+    const anymarketIntegrationEnabled = normalizeBooleanSetting(
+      req.body?.anymarketIntegrationEnabled,
+    );
     const magazordIntegrationEnabled = normalizeBooleanSetting(
       req.body?.magazordIntegrationEnabled,
     );
@@ -176,6 +192,7 @@ export const createCompany = async (req: Request, res: Response) => {
     const erpIntegrationData = buildErpIntegrationUpdate({
       trayIntegrationEnabled:
         trayIntegrationEnabled === undefined ? true : trayIntegrationEnabled,
+      anymarketIntegrationEnabled,
       blingIntegrationEnabled,
       magazordIntegrationEnabled,
       sysempIntegrationEnabled,
@@ -183,14 +200,27 @@ export const createCompany = async (req: Request, res: Response) => {
     const activeErpsOnCreate = resolveActiveErpFields({
       trayIntegrationEnabled:
         trayIntegrationEnabled === undefined ? true : trayIntegrationEnabled,
+      anymarketIntegrationEnabled,
       blingIntegrationEnabled,
       magazordIntegrationEnabled,
       sysempIntegrationEnabled,
     });
 
+    const anymarketToken = normalizeOptionalString(req.body?.anymarketToken);
+
     if (activeErpsOnCreate.length > 1) {
       return res.status(400).json({
         error: 'Nao e permitido manter mais de um ERP ativo ao mesmo tempo.',
+      });
+    }
+
+    if (
+      anymarketIntegrationEnabled === true &&
+      !anymarketToken
+    ) {
+      return res.status(400).json({
+        error:
+          'O gumgaToken do ANYMARKET precisa ser informado para ativar a integracao.',
       });
     }
 
@@ -209,6 +239,7 @@ export const createCompany = async (req: Request, res: Response) => {
         correiosIntegrationEnabled:
           normalizeBooleanSetting(req.body?.correiosIntegrationEnabled) ?? true,
         intelipostClientId: intelipostClientId ? String(intelipostClientId).trim() : null,
+        anymarketToken,
         magazordApiBaseUrl: normalizeOptionalString(req.body?.magazordApiBaseUrl),
         magazordApiUser: normalizeOptionalString(req.body?.magazordApiUser),
         magazordApiPassword: normalizeOptionalString(req.body?.magazordApiPassword),
@@ -220,6 +251,7 @@ export const createCompany = async (req: Request, res: Response) => {
       select: {
         ...companyPublicSelect,
         magazordApiPassword: true,
+        anymarketToken: true,
       },
     });
     res.status(201).json(sanitizeCompanyResponse(company));
@@ -259,6 +291,7 @@ export const getCurrentCompany = async (req: Request, res: Response) => {
       select: {
         ...companyPublicSelect,
         magazordApiPassword: true,
+        anymarketToken: true,
       },
     });
 
@@ -303,6 +336,9 @@ export const updateCurrentCompanyIntegration = async (
     const blingIntegrationEnabled = normalizeBooleanSetting(
       req.body?.blingIntegrationEnabled,
     );
+    const anymarketIntegrationEnabled = normalizeBooleanSetting(
+      req.body?.anymarketIntegrationEnabled,
+    );
     const magazordIntegrationEnabled = normalizeBooleanSetting(
       req.body?.magazordIntegrationEnabled,
     );
@@ -316,6 +352,11 @@ export const updateCurrentCompanyIntegration = async (
     const correiosIntegrationEnabled = normalizeBooleanSetting(
       req.body?.correiosIntegrationEnabled,
     );
+    const anymarketTokenRaw = req.body?.anymarketToken;
+    const anymarketToken =
+      anymarketTokenRaw === undefined
+        ? undefined
+        : normalizeOptionalString(anymarketTokenRaw);
     const magazordApiBaseUrl = normalizeOptionalString(req.body?.magazordApiBaseUrl);
     const magazordApiUser = normalizeOptionalString(req.body?.magazordApiUser);
     const magazordApiPasswordRaw = req.body?.magazordApiPassword;
@@ -325,6 +366,7 @@ export const updateCurrentCompanyIntegration = async (
         : normalizeOptionalString(magazordApiPasswordRaw);
     const erpIntegrationData = buildErpIntegrationUpdate({
       trayIntegrationEnabled,
+      anymarketIntegrationEnabled,
       blingIntegrationEnabled,
       magazordIntegrationEnabled,
       sysempIntegrationEnabled,
@@ -345,13 +387,16 @@ export const updateCurrentCompanyIntegration = async (
 
     const currentCompany = await (prisma.company as any).findUnique({
       where: { id: req.user.companyId },
-      select: ERP_INTEGRATION_FIELDS.reduce<Record<ErpIntegrationField, true>>(
-        (accumulator, field) => {
-          accumulator[field] = true;
-          return accumulator;
-        },
-        {} as Record<ErpIntegrationField, true>,
-      ),
+      select: {
+        ...ERP_INTEGRATION_FIELDS.reduce<Record<ErpIntegrationField, true>>(
+          (accumulator, field) => {
+            accumulator[field] = true;
+            return accumulator;
+          },
+          {} as Record<ErpIntegrationField, true>,
+        ),
+        anymarketToken: true,
+      },
     });
 
     if (!currentCompany) {
@@ -378,6 +423,23 @@ export const updateCurrentCompanyIntegration = async (
       });
     }
 
+    const effectiveAnymarketToken =
+      anymarketToken !== undefined
+        ? anymarketToken
+        : (currentCompany as any).anymarketToken;
+    const willEnableAnymarket = effectiveErpState.anymarketIntegrationEnabled === true;
+
+    if (
+      (willEnableAnymarket ||
+        anymarketToken !== undefined) &&
+      !effectiveAnymarketToken
+    ) {
+      return res.status(400).json({
+        error:
+          'O gumgaToken do ANYMARKET precisa ser informado para ativar ou configurar a integracao.',
+      });
+    }
+
     const company = await (prisma.company as any).update({
       where: { id: req.user.companyId },
       data: {
@@ -390,6 +452,7 @@ export const updateCurrentCompanyIntegration = async (
         ...(correiosIntegrationEnabled !== undefined
           ? { correiosIntegrationEnabled }
           : {}),
+        ...(anymarketToken !== undefined ? { anymarketToken } : {}),
         ...(magazordApiBaseUrl !== undefined ? { magazordApiBaseUrl } : {}),
         ...(magazordApiUser !== undefined ? { magazordApiUser } : {}),
         ...(magazordApiPassword !== undefined ? { magazordApiPassword } : {}),
@@ -401,6 +464,7 @@ export const updateCurrentCompanyIntegration = async (
       select: {
         ...companyPublicSelect,
         magazordApiPassword: true,
+        anymarketToken: true,
       },
     });
 

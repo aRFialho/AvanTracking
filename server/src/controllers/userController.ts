@@ -184,6 +184,7 @@ export const login = async (req: Request, res: Response) => {
             password: hashedAdminPassword,
             role: 'ADMIN_SUPER',
             isActive: true,
+            companyId: null,
           },
         });
       }
@@ -196,6 +197,7 @@ export const login = async (req: Request, res: Response) => {
           name: true,
           role: true,
           isActive: true,
+          companyId: true,
           password: true,
         },
       });
@@ -213,10 +215,17 @@ export const login = async (req: Request, res: Response) => {
         return res.status(401).json({ error: 'Invalid credentials' });
       }
 
+      if (logisyncUser.role !== 'ADMIN_SUPER' && !logisyncUser.companyId) {
+        return res.status(403).json({
+          error:
+            'Usuario Logisync sem empresa vinculada. Solicite ajuste ao admin super.',
+        });
+      }
+
       const token = generateToken({
         id: logisyncUser.id,
         email: logisyncUser.email,
-        companyId: null,
+        companyId: logisyncUser.companyId,
         role: logisyncUser.role,
         module: 'logisync',
         isSuperAdmin: logisyncUser.role === 'ADMIN_SUPER',
@@ -227,7 +236,7 @@ export const login = async (req: Request, res: Response) => {
         email: logisyncUser.email,
         name: logisyncUser.name,
         role: logisyncUser.role,
-        companyId: null,
+        companyId: logisyncUser.companyId,
         module: 'logisync',
         isSuperAdmin: logisyncUser.role === 'ADMIN_SUPER',
         token,

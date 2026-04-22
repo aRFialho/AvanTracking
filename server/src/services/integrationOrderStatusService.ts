@@ -10,7 +10,7 @@ export interface IntegrationOrderStatusOption {
 }
 
 export interface IntegrationOrderStatusResponse {
-  integration: 'tray' | 'magazord' | 'bling' | 'sysemp' | null;
+  integration: 'tray' | 'anymarket' | 'magazord' | 'bling' | 'sysemp' | null;
   integrationLabel: string;
   statuses: IntegrationOrderStatusOption[];
   cancelStatusValues: string[];
@@ -60,6 +60,16 @@ const MAGAZORD_STATUSES: IntegrationOrderStatusOption[] = [
   { value: '30', label: 'Aprovado Parcial', code: 30, category: 'Normal' },
   { value: '31', label: 'Em Logistica Reversa', code: 31, category: 'Anomalia' },
 ];
+
+const ANYMARKET_STATUSES: IntegrationOrderStatusOption[] = [
+  { value: 'PENDING', label: 'Pendente' },
+  { value: 'DELIVERY_ISSUE', label: 'Problema na entrega' },
+  { value: 'PAID_WAITING_SHIP', label: 'Pago aguardando envio' },
+  { value: 'INVOICED', label: 'Faturado' },
+  { value: 'PAID_WAITING_DELIVERY', label: 'Enviado aguardando entrega' },
+  { value: 'CONCLUDED', label: 'Concluido / Entregue' },
+  { value: 'CANCELED', label: 'Cancelado' },
+] as const;
 
 const normalizeText = (value: unknown) =>
   String(value || '')
@@ -146,6 +156,7 @@ export class IntegrationOrderStatusService {
       where: { id: companyId },
       select: {
         trayIntegrationEnabled: true,
+        anymarketIntegrationEnabled: true,
         blingIntegrationEnabled: true,
         magazordIntegrationEnabled: true,
         sysempIntegrationEnabled: true,
@@ -193,6 +204,15 @@ export class IntegrationOrderStatusService {
           normalizeText(status.category).toLowerCase() === 'cancelado' ||
           normalizeText(status.label).toLowerCase().includes('cancel'),
         ).map((status) => status.value),
+      };
+    }
+
+    if (company.anymarketIntegrationEnabled) {
+      return {
+        integration: 'anymarket',
+        integrationLabel: 'ANYMARKET',
+        statuses: [...ANYMARKET_STATUSES],
+        cancelStatusValues: ['CANCELED'],
       };
     }
 

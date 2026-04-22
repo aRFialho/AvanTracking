@@ -7,7 +7,11 @@ const resolveCompanyId = (req: Request) => {
   const explicitCompanyId = bodyCompanyId || queryCompanyId;
 
   if (req.user?.module === 'logisync') {
-    return explicitCompanyId || null;
+    if (req.user?.isSuperAdmin) {
+      return explicitCompanyId || null;
+    }
+
+    return String(req.user?.companyId || '').trim() || null;
   }
 
   return String(req.user?.companyId || '').trim() || explicitCompanyId || null;
@@ -169,4 +173,3 @@ export const getLogisyncConciliationContext = async (
     });
   }
 };
-

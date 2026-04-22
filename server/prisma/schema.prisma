@@ -73,6 +73,7 @@ model Company {
     documentType String? // CNPJ | CPF
     documentNumber String? // somente digitos
     trayIntegrationEnabled Boolean @default(true)
+    anymarketIntegrationEnabled Boolean @default(false)
     blingIntegrationEnabled Boolean @default(false)
     magazordIntegrationEnabled Boolean @default(false)
     sysempIntegrationEnabled Boolean @default(false)
@@ -81,6 +82,9 @@ model Company {
     correiosIntegrationEnabled Boolean @default(true)
     databaseUrl String? // URL do banco de dados especÃ­fico da empresa
     intelipostClientId String?
+    anymarketApiBaseUrl String?
+    anymarketPlatform String?
+    anymarketToken String? @db.Text
     magazordApiBaseUrl String?
     magazordApiUser String?
     magazordApiPassword String? @db.Text
@@ -94,6 +98,7 @@ model Company {
     monitoredOrders MonitoredOrder[]
     syncNotifications SyncNotification[]
     customOrderStatuses CompanyOrderCustomStatus[]
+    logisyncUsers LogisyncUser[]
 
     @@index([documentType, documentNumber], map: "Company_document_idx")
 }
@@ -224,8 +229,12 @@ model LogisyncUser {
     password     String // bcrypt hash
     role         LogisyncRole @default(ANALYST)
     isActive     Boolean     @default(true)
+    companyId    String?
+    company      Company?    @relation(fields: [companyId], references: [id], onDelete: SetNull)
     createdAt    DateTime    @default(now())
     updatedAt    DateTime    @updatedAt
+
+    @@index([companyId])
 }
 
 model MonitoredOrder {

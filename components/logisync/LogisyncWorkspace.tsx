@@ -71,6 +71,19 @@ type CompanyOption = {
   name: string;
 };
 
+type LogisyncManagedUserRole = "ADMIN_SUPER" | "ANALYST";
+
+type LogisyncManagedUser = {
+  id: string;
+  name: string;
+  email: string;
+  role: LogisyncManagedUserRole;
+  isActive: boolean;
+  companyId: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 const SECTION_TABS: Record<SectionKey, Array<{ key: string; label: string }>> = {
   dashboard: [
     { key: "visao-geral", label: "Visao Geral" },
@@ -147,12 +160,6 @@ const AUTOMATIONS = [
   },
 ];
 
-const ADMIN_USERS = [
-  { name: "Logisync Admin", email: "logisync@admin.com.br", role: "ADMIN_SUPER", lastAccess: "Hoje 08:12" },
-  { name: "Analista Frete 1", email: "analista1@logisync.com.br", role: "ANALYST", lastAccess: "Hoje 07:48" },
-  { name: "Analista Frete 2", email: "analista2@logisync.com.br", role: "ANALYST", lastAccess: "Ontem 18:21" },
-];
-
 const INITIAL_RULES: FreightRule[] = [];
 
 const currency = (value: number) =>
@@ -210,6 +217,18 @@ export const LogisyncWorkspace: React.FC = () => {
   const [isLoadingConciliationOrders, setIsLoadingConciliationOrders] =
     useState(false);
   const [mindMapCarrier, setMindMapCarrier] = useState("");
+  const [logisyncUsers, setLogisyncUsers] = useState<LogisyncManagedUser[]>([]);
+  const [isLoadingLogisyncUsers, setIsLoadingLogisyncUsers] = useState(false);
+  const [isSavingLogisyncUser, setIsSavingLogisyncUser] = useState(false);
+  const [editingLogisyncUserId, setEditingLogisyncUserId] = useState<string | null>(null);
+  const [logisyncUserError, setLogisyncUserError] = useState("");
+  const [logisyncUserForm, setLogisyncUserForm] = useState({
+    name: "",
+    email: "",
+    password: "",
+    role: "ANALYST" as LogisyncManagedUserRole,
+    isActive: true,
+  });
 
   const navSections = useMemo(() => {
     const sections: Array<{ key: SectionKey; label: string; icon: React.ElementType }> = [
@@ -339,6 +358,184 @@ export const LogisyncWorkspace: React.FC = () => {
     }
   }, []);
 
+  const loadLogisyncUsers = useCallback(async (companyId: string) => {
+    const normalizedCompanyId = String(companyId || "").trim();
+    if (!normalizedCompanyId || !isSuperAdmin) {
+      setLogisyncUsers([]);
+      return;
+    }
+
+    setIsLoadingLogisyncUsers(true);
+    setLogisyncUserError("");
+    try {
+      const response = await fetchWithAuth(
+        `/api/logisync/users?companyId=${encodeURIComponent(normalizedCompanyId)}`,
+      );
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.error || `HTTP ${response.status}`);
+      }
+
+      const users = Array.isArray(data.users)
+        ? (data.users as LogisyncManagedUser[])
+        : [];
+      setLogisyncUsers(users);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel carregar os usuarios do Logisync.";
+      setLogisyncUsers([]);
+      setLogisyncUserError(message);
+      showToast({
+        tone: "error",
+        title: "Logisync",
+        message,
+      });
+    } finally {
+      setIsLoadingLogisyncUsers(false);
+    }
+  }, [isSuperAdmin]);
+
+  const resetLogisyncUserForm = () => {
+    setEditingLogisyncUserId(null);
+    setLogisyncUserForm({
+      name: "",
+      email: "",
+      password: "",
+      role: "ANALYST",
+      isActive: true,
+    });
+  };
+
+  const startEditLogisyncUser = (targetUser: LogisyncManagedUser) => {
+    setEditingLogisyncUserId(targetUser.id);
+    setLogisyncUserForm({
+      name: targetUser.name,
+      email: targetUser.email,
+      password: "",
+      role: targetUser.role,
+      isActive: targetUser.isActive,
+    });
+    setLogisyncUserError("");
+  };
+
+  const saveLogisyncUser = async () => {
+    if (!selectedCompanyId) {
+      setLogisyncUserError("Selecione uma empresa para gerenciar usuarios.");
+      return;
+    }
+
+    const name = logisyncUserForm.name.trim();
+    const email = logisyncUserForm.email.trim().toLowerCase();
+    const password = logisyncUserForm.password.trim();
+
+    if (!name || !email) {
+      setLogisyncUserError("Nome e e-mail sao obrigatorios.");
+      return;
+    }
+
+    if (!editingLogisyncUserId && password.length < 8) {
+      setLogisyncUserError("Informe uma senha com no minimo 8 caracteres.");
+      return;
+    }
+
+    setIsSavingLogisyncUser(true);
+    setLogisyncUserError("");
+
+    try {
+      const endpoint = editingLogisyncUserId
+        ? `/api/logisync/users/${encodeURIComponent(editingLogisyncUserId)}`
+        : "/api/logisync/users";
+      const method = editingLogisyncUserId ? "PUT" : "POST";
+      const response = await fetchWithAuth(endpoint, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          email,
+          role: logisyncUserForm.role,
+          companyId: selectedCompanyId,
+          isActive: logisyncUserForm.isActive,
+          ...(password ? { password } : {}),
+        }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error || `HTTP ${response.status}`);
+      }
+
+      showToast({
+        tone: "success",
+        title: "Logisync",
+        message: editingLogisyncUserId
+          ? "Usuario atualizado com sucesso."
+          : "Usuario criado com sucesso.",
+      });
+
+      resetLogisyncUserForm();
+      await loadLogisyncUsers(selectedCompanyId);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel salvar o usuario.";
+      setLogisyncUserError(message);
+      showToast({
+        tone: "error",
+        title: "Logisync",
+        message,
+      });
+    } finally {
+      setIsSavingLogisyncUser(false);
+    }
+  };
+
+  const deleteLogisyncUser = async (userId: string) => {
+    if (!selectedCompanyId || !userId) {
+      return;
+    }
+
+    setIsSavingLogisyncUser(true);
+    setLogisyncUserError("");
+    try {
+      const response = await fetchWithAuth(
+        `/api/logisync/users/${encodeURIComponent(userId)}`,
+        { method: "DELETE" },
+      );
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error || `HTTP ${response.status}`);
+      }
+
+      if (editingLogisyncUserId === userId) {
+        resetLogisyncUserForm();
+      }
+
+      showToast({
+        tone: "success",
+        title: "Logisync",
+        message: "Usuario removido com sucesso.",
+      });
+      await loadLogisyncUsers(selectedCompanyId);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel remover o usuario.";
+      setLogisyncUserError(message);
+      showToast({
+        tone: "error",
+        title: "Logisync",
+        message,
+      });
+    } finally {
+      setIsSavingLogisyncUser(false);
+    }
+  };
+
   useEffect(() => {
     void loadCompanies();
   }, [loadCompanies]);
@@ -358,12 +555,19 @@ export const LogisyncWorkspace: React.FC = () => {
     if (!selectedCompanyId) {
       setRules(INITIAL_RULES);
       setConciliationOrders(BASE_ORDERS);
+      setLogisyncUsers([]);
       return;
     }
 
     void loadRules(selectedCompanyId);
     void loadConciliationOrders(selectedCompanyId);
-  }, [selectedCompanyId, loadConciliationOrders, loadRules]);
+    void loadLogisyncUsers(selectedCompanyId);
+  }, [selectedCompanyId, loadConciliationOrders, loadLogisyncUsers, loadRules]);
+
+  useEffect(() => {
+    resetLogisyncUserForm();
+    setLogisyncUserError("");
+  }, [selectedCompanyId]);
 
   const carrierOptions = useMemo(
     () =>
@@ -1633,16 +1837,24 @@ export const LogisyncWorkspace: React.FC = () => {
       );
     }
 
+    const selectedCompanyName =
+      companies.find((company) => company.id === selectedCompanyId)?.name ||
+      "Empresa";
+    const activeUsers = logisyncUsers.filter((targetUser) => targetUser.isActive).length;
+    const analystUsers = logisyncUsers.filter(
+      (targetUser) => targetUser.role === "ANALYST",
+    ).length;
+
     return (
       <div className="space-y-5">
         <div className="grid gap-4 md:grid-cols-3">
           <div className={cardBase}>
             <p className="text-xs uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Usuarios ativos</p>
-            <p className="mt-2 text-3xl font-bold text-slate-900 dark:text-white">18</p>
+            <p className="mt-2 text-3xl font-bold text-slate-900 dark:text-white">{activeUsers}</p>
           </div>
           <div className={cardBase}>
-            <p className="text-xs uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Admins super</p>
-            <p className="mt-2 text-3xl font-bold text-blue-600 dark:text-blue-300">2</p>
+            <p className="text-xs uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Analistas vinculados</p>
+            <p className="mt-2 text-3xl font-bold text-blue-600 dark:text-blue-300">{analystUsers}</p>
           </div>
           <div className={cardBase}>
             <p className="text-xs uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Regras ativas</p>
@@ -1650,33 +1862,201 @@ export const LogisyncWorkspace: React.FC = () => {
           </div>
         </div>
 
-        <div className={cardBase}>
-          <h3 className="mb-4 text-sm font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-300">
-            Governanca de Usuarios
-          </h3>
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-[0.14em] text-slate-500 dark:border-white/10 dark:text-slate-400">
-                  <th className="py-3 pr-4">Nome</th>
-                  <th className="py-3 pr-4">E-mail</th>
-                  <th className="py-3 pr-4">Perfil</th>
-                  <th className="py-3">Ultimo acesso</th>
-                </tr>
-              </thead>
-              <tbody>
-                {ADMIN_USERS.map((adminUser) => (
-                  <tr key={adminUser.email} className="border-b border-slate-100 dark:border-white/5">
-                    <td className="py-3 pr-4 font-semibold text-slate-800 dark:text-slate-100">{adminUser.name}</td>
-                    <td className="py-3 pr-4 text-slate-600 dark:text-slate-300">{adminUser.email}</td>
-                    <td className="py-3 pr-4 text-slate-600 dark:text-slate-300">{adminUser.role}</td>
-                    <td className="py-3 text-slate-600 dark:text-slate-300">{adminUser.lastAccess}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        {!selectedCompanyId && (
+          <div className={cardBase}>
+            <p className="text-sm text-slate-600 dark:text-slate-300">
+              Selecione uma empresa no topo para gerenciar os usuarios.
+            </p>
           </div>
-        </div>
+        )}
+
+        {selectedCompanyId && (
+          <div className="grid gap-5 xl:grid-cols-3">
+            <div className={clsx(cardBase, "xl:col-span-2")}>
+              <h3 className="mb-1 text-sm font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-300">
+                Governanca de Usuarios
+              </h3>
+              <p className="mb-4 text-xs text-slate-500 dark:text-slate-400">
+                Empresa ativa: {selectedCompanyName}. Os usuarios desta lista nao conflitam com outras empresas.
+              </p>
+
+              {isLoadingLogisyncUsers ? (
+                <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-4 text-sm text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-300">
+                  Carregando usuarios do Logisync...
+                </div>
+              ) : logisyncUsers.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-slate-300 px-3 py-4 text-sm text-slate-500 dark:border-white/20 dark:text-slate-400">
+                  Nenhum usuario cadastrado para esta empresa.
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-[0.14em] text-slate-500 dark:border-white/10 dark:text-slate-400">
+                        <th className="py-3 pr-4">Nome</th>
+                        <th className="py-3 pr-4">E-mail</th>
+                        <th className="py-3 pr-4">Perfil</th>
+                        <th className="py-3 pr-4">Status</th>
+                        <th className="py-3 pr-4">Atualizado</th>
+                        <th className="py-3 text-right">Acoes</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {logisyncUsers.map((targetUser) => (
+                        <tr key={targetUser.id} className="border-b border-slate-100 dark:border-white/5">
+                          <td className="py-3 pr-4 font-semibold text-slate-800 dark:text-slate-100">{targetUser.name}</td>
+                          <td className="py-3 pr-4 text-slate-600 dark:text-slate-300">{targetUser.email}</td>
+                          <td className="py-3 pr-4 text-slate-600 dark:text-slate-300">{targetUser.role}</td>
+                          <td className="py-3 pr-4">
+                            <span
+                              className={clsx(
+                                "inline-flex rounded-full px-2 py-0.5 text-xs font-semibold",
+                                targetUser.isActive
+                                  ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300"
+                                  : "bg-slate-200 text-slate-700 dark:bg-slate-600/40 dark:text-slate-200",
+                              )}
+                            >
+                              {targetUser.isActive ? "Ativo" : "Inativo"}
+                            </span>
+                          </td>
+                          <td className="py-3 pr-4 text-slate-600 dark:text-slate-300">
+                            {new Date(targetUser.updatedAt).toLocaleDateString("pt-BR")}
+                          </td>
+                          <td className="py-3 text-right">
+                            <div className="inline-flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => startEditLogisyncUser(targetUser)}
+                                disabled={isSavingLogisyncUser}
+                                className="inline-flex items-center gap-1 rounded-lg border border-blue-300 px-2 py-1 text-xs text-blue-700 transition-colors hover:bg-blue-50 dark:border-blue-400/30 dark:text-blue-300 dark:hover:bg-blue-500/10"
+                              >
+                                <Pencil className="h-4 w-4" />
+                                Editar
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => deleteLogisyncUser(targetUser.id)}
+                                disabled={isSavingLogisyncUser}
+                                className="inline-flex items-center gap-1 rounded-lg border border-rose-300 px-2 py-1 text-xs text-rose-600 transition-colors hover:bg-rose-50 dark:border-rose-400/30 dark:text-rose-300 dark:hover:bg-rose-500/10"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                                Remover
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            <div className={cardBase}>
+              <h3 className="mb-3 text-sm font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-300">
+                {editingLogisyncUserId ? "Editar usuario" : "Novo usuario"}
+              </h3>
+              <div className="space-y-3">
+                <input
+                  value={logisyncUserForm.name}
+                  onChange={(event) =>
+                    setLogisyncUserForm((current) => ({
+                      ...current,
+                      name: event.target.value,
+                    }))
+                  }
+                  disabled={isSavingLogisyncUser}
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-white/10 dark:bg-white/5"
+                  placeholder="Nome"
+                />
+                <input
+                  value={logisyncUserForm.email}
+                  onChange={(event) =>
+                    setLogisyncUserForm((current) => ({
+                      ...current,
+                      email: event.target.value,
+                    }))
+                  }
+                  disabled={isSavingLogisyncUser}
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-white/10 dark:bg-white/5"
+                  placeholder="E-mail"
+                />
+                <input
+                  value={logisyncUserForm.password}
+                  onChange={(event) =>
+                    setLogisyncUserForm((current) => ({
+                      ...current,
+                      password: event.target.value,
+                    }))
+                  }
+                  type="password"
+                  disabled={isSavingLogisyncUser}
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-white/10 dark:bg-white/5"
+                  placeholder={editingLogisyncUserId ? "Nova senha (opcional)" : "Senha inicial"}
+                />
+                <select
+                  value={logisyncUserForm.role}
+                  onChange={(event) =>
+                    setLogisyncUserForm((current) => ({
+                      ...current,
+                      role: event.target.value as LogisyncManagedUserRole,
+                    }))
+                  }
+                  disabled={isSavingLogisyncUser}
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-white/10 dark:bg-white/5"
+                >
+                  <option value="ANALYST">ANALYST</option>
+                </select>
+                <label className="inline-flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={logisyncUserForm.isActive}
+                    onChange={(event) =>
+                      setLogisyncUserForm((current) => ({
+                        ...current,
+                        isActive: event.target.checked,
+                      }))
+                    }
+                    disabled={isSavingLogisyncUser}
+                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 dark:border-white/20 dark:bg-white/5"
+                  />
+                  Usuario ativo
+                </label>
+
+                {logisyncUserError && (
+                  <p className="text-xs text-rose-600 dark:text-rose-300">{logisyncUserError}</p>
+                )}
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={saveLogisyncUser}
+                    disabled={isSavingLogisyncUser}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-orange-500 px-3 py-2 text-sm font-semibold text-white transition hover:brightness-110"
+                  >
+                    <Save className="h-4 w-4" />
+                    {isSavingLogisyncUser
+                      ? "Salvando..."
+                      : editingLogisyncUserId
+                        ? "Salvar alteracoes"
+                        : "Criar usuario"}
+                  </button>
+                  {editingLogisyncUserId && (
+                    <button
+                      type="button"
+                      onClick={resetLogisyncUserForm}
+                      disabled={isSavingLogisyncUser}
+                      className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-2 py-1.5 text-xs text-slate-600 transition-colors hover:bg-slate-100 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/10"
+                    >
+                      <X className="h-4 w-4" />
+                      Cancelar
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   };

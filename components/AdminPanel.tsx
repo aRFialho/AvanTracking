@@ -35,6 +35,7 @@ interface Company {
   documentType?: string | null;
   documentNumber?: string | null;
   trayIntegrationEnabled?: boolean;
+  anymarketIntegrationEnabled?: boolean;
   blingIntegrationEnabled?: boolean;
   magazordIntegrationEnabled?: boolean;
   sysempIntegrationEnabled?: boolean;
@@ -42,6 +43,7 @@ interface Company {
   sswRequireEnabled?: boolean;
   correiosIntegrationEnabled?: boolean;
   intelipostClientId?: string | null;
+  anymarketTokenConfigured?: boolean;
   magazordApiBaseUrl?: string | null;
   magazordApiUser?: string | null;
   magazordApiPasswordConfigured?: boolean;
@@ -289,6 +291,8 @@ export const AdminPanel: React.FC = () => {
   const [currentCompany, setCurrentCompany] = useState<Company | null>(null);
   const [integrationSearch, setIntegrationSearch] = useState("");
   const [trayIntegrationEnabled, setTrayIntegrationEnabled] = useState(true);
+  const [anymarketIntegrationEnabled, setAnymarketIntegrationEnabled] =
+    useState(false);
   const [blingIntegrationEnabled, setBlingIntegrationEnabled] = useState(false);
   const [magazordIntegrationEnabled, setMagazordIntegrationEnabled] =
     useState(false);
@@ -299,6 +303,9 @@ export const AdminPanel: React.FC = () => {
   const [correiosIntegrationEnabled, setCorreiosIntegrationEnabled] =
     useState(true);
   const [intelipostClientId, setIntelipostClientId] = useState("");
+  const [anymarketToken, setAnymarketToken] = useState("");
+  const [anymarketTokenConfigured, setAnymarketTokenConfigured] =
+    useState(false);
   const [magazordApiBaseUrl, setMagazordApiBaseUrl] = useState("");
   const [magazordApiUser, setMagazordApiUser] = useState("");
   const [magazordApiPassword, setMagazordApiPassword] = useState("");
@@ -307,6 +314,7 @@ export const AdminPanel: React.FC = () => {
   const [sswRequireCnpjs, setSswRequireCnpjs] = useState<string[]>([""]);
   const [integrationCarrierExceptions, setIntegrationCarrierExceptions] = useState<string[]>([""]);
   const [isSavingIntelipost, setIsSavingIntelipost] = useState(false);
+  const [isSavingAnymarket, setIsSavingAnymarket] = useState(false);
   const [isSavingMagazord, setIsSavingMagazord] = useState(false);
   const [isSavingSswRequire, setIsSavingSswRequire] = useState(false);
   const [isSavingCarrierExceptions, setIsSavingCarrierExceptions] = useState(false);
@@ -441,6 +449,9 @@ export const AdminPanel: React.FC = () => {
   const applyCompanyIntegrationState = (companyData: Company | null) => {
     setCurrentCompany(companyData);
     setTrayIntegrationEnabled(companyData?.trayIntegrationEnabled !== false);
+    setAnymarketIntegrationEnabled(
+      companyData?.anymarketIntegrationEnabled === true,
+    );
     setBlingIntegrationEnabled(companyData?.blingIntegrationEnabled === true);
     setMagazordIntegrationEnabled(
       companyData?.magazordIntegrationEnabled === true,
@@ -454,6 +465,8 @@ export const AdminPanel: React.FC = () => {
       companyData?.correiosIntegrationEnabled !== false,
     );
     setIntelipostClientId(companyData?.intelipostClientId || "");
+    setAnymarketToken("");
+    setAnymarketTokenConfigured(companyData?.anymarketTokenConfigured === true);
     setMagazordApiBaseUrl(companyData?.magazordApiBaseUrl || "");
     setMagazordApiUser(companyData?.magazordApiUser || "");
     setMagazordApiPassword("");
@@ -845,6 +858,7 @@ export const AdminPanel: React.FC = () => {
   const handleSaveIntegrationToggle = async (
     field:
       | "trayIntegrationEnabled"
+      | "anymarketIntegrationEnabled"
       | "blingIntegrationEnabled"
       | "magazordIntegrationEnabled"
       | "sysempIntegrationEnabled"
@@ -857,6 +871,7 @@ export const AdminPanel: React.FC = () => {
 
     const isErpToggle =
       field === "trayIntegrationEnabled" ||
+      field === "anymarketIntegrationEnabled" ||
       field === "blingIntegrationEnabled" ||
       field === "magazordIntegrationEnabled" ||
       field === "sysempIntegrationEnabled";
@@ -865,6 +880,8 @@ export const AdminPanel: React.FC = () => {
       const activeErpField =
         trayIntegrationEnabled
           ? "trayIntegrationEnabled"
+          : anymarketIntegrationEnabled
+            ? "anymarketIntegrationEnabled"
           : blingIntegrationEnabled
             ? "blingIntegrationEnabled"
             : magazordIntegrationEnabled
@@ -905,6 +922,47 @@ export const AdminPanel: React.FC = () => {
       await fetchCurrentCompany();
     } finally {
       setIsSavingIntegrationToggle(false);
+    }
+  };
+
+  const handleSaveAnymarket = async () => {
+    if (!currentCompany) return;
+
+    const trimmedToken = anymarketToken.trim();
+
+    if (!trimmedToken && !anymarketTokenConfigured) {
+      adminToast("Informe o gumgaToken da ANYMARKET.");
+      return;
+    }
+
+    setIsSavingAnymarket(true);
+    try {
+      const payload: Record<string, string> = {};
+
+      if (trimmedToken) {
+        payload.anymarketToken = trimmedToken;
+      }
+
+      const response = await fetchWithAuth("/api/companies/current/integration", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(
+          data.error || "Nao foi possivel salvar o gumgaToken da ANYMARKET.",
+        );
+      }
+
+      applyCompanyIntegrationState(data.company || null);
+      adminToast(data.message || "gumgaToken da ANYMARKET atualizado com sucesso.");
+    } catch (err: any) {
+      adminToast(err.message || "Erro ao salvar o gumgaToken da ANYMARKET.");
+    } finally {
+      setIsSavingAnymarket(false);
     }
   };
 
@@ -1128,6 +1186,7 @@ export const AdminPanel: React.FC = () => {
     integrationSubTab === "erp"
       ? integrationCardMatches("tray integracao principal pedidos loja autorizacao") ||
         integrationCardMatches("magazord erp pedidos basic auth usuario senha api") ||
+        integrationCardMatches("anymarket hub marketplace marketplaces pedidos gumga token rate limit tracking invoice nfe fulfillment") ||
         integrationCardMatches("bling erp implementacao futuro") ||
         integrationCardMatches("sysemp shopping de precos implementacao futuro")
       : integrationSubTab === "tracking"
@@ -1719,7 +1778,7 @@ export const AdminPanel: React.FC = () => {
                       onChange={(e) => setIntegrationSearch(e.target.value)}
                       placeholder={
                         integrationSubTab === "erp"
-                          ? "Tray, Magazord, Bling, SYSEMP..."
+                          ? "Tray, Magazord, ANYMARKET, Bling, SYSEMP..."
                           : integrationSubTab === "tracking"
                             ? "Intelipost, SSW, Correios..."
                             : "Excecao de transportadora, importacao..."
@@ -2162,6 +2221,101 @@ export const AdminPanel: React.FC = () => {
                   >
                     {isSavingMagazord ? "Salvando..." : "Salvar Magazord"}
                   </button>
+                </div>
+              </div>
+            </div>
+            )}
+
+            {integrationSubTab === "erp" && integrationCardMatches("anymarket hub marketplace marketplaces pedidos gumga token rate limit tracking invoice nfe fulfillment") && (
+            <div className="glass-card mb-6 inline-block w-full break-inside-avoid rounded-2xl overflow-hidden border border-slate-200 dark:border-white/10 align-top">
+              <div className="p-5 border-b border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-white/5">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">ERP com token</p>
+                    <img
+                      src="/ANY.png"
+                      alt="ANYMARKET"
+                      className={INTEGRATION_LOGO_CLASS}
+                    />
+                    <h4 className="mt-2 text-lg font-bold text-slate-800 dark:text-white">ANYMARKET</h4>
+                    <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+                      Configure o gumgaToken da conta e ative a integracao para importar pedidos da ANYMARKET no mesmo fluxo operacional dos outros ERPs.
+                    </p>
+                  </div>
+                  <div className="flex flex-col items-end gap-2">
+                    <IntegrationToggle
+                      enabled={anymarketIntegrationEnabled}
+                      disabled={isSavingIntegrationToggle || !currentCompany}
+                      onChange={(nextValue) =>
+                        handleSaveIntegrationToggle("anymarketIntegrationEnabled", nextValue)
+                      }
+                    />
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                      {anymarketIntegrationEnabled ? "Ativa" : "Desativada"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-5 space-y-4">
+                <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700 dark:border-blue-900/30 dark:bg-blue-900/10 dark:text-blue-300">
+                  O usuario precisa informar apenas o <span className="font-semibold">gumgaToken</span>. O sistema usa internamente o identificador do integrador e a URL padrao da API v2.
+                </div>
+
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 dark:border-white/10 dark:bg-white/5">
+                  <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                    gumgaToken
+                  </label>
+                  <div className="flex flex-col gap-3 sm:flex-row">
+                    <input
+                      type="password"
+                      value={anymarketToken}
+                      onChange={(e) => setAnymarketToken(e.target.value)}
+                      placeholder={
+                        anymarketTokenConfigured
+                          ? "Token ja cadastrado"
+                          : "Informe o gumgaToken da ANYMARKET"
+                      }
+                      className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white focus:border-blue-500 outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleSaveAnymarket}
+                      disabled={isSavingAnymarket || !currentCompany}
+                      className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-medium text-white bg-slate-700 hover:bg-slate-800 disabled:opacity-50 transition-colors"
+                    >
+                      {isSavingAnymarket ? "Salvando..." : "Salvar ANYMARKET"}
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-2">
+                    {anymarketTokenConfigured
+                      ? "Ja existe um gumgaToken salvo para esta empresa. Preencha novamente apenas se quiser substituir."
+                      : "Salve o gumgaToken antes de ativar a integracao."}
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 dark:border-white/10 dark:bg-white/5">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+                      Janela de consulta
+                    </p>
+                    <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+                      O endpoint <span className="font-semibold">GET /orders</span> aceita filtro por criacao de ate <span className="font-semibold">120 dias</span> e por atualizacao de ate <span className="font-semibold">7 dias</span>.
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 dark:border-white/10 dark:bg-white/5">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+                      Rate limit
+                    </p>
+                    <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+                      O backend respeita os headers <span className="font-semibold">ratelimit-limit</span>, <span className="font-semibold">ratelimit-remaining</span> e <span className="font-semibold">ratelimit-reset</span>, incluindo pausa automatica em <span className="font-semibold">429</span>.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-900/30 dark:bg-amber-900/10 dark:text-amber-200">
+                  O backend ja esta preparado para importacao de pedidos com a ANYMARKET. Ative apenas depois de salvar um gumgaToken valido para a conta da empresa.
                 </div>
               </div>
             </div>

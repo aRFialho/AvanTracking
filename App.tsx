@@ -1377,8 +1377,8 @@ const MainApp: React.FC = () => {
         );
       case "monitored-orders":
         return (
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          <div className="flex h-full min-h-0 flex-col gap-4">
+            <div className="grid shrink-0 grid-cols-1 gap-3 md:grid-cols-3">
               <div className="rounded-xl border border-slate-200 bg-white px-4 py-4 shadow-sm dark:border-white/10 dark:bg-dark-card">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                   Total Monitorados
@@ -1405,20 +1405,22 @@ const MainApp: React.FC = () => {
               </div>
             </div>
 
-            <OrderList
-              key="monitored-orders-view"
-              orders={monitoredOrders}
-              onFetchSingle={handleFetchSingleOrder}
-              onOrderUpdated={upsertOrder}
-              onStartSync={handleSync}
-              onStartTraySync={handleTraySync}
-              syncJob={syncJob}
-              traySyncJob={traySyncJob}
-              trayIntegrationStatus={trayIntegrationStatus}
-              monitoredOrderIds={monitoredOrderIds}
-              onToggleMonitoredOrder={handleToggleMonitoredOrder}
-              enableArchiveControls={false}
-            />
+            <div className="min-h-0 flex-1">
+              <OrderList
+                key="monitored-orders-view"
+                orders={monitoredOrders}
+                onFetchSingle={handleFetchSingleOrder}
+                onOrderUpdated={upsertOrder}
+                onStartSync={handleSync}
+                onStartTraySync={handleTraySync}
+                syncJob={syncJob}
+                traySyncJob={traySyncJob}
+                trayIntegrationStatus={trayIntegrationStatus}
+                monitoredOrderIds={monitoredOrderIds}
+                onToggleMonitoredOrder={handleToggleMonitoredOrder}
+                enableArchiveControls={false}
+              />
+            </div>
           </div>
         );
       case "no-movement":
