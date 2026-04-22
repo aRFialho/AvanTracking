@@ -1,4 +1,10 @@
-import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import React, {
+  useState,
+  useMemo,
+  useEffect,
+  useRef,
+  useCallback,
+} from "react";
 import {
   Order,
   OrderStatus,
@@ -45,7 +51,8 @@ import { showToast } from "../utils/toast";
 import { LOGO_URL } from "../constants";
 
 const DELAYED_STATUS_FILTER = "DELAYED";
-const ORDER_TABLE_COLUMN_STORAGE_KEY = "avantracking:order-list-visible-columns";
+const ORDER_TABLE_COLUMN_STORAGE_KEY =
+  "avantracking:order-list-visible-columns";
 
 type SortDirection = "asc" | "desc";
 type SortKey =
@@ -235,8 +242,10 @@ const compareText = (left: unknown, right: unknown) =>
     numeric: true,
   });
 
-const compareNumber = (left: number | null | undefined, right: number | null | undefined) =>
-  (left ?? Number.NEGATIVE_INFINITY) - (right ?? Number.NEGATIVE_INFINITY);
+const compareNumber = (
+  left: number | null | undefined,
+  right: number | null | undefined,
+) => (left ?? Number.NEGATIVE_INFINITY) - (right ?? Number.NEGATIVE_INFINITY);
 
 const getDateSortValue = (value: string | Date | null | undefined) => {
   if (value instanceof Date) {
@@ -267,7 +276,9 @@ const getStoredVisibleColumns = (): VisibleColumnKey[] => {
   }
 
   try {
-    const rawValue = window.localStorage.getItem(ORDER_TABLE_COLUMN_STORAGE_KEY);
+    const rawValue = window.localStorage.getItem(
+      ORDER_TABLE_COLUMN_STORAGE_KEY,
+    );
 
     if (!rawValue) {
       return DEFAULT_VISIBLE_COLUMNS;
@@ -279,8 +290,9 @@ const getStoredVisibleColumns = (): VisibleColumnKey[] => {
       return DEFAULT_VISIBLE_COLUMNS;
     }
 
-    const validColumns = parsedValue.filter((column): column is VisibleColumnKey =>
-      ORDER_TABLE_COLUMNS.some((item) => item.key === column),
+    const validColumns = parsedValue.filter(
+      (column): column is VisibleColumnKey =>
+        ORDER_TABLE_COLUMNS.some((item) => item.key === column),
     );
 
     return validColumns.length > 0 ? validColumns : DEFAULT_VISIBLE_COLUMNS;
@@ -328,28 +340,37 @@ export const OrderList: React.FC<OrderListProps> = ({
   const [activeFilterMenu, setActiveFilterMenu] = useState<
     "carrier" | "marketplace" | "status" | null
   >(null);
-  const [visibleColumns, setVisibleColumns] =
-    useState<VisibleColumnKey[]>(getStoredVisibleColumns);
+  const [visibleColumns, setVisibleColumns] = useState<VisibleColumnKey[]>(
+    getStoredVisibleColumns,
+  );
   const [isTraySyncModalOpen, setIsTraySyncModalOpen] = useState(false);
   const [isTraySyncing, setIsTraySyncing] = useState(false);
   const [traySyncDays, setTraySyncDays] = useState<TraySyncFilters["days"]>(90);
-  const [trayStatusMode, setTrayStatusMode] =
-    useState<TraySyncFilters["statusMode"]>("all_except_canceled");
-  const [selectedTrayStatuses, setSelectedTrayStatuses] = useState<string[]>([]);
+  const [trayStatusMode, setTrayStatusMode] = useState<
+    TraySyncFilters["statusMode"]
+  >("all_except_canceled");
+  const [selectedTrayStatuses, setSelectedTrayStatuses] = useState<string[]>(
+    [],
+  );
   const [integrationStatusOptions, setIntegrationStatusOptions] = useState<
     IntegrationOrderStatusOption[]
   >([]);
   const [integrationLabel, setIntegrationLabel] = useState("Integradora");
+  const [activeIntegration, setActiveIntegration] = useState<string | null>(
+    null,
+  );
   const [isLoadingIntegrationStatuses, setIsLoadingIntegrationStatuses] =
     useState(false);
   const [monitoringOrderIds, setMonitoringOrderIds] = useState<string[]>([]);
-  const [updatingArchiveOrderIds, setUpdatingArchiveOrderIds] = useState<string[]>(
-    [],
-  );
+  const [updatingArchiveOrderIds, setUpdatingArchiveOrderIds] = useState<
+    string[]
+  >([]);
   const [showArchivedOrders, setShowArchivedOrders] = useState(false);
   const [archivedOrders, setArchivedOrders] = useState<Order[]>([]);
   const [isLoadingArchivedOrders, setIsLoadingArchivedOrders] = useState(false);
-  const isTrayAvailable = Boolean(trayIntegrationStatus?.authorized);
+  const isTrayAvailable = Boolean(
+    trayIntegrationStatus?.authorized || activeIntegration === "anymarket",
+  );
   const [isSyncing, setIsSyncing] = useState(false); // ✅ Novo state
 
   // No Movement View State
@@ -366,9 +387,9 @@ export const OrderList: React.FC<OrderListProps> = ({
       ? [initialFilters.status]
       : [],
   );
-  const [selectedCarrierFilters, setSelectedCarrierFilters] = useState<string[]>(
-    [],
-  );
+  const [selectedCarrierFilters, setSelectedCarrierFilters] = useState<
+    string[]
+  >([]);
   const [selectedMarketplaceFilters, setSelectedMarketplaceFilters] = useState<
     string[]
   >([]);
@@ -697,11 +718,15 @@ export const OrderList: React.FC<OrderListProps> = ({
     return validOrders.filter((o) => {
       // 1. Text
       const matchText =
-        toText(o.orderNumber).toLowerCase().includes(searchText.toLowerCase()) ||
+        toText(o.orderNumber)
+          .toLowerCase()
+          .includes(searchText.toLowerCase()) ||
         toText((o as any).invoiceNumber)
           .toLowerCase()
           .includes(searchText.toLowerCase()) ||
-        toText(o.customerName).toLowerCase().includes(searchText.toLowerCase()) ||
+        toText(o.customerName)
+          .toLowerCase()
+          .includes(searchText.toLowerCase()) ||
         toText(o.cpf).includes(searchText);
 
       // 2. Dropdowns
@@ -1020,7 +1045,7 @@ export const OrderList: React.FC<OrderListProps> = ({
   };
 
   useEffect(() => {
-    if (!isTraySyncModalOpen || !onStartTraySync || !isTrayAvailable) {
+    if (!isTraySyncModalOpen || !onStartTraySync) {
       return;
     }
 
@@ -1030,9 +1055,12 @@ export const OrderList: React.FC<OrderListProps> = ({
       setIsLoadingIntegrationStatuses(true);
 
       try {
-        const response = await fetchWithAuth("/api/integrations/order-status-options");
-        const data =
-          (await response.json().catch(() => ({}))) as Partial<IntegrationStatusOptionsResponse>;
+        const response = await fetchWithAuth(
+          "/api/integrations/order-status-options",
+        );
+        const data = (await response
+          .json()
+          .catch(() => ({}))) as Partial<IntegrationStatusOptionsResponse>;
 
         if (!response.ok) {
           throw new Error(
@@ -1048,6 +1076,7 @@ export const OrderList: React.FC<OrderListProps> = ({
 
         const nextOptions = Array.isArray(data.statuses) ? data.statuses : [];
         setIntegrationLabel(data.integrationLabel || "Integradora");
+        setActiveIntegration((data as any).integration || null);
         setIntegrationStatusOptions(nextOptions);
       } catch (error) {
         if (cancelled) {
@@ -1056,6 +1085,7 @@ export const OrderList: React.FC<OrderListProps> = ({
 
         console.error("Erro ao carregar status da integradora ativa:", error);
         setIntegrationLabel("Integradora");
+        setActiveIntegration(null);
         setIntegrationStatusOptions([]);
       } finally {
         if (!cancelled) {
@@ -1069,7 +1099,45 @@ export const OrderList: React.FC<OrderListProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [isTrayAvailable, isTraySyncModalOpen, onStartTraySync]);
+  }, [isTraySyncModalOpen, onStartTraySync]);
+
+  // Carregar a integradora ativa ao montar o componente ou quando deps mudam
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadActiveIntegration = async () => {
+      try {
+        const response = await fetchWithAuth(
+          "/api/integrations/order-status-options",
+        );
+        const data = (await response
+          .json()
+          .catch(() => ({}))) as Partial<IntegrationStatusOptionsResponse>;
+
+        if (!cancelled) {
+          if (response.ok) {
+            setActiveIntegration((data as any).integration || null);
+          } else {
+            setActiveIntegration(null);
+          }
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.error("Erro ao carregar integradora ativa:", error);
+          setActiveIntegration(null);
+        }
+      }
+    };
+
+    // Apenas carregar se não estamos já carregando via modal
+    if (!isTraySyncModalOpen && onStartTraySync) {
+      void loadActiveIntegration();
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [onStartTraySync]);
 
   useEffect(() => {
     if (integrationStatusOptions.length === 0) {
@@ -1091,7 +1159,7 @@ export const OrderList: React.FC<OrderListProps> = ({
     if (trayStatusMode === "selected" && selectedTrayStatuses.length === 0) {
       showToast({
         tone: "warning",
-        title: "Filtros da Tray",
+        title: "Filtros da Integradora",
         message:
           "Selecione ao menos um status da Integradora para buscar os pedidos.",
       });
@@ -1836,443 +1904,451 @@ export const OrderList: React.FC<OrderListProps> = ({
         </button>
       </div>
       <div className={clsx("space-y-4 shrink-0", !showTopPanel && "hidden")}>
-      {/* 1. Filter Control Bar (Collapsible) */}
-      <div
-        className={clsx(
-          "glass-card rounded-xl border border-slate-200 dark:border-dark-border shadow-sm shrink-0 transition-all duration-300",
-          showFilters ? "overflow-visible relative z-20" : "overflow-hidden",
-        )}
-      >
+        {/* 1. Filter Control Bar (Collapsible) */}
         <div
-          className="flex items-center justify-between p-4 bg-slate-50 dark:bg-dark-card border-b border-slate-100 dark:border-white/5 cursor-pointer"
-          onClick={() => setShowFilters(!showFilters)}
+          className={clsx(
+            "glass-card rounded-xl border border-slate-200 dark:border-dark-border shadow-sm shrink-0 transition-all duration-300",
+            showFilters ? "overflow-visible relative z-20" : "overflow-hidden",
+          )}
         >
-          <div className="flex items-center gap-2 font-semibold text-slate-700 dark:text-white">
-            <Filter className="w-4 h-4 text-accent dark:text-neon-blue" />
-            Filtros Avançados
+          <div
+            className="flex items-center justify-between p-4 bg-slate-50 dark:bg-dark-card border-b border-slate-100 dark:border-white/5 cursor-pointer"
+            onClick={() => setShowFilters(!showFilters)}
+          >
+            <div className="flex items-center gap-2 font-semibold text-slate-700 dark:text-white">
+              <Filter className="w-4 h-4 text-accent dark:text-neon-blue" />
+              Filtros Avançados
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-400">
+                {filteredOrders.length} resultados
+              </span>
+              {showFilters ? (
+                <ChevronUp className="w-4 h-4 text-slate-400" />
+              ) : (
+                <ChevronDown className="w-4 h-4 text-slate-400" />
+              )}
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-400">
-              {filteredOrders.length} resultados
-            </span>
-            {showFilters ? (
-              <ChevronUp className="w-4 h-4 text-slate-400" />
-            ) : (
-              <ChevronDown className="w-4 h-4 text-slate-400" />
-            )}
-          </div>
+
+          {showFilters && (
+            <div
+              ref={filterMenuRef}
+              className="p-5 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 animate-in slide-in-from-top-2 duration-200 bg-white dark:bg-dark-card"
+            >
+              {/* Search */}
+              <div className="col-span-1 lg:col-span-4 flex gap-2">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Buscar por Pedido, Numero da Nota ou Cliente..."
+                    className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-dark-card border border-slate-200 dark:border-white/10 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent dark:focus:border-neon-blue dark:text-white transition-colors"
+                    value={searchText}
+                    onChange={(e) => setSearchText(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {/* Dropdowns */}
+              <div className="space-y-1 relative">
+                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase flex items-center gap-1">
+                  <Truck className="w-3 h-3" /> Transportadora
+                </label>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setActiveFilterMenu((current) =>
+                      current === "carrier" ? null : "carrier",
+                    )
+                  }
+                  className="w-full flex items-center justify-between gap-3 p-2 border border-slate-200 dark:border-white/10 rounded-lg text-sm bg-white dark:bg-dark-card dark:text-white focus:border-accent outline-none"
+                >
+                  <span className="truncate">
+                    {getMultiSelectButtonLabel(
+                      "Transportadora",
+                      selectedCarrierFilters,
+                    )}
+                  </span>
+                  <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
+                </button>
+                {activeFilterMenu === "carrier" && (
+                  <div className="absolute z-30 mt-2 w-full min-w-[240px] rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-dark-card shadow-xl p-3 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-semibold text-slate-500 uppercase">
+                        Transportadoras
+                      </span>
+                      {selectedCarrierFilters.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedCarrierFilters([])}
+                          className="text-[11px] font-medium text-blue-600 hover:underline"
+                        >
+                          Limpar
+                        </button>
+                      )}
+                    </div>
+                    <div className="max-h-56 overflow-auto space-y-2 pr-1">
+                      {carriers.map((carrier) => (
+                        <label
+                          key={carrier}
+                          className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedCarrierFilters.includes(carrier)}
+                            onChange={() => toggleCarrierFilter(carrier)}
+                            className="rounded border-slate-300 text-accent focus:ring-accent"
+                          />
+                          <span className="truncate">{carrier}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-1 relative">
+                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase flex items-center gap-1">
+                  <ShoppingBag className="w-3 h-3" /> Marketplace
+                </label>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setActiveFilterMenu((current) =>
+                      current === "marketplace" ? null : "marketplace",
+                    )
+                  }
+                  className="w-full flex items-center justify-between gap-3 p-2 border border-slate-200 dark:border-white/10 rounded-lg text-sm bg-white dark:bg-dark-card dark:text-white focus:border-accent outline-none"
+                >
+                  <span className="truncate">
+                    {getMultiSelectButtonLabel(
+                      "Marketplace",
+                      selectedMarketplaceFilters,
+                    )}
+                  </span>
+                  <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
+                </button>
+                {activeFilterMenu === "marketplace" && (
+                  <div className="absolute z-30 mt-2 w-full min-w-[240px] rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-dark-card shadow-xl p-3 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-semibold text-slate-500 uppercase">
+                        Marketplaces
+                      </span>
+                      {selectedMarketplaceFilters.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedMarketplaceFilters([])}
+                          className="text-[11px] font-medium text-blue-600 hover:underline"
+                        >
+                          Limpar
+                        </button>
+                      )}
+                    </div>
+                    <div className="max-h-56 overflow-auto space-y-2 pr-1">
+                      {marketplaces.map((marketplace) => (
+                        <label
+                          key={marketplace}
+                          className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedMarketplaceFilters.includes(
+                              marketplace,
+                            )}
+                            onChange={() =>
+                              toggleMarketplaceFilter(marketplace)
+                            }
+                            className="rounded border-slate-300 text-accent focus:ring-accent"
+                          />
+                          <span className="truncate">{marketplace}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-1 relative">
+                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase flex items-center gap-1">
+                  <Filter className="w-3 h-3" /> Status
+                </label>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setActiveFilterMenu((current) =>
+                      current === "status" ? null : "status",
+                    )
+                  }
+                  className="w-full flex items-center justify-between gap-3 p-2 border border-slate-200 dark:border-white/10 rounded-lg text-sm bg-white dark:bg-dark-card dark:text-white focus:border-accent outline-none"
+                >
+                  <span className="truncate">
+                    {getMultiSelectButtonLabel("Status", selectedStatusFilters)}
+                  </span>
+                  <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
+                </button>
+                {activeFilterMenu === "status" && (
+                  <div className="absolute z-30 mt-2 w-full min-w-[240px] rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-dark-card shadow-xl p-3 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-semibold text-slate-500 uppercase">
+                        Status
+                      </span>
+                      {selectedStatusFilters.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedStatusFilters([])}
+                          className="text-[11px] font-medium text-blue-600 hover:underline"
+                        >
+                          Limpar
+                        </button>
+                      )}
+                    </div>
+                    <div className="max-h-56 overflow-auto space-y-2 pr-1">
+                      <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+                        <input
+                          type="checkbox"
+                          checked={selectedStatusFilters.includes(
+                            DELAYED_STATUS_FILTER,
+                          )}
+                          onChange={() =>
+                            toggleStatusFilter(DELAYED_STATUS_FILTER)
+                          }
+                          className="rounded border-slate-300 text-accent focus:ring-accent"
+                        />
+                        <span>Atrasado</span>
+                      </label>
+                      {Object.values(OrderStatus).map((status) => (
+                        <label
+                          key={status}
+                          className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedStatusFilters.includes(status)}
+                            onChange={() => toggleStatusFilter(status)}
+                            className="rounded border-slate-300 text-accent focus:ring-accent"
+                          />
+                          <span>{STATUS_LABELS[status] || status}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Date Range */}
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase flex items-center gap-1">
+                  <Calendar className="w-3 h-3" /> Previsão de Entrega
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="date"
+                    value={dateRangeStart}
+                    onChange={(e) => setDateRangeStart(e.target.value)}
+                    className="w-full p-2 border border-slate-200 dark:border-white/10 rounded-lg text-xs bg-white dark:bg-dark-card dark:text-white focus:border-accent outline-none"
+                  />
+                  <input
+                    type="date"
+                    value={dateRangeEnd}
+                    onChange={(e) => setDateRangeEnd(e.target.value)}
+                    className="w-full p-2 border border-slate-200 dark:border-white/10 rounded-lg text-xs bg-white dark:bg-dark-card dark:text-white focus:border-accent outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* No Movement Toggle */}
+              {isNoMovementView && (
+                <div className="col-span-1 lg:col-span-4 flex flex-wrap items-center gap-4 bg-red-50 dark:bg-red-900/10 p-3 rounded-lg border border-red-200 dark:border-red-900/30">
+                  <span className="text-sm font-bold text-red-700 dark:text-red-400 flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4" />
+                    Sem Movimentação:
+                  </span>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setNoMovementDays(2)}
+                      className={clsx(
+                        "px-3 py-1 rounded-md text-xs font-medium transition-colors border",
+                        noMovementDays === 2
+                          ? "bg-red-600 text-white border-red-600"
+                          : "bg-white dark:bg-white/10 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-white/10 hover:bg-slate-50",
+                      )}
+                    >
+                      2+ dias
+                    </button>
+                    <button
+                      onClick={() => setNoMovementDays(5)}
+                      className={clsx(
+                        "px-3 py-1 rounded-md text-xs font-medium transition-colors border",
+                        noMovementDays === 5
+                          ? "bg-red-600 text-white border-red-600"
+                          : "bg-white dark:bg-white/10 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-white/10 hover:bg-slate-50",
+                      )}
+                    >
+                      5+ dias
+                    </button>
+                  </div>
+                  <span className="text-xs text-red-600 dark:text-red-300 ml-auto">
+                    Exibindo pedidos sem atualização há{" "}
+                    <strong>{noMovementDays} dias</strong> ou mais.
+                  </span>
+                </div>
+              )}
+
+              {/* Actions */}
+              <div className="col-span-1 lg:col-span-4 flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-white/5">
+                <button
+                  onClick={clearFilters}
+                  className="text-slate-500 text-sm hover:text-slate-800 dark:hover:text-white px-4 py-2 font-medium"
+                >
+                  Limpar Filtros
+                </button>
+                <button
+                  onClick={handleExternalSearchClick}
+                  disabled={isFetchingSingle}
+                  className="flex items-center justify-center px-4 py-2 bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-700 dark:text-white rounded-lg text-sm font-medium hover:bg-slate-50 dark:hover:bg-white/10 transition-colors"
+                >
+                  <Globe className="w-4 h-4 mr-2" />
+                  Buscar API
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
-        {showFilters && (
-          <div
-            ref={filterMenuRef}
-            className="p-5 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 animate-in slide-in-from-top-2 duration-200 bg-white dark:bg-dark-card"
-          >
-            {/* Search */}
-            <div className="col-span-1 lg:col-span-4 flex gap-2">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Buscar por Pedido, Numero da Nota ou Cliente..."
-                  className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-dark-card border border-slate-200 dark:border-white/10 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent dark:focus:border-neon-blue dark:text-white transition-colors"
-                  value={searchText}
-                  onChange={(e) => setSearchText(e.target.value)}
-                />
-              </div>
-            </div>
-
-            {/* Dropdowns */}
-            <div className="space-y-1 relative">
-              <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase flex items-center gap-1">
-                <Truck className="w-3 h-3" /> Transportadora
-              </label>
+        <div className={clsx("flex justify-end", !showFilters && "hidden")}>
+          <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+            <div ref={columnMenuRef} className="relative z-30 flex shrink-0">
               <button
                 type="button"
-                onClick={() =>
-                  setActiveFilterMenu((current) =>
-                    current === "carrier" ? null : "carrier",
-                  )
-                }
-                className="w-full flex items-center justify-between gap-3 p-2 border border-slate-200 dark:border-white/10 rounded-lg text-sm bg-white dark:bg-dark-card dark:text-white focus:border-accent outline-none"
+                onClick={() => setIsColumnMenuOpen((current) => !current)}
+                className="inline-flex h-10 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-semibold tracking-tight text-slate-700 transition-colors hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-white dark:hover:bg-white/10"
               >
-                <span className="truncate">
-                  {getMultiSelectButtonLabel(
-                    "Transportadora",
-                    selectedCarrierFilters,
+                Colunas
+                <span className="text-xs font-medium text-slate-400 dark:text-slate-500">
+                  {activeColumns.length}/{ORDER_TABLE_COLUMNS.length}
+                </span>
+                <ChevronDown
+                  className={clsx(
+                    "h-4 w-4 transition-transform",
+                    isColumnMenuOpen && "rotate-180",
                   )}
-                </span>
-                <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
+                />
               </button>
-              {activeFilterMenu === "carrier" && (
-                <div className="absolute z-30 mt-2 w-full min-w-[240px] rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-dark-card shadow-xl p-3 space-y-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs font-semibold text-slate-500 uppercase">
-                      Transportadoras
-                    </span>
-                    {selectedCarrierFilters.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setSelectedCarrierFilters([])}
-                        className="text-[11px] font-medium text-blue-600 hover:underline"
-                      >
-                        Limpar
-                      </button>
-                    )}
+
+              {isColumnMenuOpen && (
+                <div className="absolute right-0 top-[calc(100%+0.5rem)] z-40 w-[280px] rounded-xl border border-slate-200 bg-white p-3 shadow-xl dark:border-white/10 dark:bg-[#11131f]">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-800 dark:text-white">
+                        Colunas visiveis
+                      </p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        Escolha o que deseja ver na tabela.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={showAllColumns}
+                      className="text-xs font-semibold text-accent transition-colors hover:text-blue-700 dark:text-neon-blue dark:hover:text-cyan-300"
+                    >
+                      Mostrar todas
+                    </button>
                   </div>
-                  <div className="max-h-56 overflow-auto space-y-2 pr-1">
-                    {carriers.map((carrier) => (
-                      <label
-                        key={carrier}
-                        className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selectedCarrierFilters.includes(carrier)}
-                          onChange={() => toggleCarrierFilter(carrier)}
-                          className="rounded border-slate-300 text-accent focus:ring-accent"
-                        />
-                        <span className="truncate">{carrier}</span>
-                      </label>
-                    ))}
+
+                  <div className="grid grid-cols-1 gap-1.5">
+                    {ORDER_TABLE_COLUMNS.map((column) => {
+                      const isChecked = visibleColumnSet.has(column.key);
+
+                      return (
+                        <label
+                          key={column.key}
+                          className="flex cursor-pointer items-center gap-3 rounded-lg px-2.5 py-2 text-sm text-slate-700 transition-colors hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-white/5"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => toggleVisibleColumn(column.key)}
+                            className="h-4 w-4 rounded border-slate-300 text-accent focus:ring-accent/30 dark:border-white/20 dark:bg-transparent dark:text-neon-blue dark:focus:ring-neon-blue/30"
+                          />
+                          <span>{column.label}</span>
+                        </label>
+                      );
+                    })}
                   </div>
                 </div>
               )}
             </div>
 
-            <div className="space-y-1 relative">
-              <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase flex items-center gap-1">
-                <ShoppingBag className="w-3 h-3" /> Marketplace
-              </label>
+            <div className="flex flex-wrap items-center gap-2">
               <button
-                type="button"
-                onClick={() =>
-                  setActiveFilterMenu((current) =>
-                    current === "marketplace" ? null : "marketplace",
-                  )
-                }
-                className="w-full flex items-center justify-between gap-3 p-2 border border-slate-200 dark:border-white/10 rounded-lg text-sm bg-white dark:bg-dark-card dark:text-white focus:border-accent outline-none"
+                onClick={handleExportHtmlReport}
+                className="inline-flex h-10 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-semibold tracking-tight text-slate-700 transition-colors hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-white dark:hover:bg-white/10"
               >
-                <span className="truncate">
-                  {getMultiSelectButtonLabel(
-                    "Marketplace",
-                    selectedMarketplaceFilters,
+                <Download className="h-3.5 w-3.5" />
+                Abrir HTML
+              </button>
+              <button
+                onClick={handleExportCsvReport}
+                className="inline-flex h-10 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-semibold tracking-tight text-slate-700 transition-colors hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-white dark:hover:bg-white/10"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Baixar CSV
+              </button>
+            </div>
+
+            {onStartTraySync &&
+              !isNoMovementView &&
+              isTrayAvailable &&
+              !showArchivedOrders && (
+                <button
+                  onClick={() => setIsTraySyncModalOpen(true)}
+                  disabled={isTraySyncing}
+                  className="inline-flex h-10 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-semibold tracking-tight text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:bg-white/5 dark:text-white dark:hover:bg-white/10"
+                >
+                  {isTraySyncing ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Iniciando...
+                    </>
+                  ) : isTrayJobRunning ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Acompanhar Sync
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="h-3.5 w-3.5" />
+                      Sync Integradora
+                    </>
                   )}
-                </span>
-                <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
-              </button>
-              {activeFilterMenu === "marketplace" && (
-                <div className="absolute z-30 mt-2 w-full min-w-[240px] rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-dark-card shadow-xl p-3 space-y-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs font-semibold text-slate-500 uppercase">
-                      Marketplaces
-                    </span>
-                    {selectedMarketplaceFilters.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setSelectedMarketplaceFilters([])}
-                        className="text-[11px] font-medium text-blue-600 hover:underline"
-                      >
-                        Limpar
-                      </button>
-                    )}
-                  </div>
-                  <div className="max-h-56 overflow-auto space-y-2 pr-1">
-                    {marketplaces.map((marketplace) => (
-                      <label
-                        key={marketplace}
-                        className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selectedMarketplaceFilters.includes(marketplace)}
-                          onChange={() => toggleMarketplaceFilter(marketplace)}
-                          className="rounded border-slate-300 text-accent focus:ring-accent"
-                        />
-                        <span className="truncate">{marketplace}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
+                </button>
               )}
-            </div>
 
-            <div className="space-y-1 relative">
-              <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase flex items-center gap-1">
-                <Filter className="w-3 h-3" /> Status
-              </label>
-              <button
-                type="button"
-                onClick={() =>
-                  setActiveFilterMenu((current) =>
-                    current === "status" ? null : "status",
-                  )
-                }
-                className="w-full flex items-center justify-between gap-3 p-2 border border-slate-200 dark:border-white/10 rounded-lg text-sm bg-white dark:bg-dark-card dark:text-white focus:border-accent outline-none"
-              >
-                <span className="truncate">
-                  {getMultiSelectButtonLabel("Status", selectedStatusFilters)}
-                </span>
-                <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
-              </button>
-              {activeFilterMenu === "status" && (
-                <div className="absolute z-30 mt-2 w-full min-w-[240px] rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-dark-card shadow-xl p-3 space-y-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs font-semibold text-slate-500 uppercase">
-                      Status
-                    </span>
-                    {selectedStatusFilters.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setSelectedStatusFilters([])}
-                        className="text-[11px] font-medium text-blue-600 hover:underline"
-                      >
-                        Limpar
-                      </button>
-                    )}
-                  </div>
-                  <div className="max-h-56 overflow-auto space-y-2 pr-1">
-                    <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
-                      <input
-                        type="checkbox"
-                        checked={selectedStatusFilters.includes(DELAYED_STATUS_FILTER)}
-                        onChange={() => toggleStatusFilter(DELAYED_STATUS_FILTER)}
-                        className="rounded border-slate-300 text-accent focus:ring-accent"
-                      />
-                      <span>Atrasado</span>
-                    </label>
-                    {Object.values(OrderStatus).map((status) => (
-                      <label
-                        key={status}
-                        className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selectedStatusFilters.includes(status)}
-                          onChange={() => toggleStatusFilter(status)}
-                          className="rounded border-slate-300 text-accent focus:ring-accent"
-                        />
-                        <span>{STATUS_LABELS[status] || status}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Date Range */}
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase flex items-center gap-1">
-                <Calendar className="w-3 h-3" /> Previsão de Entrega
-              </label>
-              <div className="flex gap-2">
-                <input
-                  type="date"
-                  value={dateRangeStart}
-                  onChange={(e) => setDateRangeStart(e.target.value)}
-                  className="w-full p-2 border border-slate-200 dark:border-white/10 rounded-lg text-xs bg-white dark:bg-dark-card dark:text-white focus:border-accent outline-none"
-                />
-                <input
-                  type="date"
-                  value={dateRangeEnd}
-                  onChange={(e) => setDateRangeEnd(e.target.value)}
-                  className="w-full p-2 border border-slate-200 dark:border-white/10 rounded-lg text-xs bg-white dark:bg-dark-card dark:text-white focus:border-accent outline-none"
-                />
-              </div>
-            </div>
-
-            {/* No Movement Toggle */}
-            {isNoMovementView && (
-              <div className="col-span-1 lg:col-span-4 flex flex-wrap items-center gap-4 bg-red-50 dark:bg-red-900/10 p-3 rounded-lg border border-red-200 dark:border-red-900/30">
-                <span className="text-sm font-bold text-red-700 dark:text-red-400 flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4" />
-                  Sem Movimentação:
-                </span>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setNoMovementDays(2)}
-                    className={clsx(
-                      "px-3 py-1 rounded-md text-xs font-medium transition-colors border",
-                      noMovementDays === 2
-                        ? "bg-red-600 text-white border-red-600"
-                        : "bg-white dark:bg-white/10 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-white/10 hover:bg-slate-50",
-                    )}
-                  >
-                    2+ dias
-                  </button>
-                  <button
-                    onClick={() => setNoMovementDays(5)}
-                    className={clsx(
-                      "px-3 py-1 rounded-md text-xs font-medium transition-colors border",
-                      noMovementDays === 5
-                        ? "bg-red-600 text-white border-red-600"
-                        : "bg-white dark:bg-white/10 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-white/10 hover:bg-slate-50",
-                    )}
-                  >
-                    5+ dias
-                  </button>
-                </div>
-                <span className="text-xs text-red-600 dark:text-red-300 ml-auto">
-                  Exibindo pedidos sem atualização há{" "}
-                  <strong>{noMovementDays} dias</strong> ou mais.
-                </span>
-              </div>
-            )}
-
-            {/* Actions */}
-            <div className="col-span-1 lg:col-span-4 flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-white/5">
-              <button
-                onClick={clearFilters}
-                className="text-slate-500 text-sm hover:text-slate-800 dark:hover:text-white px-4 py-2 font-medium"
-              >
-                Limpar Filtros
-              </button>
-              <button
-                onClick={handleExternalSearchClick}
-                disabled={isFetchingSingle}
-                className="flex items-center justify-center px-4 py-2 bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-700 dark:text-white rounded-lg text-sm font-medium hover:bg-slate-50 dark:hover:bg-white/10 transition-colors"
-              >
-                <Globe className="w-4 h-4 mr-2" />
-                Buscar API
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div className={clsx("flex justify-end", !showFilters && "hidden")}>
-        <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-          <div
-            ref={columnMenuRef}
-            className="relative z-30 flex shrink-0"
-          >
             <button
-              type="button"
-              onClick={() => setIsColumnMenuOpen((current) => !current)}
-              className="inline-flex h-10 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-semibold tracking-tight text-slate-700 transition-colors hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-white dark:hover:bg-white/10"
+              onClick={handleSyncAll}
+              disabled={isSyncRunning || showArchivedOrders}
+              className="inline-flex h-10 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-accent px-4 text-sm font-semibold tracking-tight text-white shadow-sm transition-colors hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-neon-blue dark:text-black dark:hover:bg-cyan-400"
             >
-              Colunas
-              <span className="text-xs font-medium text-slate-400 dark:text-slate-500">
-                {activeColumns.length}/{ORDER_TABLE_COLUMNS.length}
-              </span>
-              <ChevronDown
-                className={clsx(
-                  "h-4 w-4 transition-transform",
-                  isColumnMenuOpen && "rotate-180",
-                )}
-              />
-            </button>
-
-            {isColumnMenuOpen && (
-              <div className="absolute right-0 top-[calc(100%+0.5rem)] z-40 w-[280px] rounded-xl border border-slate-200 bg-white p-3 shadow-xl dark:border-white/10 dark:bg-[#11131f]">
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-slate-800 dark:text-white">
-                      Colunas visiveis
-                    </p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
-                      Escolha o que deseja ver na tabela.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={showAllColumns}
-                    className="text-xs font-semibold text-accent transition-colors hover:text-blue-700 dark:text-neon-blue dark:hover:text-cyan-300"
-                  >
-                    Mostrar todas
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-1 gap-1.5">
-                  {ORDER_TABLE_COLUMNS.map((column) => {
-                    const isChecked = visibleColumnSet.has(column.key);
-
-                    return (
-                      <label
-                        key={column.key}
-                        className="flex cursor-pointer items-center gap-3 rounded-lg px-2.5 py-2 text-sm text-slate-700 transition-colors hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-white/5"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={() => toggleVisibleColumn(column.key)}
-                          className="h-4 w-4 rounded border-slate-300 text-accent focus:ring-accent/30 dark:border-white/20 dark:bg-transparent dark:text-neon-blue dark:focus:ring-neon-blue/30"
-                        />
-                        <span>{column.label}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              onClick={handleExportHtmlReport}
-              className="inline-flex h-10 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-semibold tracking-tight text-slate-700 transition-colors hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-white dark:hover:bg-white/10"
-            >
-              <Download className="h-3.5 w-3.5" />
-              Abrir HTML
-            </button>
-            <button
-              onClick={handleExportCsvReport}
-              className="inline-flex h-10 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-semibold tracking-tight text-slate-700 transition-colors hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-white dark:hover:bg-white/10"
-            >
-              <Download className="h-3.5 w-3.5" />
-              Baixar CSV
-            </button>
-          </div>
-
-          {onStartTraySync && !isNoMovementView && isTrayAvailable && !showArchivedOrders && (
-            <button
-              onClick={() => setIsTraySyncModalOpen(true)}
-              disabled={isTraySyncing}
-              className="inline-flex h-10 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-semibold tracking-tight text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:bg-white/5 dark:text-white dark:hover:bg-white/10"
-            >
-              {isTraySyncing ? (
+              {showArchivedOrders ? (
                 <>
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  Iniciando...
+                  <Archive className="h-3.5 w-3.5" />
+                  Sync pausado nos arquivados
                 </>
-              ) : isTrayJobRunning ? (
+              ) : isSyncRunning ? (
                 <>
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  Acompanhar Sync
+                  Sincronizando...
                 </>
               ) : (
                 <>
                   <RefreshCw className="h-3.5 w-3.5" />
-                  Sync Integradora
+                  Sync Geral
                 </>
               )}
             </button>
-          )}
-
-          <button
-            onClick={handleSyncAll}
-            disabled={isSyncRunning || showArchivedOrders}
-            className="inline-flex h-10 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-accent px-4 text-sm font-semibold tracking-tight text-white shadow-sm transition-colors hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-neon-blue dark:text-black dark:hover:bg-cyan-400"
-          >
-            {showArchivedOrders ? (
-              <>
-                <Archive className="h-3.5 w-3.5" />
-                Sync pausado nos arquivados
-              </>
-            ) : isSyncRunning ? (
-              <>
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                Sincronizando...
-              </>
-            ) : (
-              <>
-                <RefreshCw className="h-3.5 w-3.5" />
-                Sync Geral
-              </>
-            )}
-          </button>
+          </div>
         </div>
-      </div>
       </div>
 
       {/* 2. Detailed Data Table */}
@@ -2596,10 +2672,14 @@ export const OrderList: React.FC<OrderListProps> = ({
                     <td
                       className={clsx(
                         "px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap",
-                        getColumnVisibilityClass("carrierEstimatedDeliveryDate"),
+                        getColumnVisibilityClass(
+                          "carrierEstimatedDeliveryDate",
+                        ),
                       )}
                     >
-                      {formatCarrierForecast(order.carrierEstimatedDeliveryDate)}
+                      {formatCarrierForecast(
+                        order.carrierEstimatedDeliveryDate,
+                      )}
                     </td>
                     <td
                       className={clsx(
@@ -2641,7 +2721,9 @@ export const OrderList: React.FC<OrderListProps> = ({
                             onClick={() =>
                               handleArchiveToggle(order, !showArchivedOrders)
                             }
-                            disabled={updatingArchiveOrderIds.includes(order.id)}
+                            disabled={updatingArchiveOrderIds.includes(
+                              order.id,
+                            )}
                             className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:border-amber-200 hover:bg-amber-50 hover:text-amber-700 disabled:opacity-60 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5 dark:hover:text-white"
                           >
                             {updatingArchiveOrderIds.includes(order.id) ? (
@@ -2702,144 +2784,153 @@ export const OrderList: React.FC<OrderListProps> = ({
         <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div className="flex min-h-full items-center justify-center">
             <div className="glass-card flex w-full max-w-3xl max-h-[calc(100vh-2rem)] flex-col overflow-hidden rounded-xl p-6 shadow-2xl animate-in zoom-in-95 border border-slate-200 dark:border-white/10 bg-white dark:bg-dark-card sm:max-h-[calc(100vh-4rem)]">
-            <div className="flex justify-between items-center mb-6 shrink-0">
-              <div>
-                <h3 className="text-lg font-bold text-slate-800 dark:text-white">
-                  Sincronizar Pedidos da Integradora
-                </h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                  Defina o periodo e os status da {integrationLabel} que serao buscados.
-                </p>
-              </div>
-              <button
-                onClick={() => setIsTraySyncModalOpen(false)}
-                className="text-slate-500 hover:text-white"
+              <div className="flex justify-between items-center mb-6 shrink-0">
+                <div>
+                  <h3 className="text-lg font-bold text-slate-800 dark:text-white">
+                    Sincronizar Pedidos da Integradora
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    Defina o periodo e os status da {integrationLabel} que serao
+                    buscados.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setIsTraySyncModalOpen(false)}
+                  className="text-slate-500 hover:text-white"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
-            <div className="min-h-0 flex-1 space-y-5 overflow-y-auto pr-1">
-              <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 p-4">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                      Status da sincronizacao
-                    </p>
-                    <div className="mt-2 flex flex-wrap items-center gap-3">
-                      <span
-                        className={clsx(
-                          "inline-flex items-center rounded-full border px-3 py-1 text-xs font-bold uppercase tracking-wide",
-                          trayStatusClass,
-                        )}
-                      >
-                        {trayStatusLabel}
-                      </span>
-                      {traySyncJob?.currentOrderNumber && (
-                        <span className="text-sm text-slate-600 dark:text-slate-300">
-                          Status atual: <strong>{traySyncJob.currentOrderNumber}</strong>
+              <div className="min-h-0 flex-1 space-y-5 overflow-y-auto pr-1">
+                <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                        Status da sincronizacao
+                      </p>
+                      <div className="mt-2 flex flex-wrap items-center gap-3">
+                        <span
+                          className={clsx(
+                            "inline-flex items-center rounded-full border px-3 py-1 text-xs font-bold uppercase tracking-wide",
+                            trayStatusClass,
+                          )}
+                        >
+                          {trayStatusLabel}
                         </span>
-                      )}
+                        {traySyncJob?.currentOrderNumber && (
+                          <span className="text-sm text-slate-600 dark:text-slate-300">
+                            Status atual:{" "}
+                            <strong>{traySyncJob.currentOrderNumber}</strong>
+                          </span>
+                        )}
+                      </div>
                     </div>
+                    {hasTrayJob && (
+                      <div className="grid grid-cols-2 gap-3 text-sm sm:min-w-[240px]">
+                        <div className="rounded-lg bg-white dark:bg-dark-card border border-slate-200 dark:border-white/10 px-3 py-2">
+                          <p className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                            Progresso
+                          </p>
+                          <p className="font-semibold text-slate-800 dark:text-white">
+                            {traySyncJob?.processed || 0}/
+                            {traySyncJob?.total || 0}
+                          </p>
+                        </div>
+                        <div className="rounded-lg bg-white dark:bg-dark-card border border-slate-200 dark:border-white/10 px-3 py-2">
+                          <p className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                            Novos pedidos
+                          </p>
+                          <p className="font-semibold text-slate-800 dark:text-white">
+                            {traySyncJob?.success || 0}
+                          </p>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  {hasTrayJob && (
-                    <div className="grid grid-cols-2 gap-3 text-sm sm:min-w-[240px]">
-                      <div className="rounded-lg bg-white dark:bg-dark-card border border-slate-200 dark:border-white/10 px-3 py-2">
-                        <p className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                          Progresso
-                        </p>
-                        <p className="font-semibold text-slate-800 dark:text-white">
-                          {traySyncJob?.processed || 0}/{traySyncJob?.total || 0}
-                        </p>
-                      </div>
-                      <div className="rounded-lg bg-white dark:bg-dark-card border border-slate-200 dark:border-white/10 px-3 py-2">
-                        <p className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                          Novos pedidos
-                        </p>
-                        <p className="font-semibold text-slate-800 dark:text-white">
-                          {traySyncJob?.success || 0}
-                        </p>
-                      </div>
-                    </div>
+                  {isTrayJobRunning && (
+                    <p className="mt-3 text-xs text-blue-600 dark:text-blue-300">
+                      O processo continua executando mesmo se esta janela for
+                      fechada.
+                    </p>
+                  )}
+                  {traySyncJob?.error && (
+                    <p className="mt-3 text-xs text-red-600 dark:text-red-300">
+                      {traySyncJob.error}
+                    </p>
                   )}
                 </div>
-                {isTrayJobRunning && (
-                  <p className="mt-3 text-xs text-blue-600 dark:text-blue-300">
-                    O processo continua executando mesmo se esta janela for fechada.
-                  </p>
-                )}
-                {traySyncJob?.error && (
-                  <p className="mt-3 text-xs text-red-600 dark:text-red-300">
-                    {traySyncJob.error}
-                  </p>
-                )}
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase mb-2">
-                  Buscar pedidos
-                </label>
-                <select
-                  value={traySyncDays}
-                  onChange={(e) =>
-                    setTraySyncDays(Number(e.target.value) as TraySyncFilters["days"])
-                  }
-                  className="w-full p-3 border border-slate-200 dark:border-white/10 rounded-lg text-sm bg-white dark:bg-dark-card dark:text-white focus:border-accent outline-none"
-                  disabled={isTrayJobRunning}
-                >
-                  {TRAY_DAY_OPTIONS.map((days) => (
-                    <option key={days} value={days}>
-                      {days} dias
-                    </option>
-                  ))}
-                </select>
-              </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase mb-2">
+                    Buscar pedidos
+                  </label>
+                  <select
+                    value={traySyncDays}
+                    onChange={(e) =>
+                      setTraySyncDays(
+                        Number(e.target.value) as TraySyncFilters["days"],
+                      )
+                    }
+                    className="w-full p-3 border border-slate-200 dark:border-white/10 rounded-lg text-sm bg-white dark:bg-dark-card dark:text-white focus:border-accent outline-none"
+                    disabled={isTrayJobRunning}
+                  >
+                    {TRAY_DAY_OPTIONS.map((days) => (
+                      <option key={days} value={days}>
+                        {days} dias
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase mb-2">
-                  Status dos pedidos a serem buscados
-                </label>
-
-                <div className="grid gap-2">
-                  <label className="flex items-start gap-3 rounded-lg border border-slate-200 dark:border-white/10 px-3 py-3 cursor-pointer hover:bg-slate-50 dark:hover:bg-white/5">
-                    <input
-                      type="radio"
-                      name="tray-status-mode"
-                      checked={trayStatusMode === "all_except_canceled"}
-                      onChange={() => setTrayStatusMode("all_except_canceled")}
-                      className="mt-1"
-                      disabled={isTrayJobRunning}
-                    />
-                    <div>
-                      <p className="text-sm font-medium text-slate-700 dark:text-white">
-                        Todos exceto cancelados
-                      </p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                        Busca os pedidos da {integrationLabel} usando os status disponiveis para a empresa e ignorando apenas os status de cancelamento.
-                      </p>
-                    </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase mb-2">
+                    Status dos pedidos a serem buscados
                   </label>
 
-                  <label className="flex items-start gap-3 rounded-lg border border-slate-200 dark:border-white/10 px-3 py-3 cursor-pointer hover:bg-slate-50 dark:hover:bg-white/5">
-                    <input
-                      type="radio"
-                      name="tray-status-mode"
-                      checked={trayStatusMode === "selected"}
-                      onChange={() => setTrayStatusMode("selected")}
-                      className="mt-1"
-                      disabled={isTrayJobRunning}
-                    />
-                    <div className="w-full">
-                      <p className="text-sm font-medium text-slate-700 dark:text-white">
-                        Selecionar status manualmente
-                      </p>
-                      <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                        {isLoadingIntegrationStatuses
-                          ? `Carregando status da ${integrationLabel}...`
-                          : `${integrationStatusOptions.length} status disponivel(eis) na ${integrationLabel}.`}
-                      </p>
-                      <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        {(
-                          integrationStatusOptions.length > 0
+                  <div className="grid gap-2">
+                    <label className="flex items-start gap-3 rounded-lg border border-slate-200 dark:border-white/10 px-3 py-3 cursor-pointer hover:bg-slate-50 dark:hover:bg-white/5">
+                      <input
+                        type="radio"
+                        name="tray-status-mode"
+                        checked={trayStatusMode === "all_except_canceled"}
+                        onChange={() =>
+                          setTrayStatusMode("all_except_canceled")
+                        }
+                        className="mt-1"
+                        disabled={isTrayJobRunning}
+                      />
+                      <div>
+                        <p className="text-sm font-medium text-slate-700 dark:text-white">
+                          Todos exceto cancelados
+                        </p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                          Busca os pedidos da {integrationLabel} usando os
+                          status disponiveis para a empresa e ignorando apenas
+                          os status de cancelamento.
+                        </p>
+                      </div>
+                    </label>
+
+                    <label className="flex items-start gap-3 rounded-lg border border-slate-200 dark:border-white/10 px-3 py-3 cursor-pointer hover:bg-slate-50 dark:hover:bg-white/5">
+                      <input
+                        type="radio"
+                        name="tray-status-mode"
+                        checked={trayStatusMode === "selected"}
+                        onChange={() => setTrayStatusMode("selected")}
+                        className="mt-1"
+                        disabled={isTrayJobRunning}
+                      />
+                      <div className="w-full">
+                        <p className="text-sm font-medium text-slate-700 dark:text-white">
+                          Selecionar status manualmente
+                        </p>
+                        <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                          {isLoadingIntegrationStatuses
+                            ? `Carregando status da ${integrationLabel}...`
+                            : `${integrationStatusOptions.length} status disponivel(eis) na ${integrationLabel}.`}
+                        </p>
+                        <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {(integrationStatusOptions.length > 0
                             ? integrationStatusOptions
                             : TRAY_STATUS_OPTIONS.map(
                                 (status): IntegrationOrderStatusOption => ({
@@ -2847,93 +2938,97 @@ export const OrderList: React.FC<OrderListProps> = ({
                                   label: status,
                                 }),
                               )
-                        ).map((status) => (
-                          <label
-                            key={status.value}
-                            className={clsx(
-                              "flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors",
-                              trayStatusMode === "selected"
-                                ? "border-slate-200 dark:border-white/10 cursor-pointer hover:bg-slate-50 dark:hover:bg-white/5"
-                                : "border-slate-100 dark:border-white/5 opacity-60 cursor-not-allowed",
-                            )}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={selectedTrayStatuses.includes(status.value)}
-                              onChange={() => toggleTrayStatus(status.value)}
-                              disabled={
-                                trayStatusMode !== "selected" ||
-                                isTrayJobRunning ||
-                                isLoadingIntegrationStatuses
-                              }
-                            />
-                            <span className="flex items-center gap-1">
-                              <span className="capitalize">{status.label}</span>
-                              {typeof status.code === "number" && (
-                                <span className="text-[11px] text-slate-400 dark:text-slate-500">
-                                  #{status.code}
-                                </span>
-                              )}
-                            </span>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                  </label>
-                </div>
-              </div>
-
-              <div>
-                <div className="mb-2 flex items-center justify-between">
-                  <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">
-                    Logs da sincronizacao
-                  </label>
-                  <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                    {trayLogs.length} registro(s)
-                  </span>
-                </div>
-                <div className="max-h-64 overflow-auto rounded-xl border border-slate-200 dark:border-white/10 bg-slate-950 text-slate-100">
-                  {trayLogs.length > 0 ? (
-                    <div className="divide-y divide-white/5">
-                      {trayLogs.map((log, index) => (
-                        <div
-                          key={`${log.timestamp}-${index}`}
-                          className="px-4 py-3 font-mono text-xs"
-                        >
-                          <div className="flex items-start gap-3">
-                            <span className="min-w-[72px] text-slate-400">
-                              {new Date(log.timestamp).toLocaleTimeString()}
-                            </span>
-                            <span
+                          ).map((status) => (
+                            <label
+                              key={status.value}
                               className={clsx(
-                                "min-w-[64px] uppercase tracking-wide",
-                                log.level === "error"
-                                  ? "text-red-300"
-                                  : log.level === "success"
-                                    ? "text-emerald-300"
-                                    : "text-blue-300",
+                                "flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors",
+                                trayStatusMode === "selected"
+                                  ? "border-slate-200 dark:border-white/10 cursor-pointer hover:bg-slate-50 dark:hover:bg-white/5"
+                                  : "border-slate-100 dark:border-white/5 opacity-60 cursor-not-allowed",
                               )}
                             >
-                              {log.level}
-                            </span>
-                            <span className="flex-1 whitespace-pre-wrap break-words text-slate-100">
-                              {log.message}
-                            </span>
-                          </div>
+                              <input
+                                type="checkbox"
+                                checked={selectedTrayStatuses.includes(
+                                  status.value,
+                                )}
+                                onChange={() => toggleTrayStatus(status.value)}
+                                disabled={
+                                  trayStatusMode !== "selected" ||
+                                  isTrayJobRunning ||
+                                  isLoadingIntegrationStatuses
+                                }
+                              />
+                              <span className="flex items-center gap-1">
+                                <span className="capitalize">
+                                  {status.label}
+                                </span>
+                                {typeof status.code === "number" && (
+                                  <span className="text-[11px] text-slate-400 dark:text-slate-500">
+                                    #{status.code}
+                                  </span>
+                                )}
+                              </span>
+                            </label>
+                          ))}
                         </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="px-4 py-6 text-center text-xs text-slate-400">
-                      Os logs da Integradora aparecem aqui assim que a sincronizacao for iniciada.
-                    </div>
-                  )}
+                      </div>
+                    </label>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="mb-2 flex items-center justify-between">
+                    <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">
+                      Logs da sincronizacao
+                    </label>
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                      {trayLogs.length} registro(s)
+                    </span>
+                  </div>
+                  <div className="max-h-64 overflow-auto rounded-xl border border-slate-200 dark:border-white/10 bg-slate-950 text-slate-100">
+                    {trayLogs.length > 0 ? (
+                      <div className="divide-y divide-white/5">
+                        {trayLogs.map((log, index) => (
+                          <div
+                            key={`${log.timestamp}-${index}`}
+                            className="px-4 py-3 font-mono text-xs"
+                          >
+                            <div className="flex items-start gap-3">
+                              <span className="min-w-[72px] text-slate-400">
+                                {new Date(log.timestamp).toLocaleTimeString()}
+                              </span>
+                              <span
+                                className={clsx(
+                                  "min-w-[64px] uppercase tracking-wide",
+                                  log.level === "error"
+                                    ? "text-red-300"
+                                    : log.level === "success"
+                                      ? "text-emerald-300"
+                                      : "text-blue-300",
+                                )}
+                              >
+                                {log.level}
+                              </span>
+                              <span className="flex-1 whitespace-pre-wrap break-words text-slate-100">
+                                {log.message}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="px-4 py-6 text-center text-xs text-slate-400">
+                        Os logs da Integradora aparecem aqui assim que a
+                        sincronizacao for iniciada.
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
-            </div>
-
-            <div className="pt-4 mt-4 flex gap-3 shrink-0 border-t border-slate-200 dark:border-white/10">
+              <div className="pt-4 mt-4 flex gap-3 shrink-0 border-t border-slate-200 dark:border-white/10">
                 <button
                   type="button"
                   onClick={() => setIsTraySyncModalOpen(false)}
@@ -2958,7 +3053,7 @@ export const OrderList: React.FC<OrderListProps> = ({
                     "Buscar pedidos"
                   )}
                 </button>
-            </div>
+              </div>
             </div>
           </div>
         </div>
@@ -3029,4 +3124,3 @@ export const OrderList: React.FC<OrderListProps> = ({
     </div>
   );
 };
-
