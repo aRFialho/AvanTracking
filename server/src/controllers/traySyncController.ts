@@ -219,10 +219,46 @@ export const getOrderImportStatusOptions = async (req: Request, res: Response) =
     const result = await integrationOrderStatusService.getOrderImportStatuses(
       context.companyId,
     );
+    const company = await (prisma.company as any).findUnique({
+      where: { id: context.companyId },
+      select: {
+        integrationManualStatuses: true,
+      },
+    });
+
+    const normalizeForIntegration = (value: string) => {
+      if (result.integration === 'anymarket') {
+        return String(value || '').trim().toUpperCase();
+      }
+
+      if (result.integration === 'tray') {
+        return String(value || '').trim().toLowerCase();
+      }
+
+      return String(value || '').trim();
+    };
+
+    const configuredManualStatuses = Array.isArray(company?.integrationManualStatuses)
+      ? company.integrationManualStatuses
+          .map((status: string) => String(status || '').trim())
+          .filter(Boolean)
+      : [];
+    const manualStatuses = configuredManualStatuses.map((rawValue: string) => {
+      const normalizedValue = normalizeForIntegration(rawValue);
+      const matchingStatus = result.statuses.find((status) =>
+        normalizeForIntegration(String(status.value || '')) === normalizedValue,
+      );
+
+      return matchingStatus || {
+        value: normalizedValue,
+        label: rawValue,
+      };
+    });
 
     return res.json({
       success: true,
       ...result,
+      manualStatuses,
     });
   } catch (error) {
     console.error('Erro ao consultar status da integradora ativa:', error);

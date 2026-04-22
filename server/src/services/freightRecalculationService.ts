@@ -1,6 +1,7 @@
 import { createHash } from 'crypto';
 import { TrayFreightService } from './trayFreightService';
 import { TrayApiService } from './trayApiService';
+import { AnymarketFreightService } from './anymarketFreightService';
 
 export const safeString = (value: unknown): string | null => {
   if (value === null || value === undefined) return null;
@@ -62,6 +63,40 @@ export type ExtractedTrayOrderProducts = {
   auditProducts: FreightAuditProduct[];
   source: string | null;
   productsHash: string | null;
+};
+
+export type AnymarketFreightRequestProduct = {
+  skuId: string;
+  amount: number;
+  dimensions?: {
+    height?: number;
+    width?: number;
+    weight?: number;
+    length?: number;
+  };
+};
+
+export type AnymarketFreightAuditProduct = {
+  skuId: string;
+  amount: number;
+  name: string | null;
+  partnerId: string | null;
+  ean: string | null;
+  marketplaceItemId: string | null;
+  price: number | null;
+  discountPrice: number | null;
+  height: number | null;
+  width: number | null;
+  weight: number | null;
+  length: number | null;
+};
+
+export type ExtractedAnymarketOrderProducts = {
+  requestProducts: AnymarketFreightRequestProduct[];
+  auditProducts: AnymarketFreightAuditProduct[];
+  source: string | null;
+  productsHash: string | null;
+  marketPlace: string | null;
 };
 
 const PRODUCT_COLLECTION_PATHS = [
@@ -245,7 +280,7 @@ export const buildRecalculatedDetails = (
     zipcode: string;
     source: string | null;
     productsHash: string | null;
-    products: FreightAuditProduct[];
+    products: any[];
   },
 ) => {
   const normalizeComparableText = (value: unknown) =>
@@ -300,6 +335,7 @@ export const buildRecalculatedDetails = (
     (matchedByCarrier ? safeString(requestedCarrier) : null) ||
     pickCarrierCandidate(
       selectedOption?.carrier_name,
+      selectedOption?.carrierName,
       selectedOption?.carrier,
       selectedOption?.transportadora,
       selectedOption?.shipping_company,
@@ -310,6 +346,7 @@ export const buildRecalculatedDetails = (
     );
 
   const selectedServiceName =
+    safeString(selectedOption?.serviceName) ||
     safeString(selectedOption?.service_name) ||
     safeString(selectedOption?.service) ||
     safeString(selectedOption?.identifier) ||
@@ -415,6 +452,102 @@ const resolveTrayOrderIdentifier = (order: any) =>
   safeString(order?.orderNumber) ||
   null;
 
+const hasNumber = (value: unknown) => safeNumber(value) !== null;
+
+const buildAnymarketDimensions = (item: any) => {
+  const height = safeNumber(
+    item?.dimensions?.height ?? item?.height ?? item?.sku?.height,
+  );
+  const width = safeNumber(
+    item?.dimensions?.width ?? item?.width ?? item?.sku?.width,
+  );
+  const weight = safeNumber(
+    item?.dimensions?.weight ?? item?.weight ?? item?.sku?.weight,
+  );
+  const length = safeNumber(
+    item?.dimensions?.length ?? item?.length ?? item?.sku?.length,
+  );
+
+  if (![height, width, weight, length].some((value) => value !== null)) {
+    return undefined;
+  }
+
+  return {
+    ...(height !== null ? { height } : {}),
+    ...(width !== null ? { width } : {}),
+    ...(weight !== null ? { weight } : {}),
+    ...(length !== null ? { length } : {}),
+  };
+};
+
+export const extractAnymarketOrderProducts = (
+  rawPayload: any,
+): ExtractedAnymarketOrderProducts => {
+  const items = Array.isArray(rawPayload?.items) ? rawPayload.items : [];
+
+  const auditProducts = items
+    .map((item: any) => {
+      const sku = item?.sku || {};
+      const product = item?.product || {};
+      const skuId = safeString(sku?.id ?? item?.skuId ?? sku?.partnerId);
+      const amount = safeInteger(item?.amount ?? item?.quantity ?? 1) || 1;
+      const dimensions = buildAnymarketDimensions(item);
+
+      if (!skuId || amount <= 0) {
+        return null;
+      }
+
+      return {
+        skuId,
+        amount,
+        name: safeString(sku?.title ?? product?.title ?? item?.title),
+        partnerId: safeString(sku?.partnerId),
+        ean: safeString(sku?.ean),
+        marketplaceItemId: safeString(item?.marketPlaceId ?? item?.idInMarketPlace),
+        price: safeNumber(item?.gross ?? item?.unit ?? product?.price),
+        discountPrice: safeNumber(item?.total),
+        height: hasNumber(dimensions?.height) ? safeNumber(dimensions?.height) : null,
+        width: hasNumber(dimensions?.width) ? safeNumber(dimensions?.width) : null,
+        weight: hasNumber(dimensions?.weight) ? safeNumber(dimensions?.weight) : null,
+        length: hasNumber(dimensions?.length) ? safeNumber(dimensions?.length) : null,
+        dimensions,
+      };
+    })
+    .filter((item): item is AnymarketFreightAuditProduct & { dimensions?: any } => Boolean(item));
+
+  return {
+    requestProducts: auditProducts.map((item) => ({
+      skuId: item.skuId,
+      amount: item.amount,
+      ...(item.dimensions ? { dimensions: item.dimensions } : {}),
+    })),
+    auditProducts: auditProducts.map(({ dimensions, ...item }) => item),
+    source: safeString(rawPayload?.source) || 'items',
+    productsHash: buildProductsHash(auditProducts),
+    marketPlace: safeString(rawPayload?.marketPlace),
+  };
+};
+
+const resolveFreightProvider = (order: any): 'anymarket' | 'tray' => {
+  const source = String(order?.apiRawPayload?.source || '').trim().toUpperCase();
+
+  if (source === 'ANYMARKET') {
+    return 'anymarket';
+  }
+
+  const rawPayload = order?.apiRawPayload;
+  if (
+    rawPayload &&
+    Array.isArray(rawPayload?.items) &&
+    safeString(rawPayload?.marketPlaceId) &&
+    safeString(rawPayload?.marketPlace)
+  ) {
+    return 'anymarket';
+  }
+
+  return 'tray';
+};
+
 export const recalculateStoredOrderFreight = async ({
   prisma,
   order,
@@ -433,6 +566,98 @@ export const recalculateStoredOrderFreight = async ({
   const zipcode = normalizeZipCode(order?.zipCode);
   if (!zipcode) {
     throw new Error('Pedido sem CEP valido');
+  }
+
+  const freightProvider = resolveFreightProvider(order);
+
+  if (freightProvider === 'anymarket') {
+    const payloadForRecalculation = order?.apiRawPayload;
+    const extractedProducts = extractAnymarketOrderProducts(payloadForRecalculation);
+    const marketPlace = safeString(extractedProducts.marketPlace);
+
+    if (!marketPlace) {
+      throw new Error(
+        'Pedido ANYMARKET sem marketplace valido para recotacao de frete.',
+      );
+    }
+
+    if (extractedProducts.requestProducts.length === 0) {
+      throw new Error(
+        'Pedido ANYMARKET sem produtos validos para recotacao. A API /freight/quotes exige skuId e amount reais do pedido.',
+      );
+    }
+
+    const anymarketFreightService = new AnymarketFreightService(companyId);
+    const cotationResult = await anymarketFreightService.quoteFreight({
+      zipCode: zipcode,
+      marketPlace,
+      products: extractedProducts.requestProducts,
+    });
+
+    const cotationOptions = Array.isArray(cotationResult?.quotes)
+      ? cotationResult.quotes
+      : [];
+    const defaultFreight = cotationResult?.defaultFreight || null;
+
+    if (cotationOptions.length === 0 && !defaultFreight) {
+      throw new Error('Nenhuma opcao de frete disponivel no ANYMARKET para este CEP');
+    }
+
+    const cheapestOption = anymarketFreightService.getCheapestOption(cotationOptions);
+    const fastestOption = anymarketFreightService.getFastestOption(cotationOptions);
+    const matchedOption = anymarketFreightService.getPreferredOptionForCarrier(
+      cotationOptions,
+      order?.freightType,
+    );
+    const selectedOption =
+      matchedOption || cheapestOption || fastestOption || defaultFreight || cotationOptions[0] || null;
+    const quotedValue = selectedOption ? safeNumber(selectedOption.price) : null;
+    const recalculatedFreightDetails = buildRecalculatedDetails(
+      cotationOptions,
+      selectedOption,
+      Boolean(matchedOption),
+      order?.freightType,
+      {
+        zipcode,
+        source: extractedProducts.source,
+        productsHash: extractedProducts.productsHash,
+        products: extractedProducts.auditProducts,
+      },
+    );
+
+    await prisma.order.update({
+      where: { id: order.id },
+      data: {
+        recalculatedFreightValue: quotedValue,
+        recalculatedFreightDate: new Date(),
+        recalculatedFreightDetails: {
+          ...recalculatedFreightDetails,
+          provider: 'ANYMARKET',
+          marketPlace,
+          missingSkus: cotationResult?.missingSkus ?? null,
+          defaultFreight,
+        },
+      },
+    });
+
+    return {
+      skipped: false,
+      order,
+      provider: 'ANYMARKET',
+      cotationResult,
+      cotationOptions,
+      cheapestOption,
+      fastestOption,
+      matchedOption,
+      selectedOption,
+      quotedValue,
+      extractedProducts,
+      recalculatedFreightDetails,
+      destination: {
+        zipcode,
+        marketPlace,
+      },
+    };
   }
 
   let payloadForRecalculation = order?.apiRawPayload;
@@ -511,6 +736,7 @@ export const recalculateStoredOrderFreight = async ({
   return {
     skipped: false,
     order,
+    provider: 'TRAY',
     cotationResult,
     cotationOptions,
     cheapestOption,

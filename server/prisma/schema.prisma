@@ -90,6 +90,7 @@ model Company {
     magazordApiPassword String? @db.Text
     sswRequireCnpjs String[] @default([])
     integrationCarrierExceptions String[] @default([])
+    integrationManualStatuses String[] @default([])
     createdAt   DateTime @default(now())
     users       User[]
     orders      Order[]

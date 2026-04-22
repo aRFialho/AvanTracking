@@ -25,6 +25,18 @@ const normalizeIntegrationCarrierExceptions = (value: unknown) => {
   );
 };
 
+const normalizeIntegrationManualStatuses = (value: unknown) => {
+  if (!Array.isArray(value)) return [];
+
+  return Array.from(
+    new Set(
+      value
+        .map((item) => String(item || '').trim())
+        .filter(Boolean),
+    ),
+  );
+};
+
 const normalizeBooleanSetting = (value: unknown) => {
   if (value === undefined) return undefined;
   return Boolean(value);
@@ -105,6 +117,7 @@ const companyPublicSelect = {
   magazordApiUser: true,
   sswRequireCnpjs: true,
   integrationCarrierExceptions: true,
+  integrationManualStatuses: true,
   createdAt: true,
   _count: {
     select: {
@@ -247,6 +260,9 @@ export const createCompany = async (req: Request, res: Response) => {
         integrationCarrierExceptions: normalizeIntegrationCarrierExceptions(
           req.body?.integrationCarrierExceptions,
         ),
+        integrationManualStatuses: normalizeIntegrationManualStatuses(
+          req.body?.integrationManualStatuses,
+        ),
       },
       select: {
         ...companyPublicSelect,
@@ -330,6 +346,11 @@ export const updateCurrentCompanyIntegration = async (
       integrationCarrierExceptionsRaw === undefined
         ? undefined
         : normalizeIntegrationCarrierExceptions(integrationCarrierExceptionsRaw);
+    const integrationManualStatusesRaw = req.body?.integrationManualStatuses;
+    const integrationManualStatuses =
+      integrationManualStatusesRaw === undefined
+        ? undefined
+        : normalizeIntegrationManualStatuses(integrationManualStatusesRaw);
     const trayIntegrationEnabled = normalizeBooleanSetting(
       req.body?.trayIntegrationEnabled,
     );
@@ -459,6 +480,9 @@ export const updateCurrentCompanyIntegration = async (
         ...(sswRequireCnpjs !== undefined ? { sswRequireCnpjs } : {}),
         ...(integrationCarrierExceptions !== undefined
           ? { integrationCarrierExceptions }
+          : {}),
+        ...(integrationManualStatuses !== undefined
+          ? { integrationManualStatuses }
           : {}),
       },
       select: {

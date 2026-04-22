@@ -53,7 +53,7 @@ export const quoteOrderFreight = async (req: Request, res: Response) => {
     console.log(
       result.selectedOption
         ? `Frete recalculado: R$ ${result.quotedValue?.toFixed(2)}`
-        : 'Nenhuma opcao valida de frete foi retornada pela Tray.',
+        : 'Nenhuma opcao valida de frete foi retornada pela integradora.',
     );
 
     return res.json({
@@ -81,7 +81,10 @@ export const quoteOrderFreight = async (req: Request, res: Response) => {
         fastest: result.fastestOption,
         all: result.cotationOptions,
       },
-      destination: result.cotationResult.Shipping.destination,
+      destination:
+        (result as any).destination ||
+        (result as any).cotationResult?.Shipping?.destination ||
+        null,
       products: result.extractedProducts.auditProducts,
     });
   } catch (error) {
