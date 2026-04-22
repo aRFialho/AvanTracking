@@ -152,6 +152,9 @@ const TRAY_STATUS_OPTIONS = [
   "aguardando envio",
 ];
 
+// Integradoras que suportam sincronização de pedidos
+const INTEGRATIONS_WITH_SYNC = ["tray", "anymarket"] as const;
+
 interface IntegrationStatusOptionsResponse {
   success: boolean;
   integration: "tray" | "magazord" | "bling" | "sysemp" | null;
@@ -369,7 +372,9 @@ export const OrderList: React.FC<OrderListProps> = ({
   const [archivedOrders, setArchivedOrders] = useState<Order[]>([]);
   const [isLoadingArchivedOrders, setIsLoadingArchivedOrders] = useState(false);
   const isTrayAvailable = Boolean(
-    trayIntegrationStatus?.authorized || activeIntegration === "anymarket",
+    trayIntegrationStatus?.authorized ||
+    (activeIntegration &&
+      INTEGRATIONS_WITH_SYNC.includes(activeIntegration as any)),
   );
   const [isSyncing, setIsSyncing] = useState(false); // ✅ Novo state
 
@@ -1129,8 +1134,8 @@ export const OrderList: React.FC<OrderListProps> = ({
       }
     };
 
-    // Apenas carregar se não estamos já carregando via modal
-    if (!isTraySyncModalOpen && onStartTraySync) {
+    // Carregar sempre que temos onStartTraySync disponível
+    if (onStartTraySync) {
       void loadActiveIntegration();
     }
 
