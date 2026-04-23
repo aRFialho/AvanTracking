@@ -2224,6 +2224,186 @@ export const cancelSyncAllOrders = async (req: Request, res: Response) => {
   }
 };
 
+type CleanupPeriodWindow =
+  | { type: 'ALL' }
+  | { type: 'OLDER_THAN'; cutoffDate: Date }
+  | { type: 'CUSTOM_RANGE'; startDate: Date; endDate: Date };
+
+const CLEANUP_SCAN_BATCH_SIZE = 1000;
+const CLEANUP_DELETE_BATCH_SIZE = 1000;
+
+const resolveCleanupPeriodWindow = ({
+  period,
+  customStartDate,
+  customEndDate,
+}: {
+  period: unknown;
+  customStartDate: unknown;
+  customEndDate: unknown;
+}): { window?: CleanupPeriodWindow; error?: string } => {
+  if (period === 'ALL') {
+    return { window: { type: 'ALL' } };
+  }
+
+  if (period === '7_DAYS' || period === '15_DAYS' || period === '30_DAYS') {
+    const days = Number(String(period).split('_')[0]);
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - days);
+    return { window: { type: 'OLDER_THAN', cutoffDate } };
+  }
+
+  if (period === 'CUSTOM') {
+    const startDate = safeDate(customStartDate);
+    const endDate = safeDate(customEndDate);
+
+    if (!startDate || !endDate) {
+      return {
+        error: 'Informe as datas inicial e final do periodo personalizado.',
+      };
+    }
+
+    startDate.setHours(0, 0, 0, 0);
+    endDate.setHours(23, 59, 59, 999);
+
+    if (startDate.getTime() > endDate.getTime()) {
+      return { error: 'A data inicial nao pode ser maior que a data final.' };
+    }
+
+    return { window: { type: 'CUSTOM_RANGE', startDate, endDate } };
+  }
+
+  return { error: 'Periodo invalido' };
+};
+
+const resolveOrderCleanupReferenceDate = (order: any): Date | null => {
+  const latestTrackingDate = safeDate(order?.trackingEvents?.[0]?.eventDate);
+  if (latestTrackingDate) {
+    return latestTrackingDate;
+  }
+
+  const shippingDate = safeDate(order?.shippingDate);
+  if (shippingDate) {
+    return shippingDate;
+  }
+
+  const createdAt = safeDate(order?.createdAt);
+  if (createdAt) {
+    return createdAt;
+  }
+
+  return safeDate(order?.lastUpdate);
+};
+
+const matchesCleanupWindow = (
+  referenceDate: Date | null,
+  window: CleanupPeriodWindow,
+): boolean => {
+  if (window.type === 'ALL') {
+    return true;
+  }
+
+  if (!referenceDate) {
+    return false;
+  }
+
+  if (window.type === 'OLDER_THAN') {
+    return referenceDate.getTime() < window.cutoffDate.getTime();
+  }
+
+  return (
+    referenceDate.getTime() >= window.startDate.getTime() &&
+    referenceDate.getTime() <= window.endDate.getTime()
+  );
+};
+
+const collectOrderIdsForCleanup = async ({
+  companyId,
+  status,
+  window,
+}: {
+  companyId: string;
+  status?: OrderStatus;
+  window: CleanupPeriodWindow;
+}) => {
+  if (window.type === 'ALL') {
+    return null;
+  }
+
+  const orderIds: string[] = [];
+  let cursor: string | undefined;
+
+  while (true) {
+    const rows = await prisma.order.findMany({
+      where: {
+        companyId,
+        ...(status ? { status } : {}),
+      },
+      select: {
+        id: true,
+        shippingDate: true,
+        createdAt: true,
+        lastUpdate: true,
+        trackingEvents: {
+          select: {
+            eventDate: true,
+          },
+          orderBy: {
+            eventDate: 'desc',
+          },
+          take: 1,
+        },
+      },
+      orderBy: {
+        id: 'asc',
+      },
+      take: CLEANUP_SCAN_BATCH_SIZE,
+      ...(cursor
+        ? {
+            skip: 1,
+            cursor: {
+              id: cursor,
+            },
+          }
+        : {}),
+    });
+
+    if (rows.length === 0) {
+      break;
+    }
+
+    for (const row of rows) {
+      const referenceDate = resolveOrderCleanupReferenceDate(row);
+      if (matchesCleanupWindow(referenceDate, window)) {
+        orderIds.push(row.id);
+      }
+    }
+
+    cursor = rows[rows.length - 1].id;
+  }
+
+  return orderIds;
+};
+
+const deleteOrdersByIdBatches = async (orderIds: string[]) => {
+  if (orderIds.length === 0) {
+    return 0;
+  }
+
+  let deletedCount = 0;
+
+  for (let index = 0; index < orderIds.length; index += CLEANUP_DELETE_BATCH_SIZE) {
+    const idsBatch = orderIds.slice(index, index + CLEANUP_DELETE_BATCH_SIZE);
+    const batchResult = await prisma.order.deleteMany({
+      where: {
+        id: { in: idsBatch },
+      },
+    });
+    deletedCount += batchResult.count;
+  }
+
+  return deletedCount;
+};
+
 export const clearOrdersDatabase = async (req: Request, res: Response) => {
   try {
     const {
@@ -2267,20 +2447,29 @@ export const clearOrdersDatabase = async (req: Request, res: Response) => {
     }
 
     if (type === 'DELIVERED_7_DAYS') {
-      const sevenDaysAgo = new Date();
-      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      const deliveredWindow = resolveCleanupPeriodWindow({
+        period: '7_DAYS',
+        customStartDate,
+        customEndDate,
+      });
 
-      const result = await prisma.order.deleteMany({
-        where: {
+      if (!deliveredWindow.window) {
+        return res
+          .status(400)
+          .json({ error: deliveredWindow.error || 'Periodo invalido' });
+      }
+
+      const eligibleOrderIds =
+        (await collectOrderIdsForCleanup({
           companyId: company.id,
           status: OrderStatus.DELIVERED,
-          lastUpdate: {
-            lt: sevenDaysAgo,
-          },
-        },
-      });
+          window: deliveredWindow.window,
+        })) || [];
+
+      const deletedCount = await deleteOrdersByIdBatches(eligibleOrderIds);
+
       return res.json({
-        message: `${result.count} pedidos entregues ha mais de 7 dias da empresa ${company.name} foram apagados.`,
+        message: `${deletedCount} pedidos entregues ha mais de 7 dias da empresa ${company.name} foram apagados.`,
       });
     }
 
@@ -2297,38 +2486,38 @@ export const clearOrdersDatabase = async (req: Request, res: Response) => {
         whereClause.status = status as OrderStatus;
       }
 
-      if (period === '7_DAYS' || period === '15_DAYS' || period === '30_DAYS') {
-        const days = Number(String(period).split('_')[0]);
-        const cutoffDate = new Date();
-        cutoffDate.setDate(cutoffDate.getDate() - days);
+      const periodWindow = resolveCleanupPeriodWindow({
+        period,
+        customStartDate,
+        customEndDate,
+      });
 
-        whereClause.lastUpdate = {
-          lt: cutoffDate,
-        };
-      } else if (period === 'CUSTOM') {
-        const startDate = safeDate(customStartDate);
-        const endDate = safeDate(customEndDate);
-
-        if (!startDate || !endDate) {
-          return res.status(400).json({
-            error: 'Informe as datas inicial e final do periodo personalizado.',
-          });
-        }
-
-        startDate.setHours(0, 0, 0, 0);
-        endDate.setHours(23, 59, 59, 999);
-
-        whereClause.lastUpdate = {
-          gte: startDate,
-          lte: endDate,
-        };
-      } else if (period !== 'ALL') {
-        return res.status(400).json({ error: 'Periodo invalido' });
+      if (!periodWindow.window) {
+        return res
+          .status(400)
+          .json({ error: periodWindow.error || 'Periodo invalido' });
       }
 
-      const result = await prisma.order.deleteMany({
-        where: whereClause,
-      });
+      let deletedCount = 0;
+
+      if (periodWindow.window.type === 'ALL') {
+        const result = await prisma.order.deleteMany({
+          where: whereClause,
+        });
+        deletedCount = result.count;
+      } else {
+        const eligibleOrderIds =
+          (await collectOrderIdsForCleanup({
+            companyId: company.id,
+            status:
+              status && status !== 'ALL'
+                ? (status as OrderStatus)
+                : undefined,
+            window: periodWindow.window,
+          })) || [];
+
+        deletedCount = await deleteOrdersByIdBatches(eligibleOrderIds);
+      }
 
       const statusLabel =
         status && status !== 'ALL' ? ` com status ${status}` : '';
@@ -2337,10 +2526,10 @@ export const clearOrdersDatabase = async (req: Request, res: Response) => {
           ? ' sem recorte de periodo'
           : period === 'CUSTOM'
             ? ` no periodo de ${customStartDate} ate ${customEndDate}`
-            : ` com ultima atualizacao acima de ${String(period).replace('_', ' ').toLowerCase()}`;
+            : ` com ultima movimentacao acima de ${String(period).replace('_', ' ').toLowerCase()}`;
 
       return res.json({
-        message: `${result.count} pedidos${statusLabel}${periodLabel} da empresa ${company.name} foram apagados.`,
+        message: `${deletedCount} pedidos${statusLabel}${periodLabel} da empresa ${company.name} foram apagados.`,
       });
     }
 

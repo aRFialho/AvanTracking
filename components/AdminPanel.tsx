@@ -3329,7 +3329,7 @@ export const AdminPanel: React.FC = () => {
                   )}
 
                   <div className="rounded-lg border border-orange-200 bg-orange-50/70 px-3 py-2 text-xs text-orange-700 dark:border-orange-500/20 dark:bg-orange-500/10 dark:text-orange-300">
-                    O periodo considera a ultima atualizacao do pedido no sistema.
+                    O periodo considera a ultima movimentacao registrada (rastreio/envio) do pedido.
                   </div>
                 </>
               )}
